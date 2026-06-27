@@ -4,6 +4,7 @@
 // interaction prompts, target frame, death screen, and chat.
 // ============================================================
 import { CLASSES, CLASS_ORDER } from './classes.js';
+import { Saves } from './save.js';
 
 export class UI {
   constructor() {
@@ -16,6 +17,12 @@ export class UI {
       enter: document.getElementById('enter-world'),
       serverInput: document.getElementById('server-input'),
       serverStatus: document.getElementById('server-status'),
+      rosterView: document.getElementById('roster-view'),
+      createView: document.getElementById('create-view'),
+      rosterGrid: document.getElementById('roster-grid'),
+      newCharBtn: document.getElementById('new-char-btn'),
+      backRoster: document.getElementById('back-roster'),
+      storageNote: document.getElementById('storage-note'),
 
       hpFill: document.getElementById('hp-fill'), hpText: document.getElementById('hp-text'),
       mpFill: document.getElementById('mp-fill'), mpText: document.getElementById('mp-text'),
@@ -77,11 +84,87 @@ export class UI {
       <div class="stats" style="opacity:.8">Learn as you level: ${learn}</div>`;
   }
 
-  onEnter(cb) {
+  // Wire the start screen. Callbacks:
+  //   onCreate({ name, classId, server })  — make a brand new character
+  //   onContinue(save, server)             — load an existing save
+  setupStart({ onCreate, onContinue }) {
+    this._onCreate = onCreate;
+    this._onContinue = onContinue;
+
+    this.el.newCharBtn.onclick = () => this.showCreate();
+    this.el.backRoster.onclick = () => this.showRoster();
     this.el.enter.onclick = () => {
       const name = (this.el.nameInput.value || 'Stickaeryn').slice(0, 16);
-      cb({ name, classId: this.selectedClass, server: this.el.serverInput.value.trim() });
+      onCreate({ name, classId: this.selectedClass, server: this._server() });
     };
+
+    // Storage availability hint.
+    if (!Saves.available()) {
+      this.el.storageNote.textContent = '⚠ saves unavailable (private mode / blocked storage)';
+    } else {
+      this.el.storageNote.textContent = 'Progress saves when you rest at a bonfire.';
+    }
+
+    // Start on the roster if any characters exist, else jump to create.
+    if (Saves.list().length > 0) this.showRoster();
+    else this.showCreate();
+  }
+
+  _server() { return this.el.serverInput.value.trim(); }
+
+  showRoster() {
+    this.refreshRoster();
+    this.el.rosterView.classList.remove('hidden');
+    this.el.createView.classList.add('hidden');
+  }
+
+  showCreate() {
+    // Hide the "back" button if there are no characters to go back to.
+    this.el.backRoster.style.display = Saves.list().length ? 'inline-block' : 'none';
+    this.el.createView.classList.remove('hidden');
+    this.el.rosterView.classList.add('hidden');
+  }
+
+  refreshRoster() {
+    const grid = this.el.rosterGrid;
+    grid.innerHTML = '';
+    const chars = Saves.list();
+    if (!chars.length) {
+      grid.innerHTML = '<div class="roster-empty">No saved characters yet — create one below.</div>';
+      return;
+    }
+    for (const ch of chars) {
+      const c = CLASSES[ch.classId] || CLASSES.fighter;
+      const card = document.createElement('div');
+      card.className = 'roster-card';
+      card.innerHTML = `
+        <div class="rc-glyph">${c.glyph}</div>
+        <div class="rc-info">
+          <div class="rc-name">${ch.name}</div>
+          <div class="rc-meta">Lv ${ch.level} ${c.name}</div>
+          <div class="rc-when">${this._ago(ch.lastPlayed)}</div>
+        </div>
+        <button class="rc-del" title="Delete character">✕</button>`;
+      card.querySelector('.rc-del').onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete ${ch.name} (Lv ${ch.level} ${c.name})? This cannot be undone.`)) {
+          Saves.remove(ch.id);
+          this.refreshRoster();
+          if (!Saves.list().length) this.showCreate();
+        }
+      };
+      card.onclick = () => this._onContinue(ch, this._server());
+      grid.appendChild(card);
+    }
+  }
+
+  _ago(ts) {
+    if (!ts) return 'new';
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return 'just now';
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    return `${Math.floor(s / 86400)}d ago`;
   }
 
   enterWorld(player) {

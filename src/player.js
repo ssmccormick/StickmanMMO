@@ -220,6 +220,41 @@ export class Player {
     this.stats.hp = this.stats.maxHp; this.stats.mp = this.stats.maxMp; this.stats.sp = this.stats.maxSp;
   }
 
+  // ---- Persistence ----
+  // Snapshot this character into a plain save record (overwrites on rest).
+  toSave() {
+    const s = this.stats;
+    return {
+      id: this.saveId,
+      name: this.name,
+      classId: this.classId,
+      level: s.level, xp: s.xp, xpNext: s.xpNext,
+      maxHp: s.maxHp, maxMp: s.maxMp, maxSp: s.maxSp,
+      str: s.str, dex: s.dex, int: s.int,
+      learned: this.learned.map((l) => ({ id: l.id, rank: l.rank })),
+      respawn: { x: this.respawn.x, y: this.respawn.y, z: this.respawn.z },
+    };
+  }
+
+  // Restore a saved character into this freshly-constructed player.
+  applySave(save) {
+    this.saveId = save.id;
+    const s = this.stats;
+    s.level = save.level; s.xp = save.xp; s.xpNext = save.xpNext;
+    s.maxHp = save.maxHp; s.maxMp = save.maxMp; s.maxSp = save.maxSp;
+    s.str = save.str; s.dex = save.dex; s.int = save.int;
+    s.hp = s.maxHp; s.mp = s.maxMp; s.sp = s.maxSp;
+    if (Array.isArray(save.learned) && save.learned.length) {
+      this.learned = save.learned.map((l) => ({ id: l.id, rank: l.rank }));
+      this.cooldowns = this.learned.map(() => 0);
+    }
+    if (save.respawn) {
+      this.respawn = new THREE.Vector3(save.respawn.x, save.respawn.y, save.respawn.z);
+      this.pos.copy(this.respawn);
+      this.pos.y = heightAt(this.pos.x, this.pos.z);
+    }
+  }
+
   // ---- Progression ----
   // Award XP; auto-level vitals and queue a choice per level gained.
   gainXp(amount) {

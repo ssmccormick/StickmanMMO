@@ -12,6 +12,7 @@ import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
+import { Saves } from './save.js';
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -61,30 +62,45 @@ ui.setupChat((text) => {
   network.sendChat(text);
 });
 
-// ---- Start the game from the class-select screen ----
-ui.onEnter(({ name, classId, server }) => {
+// ---- Start the game (shared by "new character" and "continue") ----
+function beginGame(classId, name, server, save) {
   if (started) return;
   started = true;
   audio.init();
 
   player = new Player(scene, world, classId, name);
   player.world = world;
+
+  if (save) {
+    // Continue an existing character.
+    player.applySave(save);
+  } else {
+    // Brand new character → persist it immediately so it joins the roster.
+    const rec = Saves.create(player.toSave());
+    player.saveId = rec.id;
+  }
+
   lastHp = player.stats.hp;
   enemies = spawnEnemies(scene, world);
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
-  // Feedback the instant a level is gained (the choice modal opens next frame).
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
 
   ui.enterWorld(player);
-  ui.log(`Welcome, ${name} the ${classId}. Slay monsters and grow strong!`, 'sys');
-  ui.log('Find a bonfire (orange flame) and press E to rest.', 'sys');
+  ui.log(save
+    ? `Welcome back, ${name} the ${classId} (Lv ${player.stats.level}).`
+    : `Welcome, ${name} the ${classId}. Slay monsters and grow strong!`, 'sys');
+  ui.log('Rest at a bonfire (orange flame, press E) to heal and SAVE your progress.', 'sys');
 
   network.connect(server, { name, classId });
   input.enabled = true;
 
-  // Debug/tinkering handle — inspect or poke the game from the console,
-  // e.g. StickmanGame.player.gainXp(500) to trigger a level-up.
+  // Debug/tinkering handle — e.g. StickmanGame.player.gainXp(500).
   window.StickmanGame = { player, world, enemies, combat, ui, followCam };
+}
+
+ui.setupStart({
+  onCreate: ({ name, classId, server }) => beginGame(classId, name, server, null),
+  onContinue: (save, server) => beginGame(save.classId, save.name, server, save),
 });
 
 // ---- Main loop ----
@@ -166,8 +182,11 @@ function animate() {
         player.restAtBonfire(bonfire.pos);
         // Resting respawns the world's monsters (Dark Souls style).
         for (const e of enemies) if (!e.alive) e.respawnTimer = 0.1;
+        // Overwrite this character's save at the bonfire.
+        const saved = Saves.write(player.toSave());
         ui.log('You rest. HP/MP/SP restored, respawn point set.', 'heal');
-        ui.floater('Rested', 'heal', player.pos);
+        ui.log(saved ? '💾 Progress saved.' : '⚠ Could not save (storage blocked).', saved ? 'xp' : 'sys');
+        ui.floater(saved ? 'Saved' : 'Rested', 'heal', player.pos);
         audio.play('rest');
       }
     } else {

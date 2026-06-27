@@ -23,26 +23,38 @@
   <div id="game-root">
     <canvas id="game-canvas"></canvas>
 
-    <!-- ====================== START / CLASS SELECT ====================== -->
+    <!-- ====================== START / CHARACTER SELECT ====================== -->
     <div id="start-screen" class="overlay">
       <div class="start-panel">
         <h1 class="title">STICKMAN <span>MMO</span></h1>
         <p class="subtitle">A 2.5D open world of swords, spells &amp; stick figures.</p>
 
-        <label class="field">
-          <span>Character Name</span>
-          <input id="name-input" type="text" maxlength="16" placeholder="Stickaeryn" value="Stickaeryn" />
-        </label>
+        <!-- Roster of saved characters -->
+        <div id="roster-view">
+          <div class="class-label">Choose your hero</div>
+          <div id="roster-grid" class="roster-grid"><!-- populated by ui.js --></div>
+          <button id="new-char-btn" class="enter-btn">＋ CREATE NEW CHARACTER</button>
+        </div>
 
-        <div class="class-label">Choose your class</div>
-        <div id="class-grid" class="class-grid"><!-- populated by ui.js --></div>
+        <!-- New-character creation -->
+        <div id="create-view" class="hidden">
+          <button id="back-roster" class="back-btn">← Back to characters</button>
+          <label class="field">
+            <span>Character Name</span>
+            <input id="name-input" type="text" maxlength="16" placeholder="Stickaeryn" value="Stickaeryn" />
+          </label>
 
-        <div id="class-detail" class="class-detail"><!-- populated by ui.js --></div>
+          <div class="class-label">Choose your class</div>
+          <div id="class-grid" class="class-grid"><!-- populated by ui.js --></div>
+          <div id="class-detail" class="class-detail"><!-- populated by ui.js --></div>
 
-        <button id="enter-world" class="enter-btn">ENTER THE WORLD</button>
+          <button id="enter-world" class="enter-btn">ENTER THE WORLD</button>
+        </div>
+
         <div class="server-line">
           Server: <input id="server-input" type="text" placeholder="ws://localhost:8080" />
           <span id="server-status" class="server-status offline">offline — solo play</span>
+          <span id="storage-note" class="storage-note"></span>
         </div>
       </div>
     </div>

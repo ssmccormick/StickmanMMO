@@ -93,6 +93,12 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Progression** — XP, leveling with stat growth, six escalating-difficulty zones.
 - **Bonfires (Dark Souls)** — rest to heal, refill, set your respawn point, and
   respawn the world's monsters. Death shows **YOU DIED** and returns you to the bonfire.
+- **Saved characters** — pick a class & name to create a hero; the start screen shows a
+  **roster** of your saved characters to continue or delete. **Resting at a bonfire saves
+  your progress** (level, XP, attributes, learned/ranked skills, and respawn point),
+  overwriting that character's save — true Dark Souls bonfire save points. Saves live in
+  the browser's `localStorage`, so they persist across sessions on the same browser
+  (including the standalone file).
 - **Multiplayer** — see other players move and chat in real time when a server is set.
 
 ## 🛰️ Multiplayer (optional)
