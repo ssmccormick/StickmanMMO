@@ -1,0 +1,13 @@
+{
+  "name": "stickman-mmo-server",
+  "version": "1.0.0",
+  "description": "Optional multiplayer presence/relay server for Stickman MMO",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

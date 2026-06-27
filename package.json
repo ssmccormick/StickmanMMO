@@ -1,0 +1,13 @@
+{
+  "name": "stickman-mmo",
+  "version": "1.0.0",
+  "description": "A 2.5D open-world browser MMORPG of stick figures — inspired by World of Warcraft, Dark Souls, and Breath of the Wild.",
+  "type": "module",
+  "scripts": {
+    "start": "node static-server.js",
+    "serve": "node static-server.js",
+    "server": "node server/server.js"
+  },
+  "keywords": ["mmorpg", "game", "threejs", "browser", "stickman", "webgl"],
+  "license": "MIT"
+}

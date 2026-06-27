@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Stickman MMO — A 2.5D Open World</title>
+  <!-- Inline favicon (a little stick figure) to avoid a 404 request. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='14' font-size='14'%3E%F0%9F%8F%83%3C/text%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="./styles/main.css" />
+  <!-- Import map maps the bare "three" specifier to a locally vendored copy
+       (vendor/three.module.js) so the game has zero external dependencies and
+       works fully offline — no CDN, no build step. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- The WebGL canvas fills the screen; everything else is DOM overlay UI. -->
+  <div id="game-root">
+    <canvas id="game-canvas"></canvas>
+
+    <!-- ====================== START / CLASS SELECT ====================== -->
+    <div id="start-screen" class="overlay">
+      <div class="start-panel">
+        <h1 class="title">STICKMAN <span>MMO</span></h1>
+        <p class="subtitle">A 2.5D open world of swords, spells &amp; stick figures.</p>
+
+        <label class="field">
+          <span>Character Name</span>
+          <input id="name-input" type="text" maxlength="16" placeholder="Stickaeryn" value="Stickaeryn" />
+        </label>
+
+        <div class="class-label">Choose your class</div>
+        <div id="class-grid" class="class-grid"><!-- populated by ui.js --></div>
+
+        <div id="class-detail" class="class-detail"><!-- populated by ui.js --></div>
+
+        <button id="enter-world" class="enter-btn">ENTER THE WORLD</button>
+        <div class="server-line">
+          Server: <input id="server-input" type="text" placeholder="ws://localhost:8080" />
+          <span id="server-status" class="server-status offline">offline — solo play</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====================== IN-GAME HUD ====================== -->
+    <div id="hud" class="hud hidden">
+      <!-- Top-left: vitals -->
+      <div class="vitals">
+        <div class="bar hp"><div class="fill" id="hp-fill"></div><span id="hp-text" class="bar-text"></span></div>
+        <div class="bar mp"><div class="fill" id="mp-fill"></div><span id="mp-text" class="bar-text"></span></div>
+        <div class="bar sp"><div class="fill" id="sp-fill"></div><span id="sp-text" class="bar-text"></span></div>
+        <div class="char-line">
+          <span id="char-name"></span> · <span id="char-class"></span> ·
+          Lv <span id="char-level">1</span>
+        </div>
+        <div class="bar xp"><div class="fill" id="xp-fill"></div><span id="xp-text" class="bar-text"></span></div>
+      </div>
+
+      <!-- Top-right: minimap + player count -->
+      <div class="topright">
+        <canvas id="minimap" width="160" height="160"></canvas>
+        <div class="players-online"><span id="player-count">1</span> online</div>
+      </div>
+
+      <!-- Target frame -->
+      <div id="target-frame" class="target-frame hidden">
+        <div class="target-name" id="target-name"></div>
+        <div class="bar hp small"><div class="fill" id="target-hp-fill"></div></div>
+      </div>
+
+      <!-- Bottom: hotbar -->
+      <div class="hotbar" id="hotbar"><!-- populated by ui.js --></div>
+
+      <!-- Bottom-left: combat log / chat -->
+      <div class="log" id="log"></div>
+
+      <!-- Center prompts (e.g. "Press E to rest") -->
+      <div id="prompt" class="prompt hidden"></div>
+
+      <!-- Floating combat text container -->
+      <div id="floaters" class="floaters"></div>
+
+      <!-- Death overlay -->
+      <div id="death-screen" class="death hidden">
+        <div class="death-text">YOU DIED</div>
+        <div class="death-sub">Respawning at the last bonfire…</div>
+      </div>
+
+      <!-- Controls hint -->
+      <div class="controls-hint" id="controls-hint">
+        <strong>WASD</strong> move · <strong>Mouse</strong> look · <strong>Shift</strong> sprint ·
+        <strong>Space</strong> jump · <strong>W into cliff</strong> climb ·
+        <strong>LMB</strong> attack · <strong>1-4</strong> abilities ·
+        <strong>Tab</strong> target · <strong>E</strong> interact · <strong>Enter</strong> chat ·
+        <strong>H</strong> hide hints
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
