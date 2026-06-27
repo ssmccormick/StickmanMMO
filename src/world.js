@@ -54,6 +54,7 @@ export class World {
     this._terrain();
     this._town();
     this._scatter();
+    this._groundDetail();
     this._cliffs();
     this._bonfires();
     this._spawnZones();
@@ -77,18 +78,21 @@ export class World {
     this.scene.add(sun);
     this.sun = sun;
 
-    // A few stylized clouds for the 2.5D backdrop.
+    // Stylized drifting clouds for the 2.5D backdrop.
     const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
-    for (let i = 0; i < 16; i++) {
+    this.clouds = [];
+    for (let i = 0; i < 30; i++) {
       const c = new THREE.Group();
-      const n = 3 + Math.floor(hash2(i, 7) * 3);
+      const n = 3 + Math.floor(hash2(i, 7) * 4);
       for (let k = 0; k < n; k++) {
         const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + hash2(i, k) * 4, 7, 6), cloudMat);
-        puff.position.set((hash2(i, k) - 0.5) * 14, hash2(k, i) * 3, (hash2(i + 1, k) - 0.5) * 8);
+        puff.position.set((hash2(i, k) - 0.5) * 16, hash2(k, i) * 3, (hash2(i + 1, k) - 0.5) * 9);
         c.add(puff);
       }
-      c.position.set((hash2(i, 1) - 0.5) * 400, 70 + hash2(i, 2) * 30, (hash2(i, 3) - 0.5) * 400);
+      c.position.set((hash2(i, 1) - 0.5) * 460, 64 + hash2(i, 2) * 40, (hash2(i, 3) - 0.5) * 460);
+      c.userData.drift = 1.2 + hash2(i, 5) * 2.2; // units/sec along +x
       this.group.add(c);
+      this.clouds.push(c);
     }
   }
 
@@ -210,22 +214,70 @@ export class World {
     }
   }
 
+  _groundDetail() {
+    // Bushes (small leafy clumps) and flower tufts to dress the ground.
+    // Purely decorative — no colliders, so they never block movement.
+    const bushMats = [0x3f7d3a, 0x4f8f3f, 0x57752f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const flowerMats = [0xe85c8a, 0xf2c14e, 0xe8e8e8, 0x9a7bdc].map((c) => new THREE.MeshBasicMaterial({ color: c }));
+
+    for (let i = 0; i < 260; i++) {
+      const ang = hash2(i, 41) * Math.PI * 2;
+      const rad = 18 + hash2(i, 43) * (WORLD_SIZE - 24);
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      const y = heightAt(x, z);
+      if (y < -3.2) continue; // skip water
+
+      if (hash2(i, 47) < 0.55) {
+        // Bush: a cluster of small spheres.
+        const g = new THREE.Group();
+        const lobes = 2 + Math.floor(hash2(i, 51) * 3);
+        const mat = bushMats[i % bushMats.length];
+        for (let k = 0; k < lobes; k++) {
+          const r = 0.4 + hash2(i, 53 + k) * 0.5;
+          const lobe = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 6), mat);
+          lobe.position.set((hash2(i, k) - 0.5) * 1.2, r * 0.7, (hash2(k, i) - 0.5) * 1.2);
+          lobe.castShadow = true;
+          g.add(lobe);
+        }
+        g.position.set(x, y, z);
+        this.group.add(g);
+      } else {
+        // Flower tuft: a tiny stem + a coloured blossom.
+        const g = new THREE.Group();
+        const n = 1 + Math.floor(hash2(i, 59) * 3);
+        for (let k = 0; k < n; k++) {
+          const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 4),
+            new THREE.MeshLambertMaterial({ color: 0x5a7a3a }));
+          stem.position.set((hash2(i, k) - 0.5) * 0.6, 0.2, (hash2(k, i + 1) - 0.5) * 0.6);
+          const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), flowerMats[(i + k) % flowerMats.length]);
+          bloom.position.set(stem.position.x, 0.42, stem.position.z);
+          g.add(stem, bloom);
+        }
+        g.position.set(x, y, z);
+        this.group.add(g);
+      }
+    }
+  }
+
   _cliffs() {
     // Tall climbable rock walls placed around the map. Tagged climbable
     // so the player can scale them BotW-style with stamina.
     const cliffMat = new THREE.MeshLambertMaterial({ color: 0x8a8073 });
+    // NOTE: cliffs are kept AXIS-ALIGNED (no Y rotation). A rotated box's
+    // world AABB is larger than the box itself, which produced "invisible
+    // walls" you could climb where no rock appeared. Axis-aligned keeps the
+    // collider exactly matching what you see.
     const specs = [
-      { x: 40, z: 30, w: 22, h: 16, d: 6, ry: 0.4 },
-      { x: -50, z: -20, w: 30, h: 20, d: 7, ry: -0.6 },
-      { x: 20, z: -55, w: 26, h: 14, d: 6, ry: 1.1 },
-      { x: -35, z: 50, w: 24, h: 22, d: 6, ry: 0.2 },
-      { x: 70, z: -40, w: 34, h: 26, d: 8, ry: -0.3 },
+      { x: 40, z: 30, w: 22, h: 16, d: 7 },
+      { x: -50, z: -20, w: 30, h: 20, d: 8 },
+      { x: 20, z: -55, w: 26, h: 14, d: 7 },
+      { x: -35, z: 50, w: 24, h: 22, d: 7 },
+      { x: 70, z: -40, w: 34, h: 26, d: 9 },
     ];
     for (const sp of specs) {
       const baseY = heightAt(sp.x, sp.z);
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(sp.w, sp.h, sp.d), cliffMat);
       mesh.position.set(sp.x, baseY + sp.h / 2 - 1, sp.z);
-      mesh.rotation.y = sp.ry;
       mesh.castShadow = true; mesh.receiveShadow = true;
       this.group.add(mesh);
       this._addBox(mesh, true);
@@ -277,8 +329,14 @@ export class World {
     ];
   }
 
-  // Animate flickering bonfires.
-  update(t) {
+  // Animate flickering bonfires + drifting clouds.
+  update(t, dt = 0.016) {
+    if (this.clouds) {
+      for (const c of this.clouds) {
+        c.position.x += c.userData.drift * dt;
+        if (c.position.x > 240) c.position.x = -240; // wrap around
+      }
+    }
     for (const b of this.bonfires) {
       const f = 0.8 + Math.sin(t * 12 + b.pos.x) * 0.15 + Math.sin(t * 7) * 0.1;
       b.flame.scale.set(1, f, 1);

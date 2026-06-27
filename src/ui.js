@@ -59,7 +59,9 @@ export class UI {
 
   _showClassDetail(id) {
     const c = CLASSES[id];
-    const abilities = c.abilities.map((a) => `${a.glyph} <b>${a.name}</b>`).join(' · ');
+    const start = c.abilities[0];
+    const learn = c.abilities.slice(1)
+      .map((a) => `${a.glyph} ${a.name} <span style="opacity:.5">Lv${a.reqLevel}</span>`).join(' · ');
     this.el.classDetail.innerHTML = `
       ${c.desc}
       <div class="stats">
@@ -69,8 +71,10 @@ export class UI {
         <span><b>STR</b> ${c.base.str}</span>
         <span><b>DEX</b> ${c.base.dex}</span>
         <span><b>INT</b> ${c.base.int}</span>
+        <span>Scales with <b>${c.primary.toUpperCase()}</b></span>
       </div>
-      <div class="stats">Abilities: ${abilities}</div>`;
+      <div class="stats">Starts with: ${start.glyph} <b>${start.name}</b> — ${start.desc}</div>
+      <div class="stats" style="opacity:.8">Learn as you level: ${learn}</div>`;
   }
 
   onEnter(cb) {
@@ -85,25 +89,30 @@ export class UI {
     this.el.hud.classList.remove('hidden');
     this.el.charName.textContent = player.name;
     this.el.charClass.textContent = CLASSES[player.classId].name;
-    this._buildHotbar(player);
+    this.refreshHotbar(player);
   }
 
-  _buildHotbar(player) {
+  // Rebuild the hotbar from the player's LEARNED abilities (called on
+  // entry and whenever a new skill is learned / ranked up).
+  refreshHotbar(player) {
     this.el.hotbar.innerHTML = '';
     const def = CLASSES[player.classId];
-    // Auto-attack slot (cosmetic, no cooldown shown)
     const atk = document.createElement('div');
     atk.className = 'slot ready';
     atk.innerHTML = `<span class="key">LMB</span>${def.ranged ? '🏹' : '⚔️'}`;
     this.el.hotbar.appendChild(atk);
     this.slots = [];
-    def.abilities.forEach((a, i) => {
+    player.learned.forEach((l, i) => {
+      const a = player.ability(i); // rank-scaled
+      const pips = '★'.repeat(l.rank) + '·'.repeat(Math.max(0, 3 - l.rank));
       const s = document.createElement('div');
       s.className = 'slot ready';
-      s.title = `${a.name} — ${a.desc}`;
-      s.innerHTML = `<span class="key">${i + 1}</span>${a.glyph}<span class="cost">${a.cost}${a.costType}</span><div class="cd hidden"></div>`;
+      s.title = `${a.name} (Rank ${l.rank}) — ${a.desc}`;
+      s.innerHTML = `<span class="key">${i + 1}</span>${a.glyph}` +
+        `<span class="cost">${a.cost}${a.costType}</span>` +
+        `<span class="rank">${pips}</span><div class="cd hidden"></div>`;
       this.el.hotbar.appendChild(s);
-      this.slots.push({ el: s, cd: s.querySelector('.cd'), ab: a });
+      this.slots.push({ el: s, cd: s.querySelector('.cd') });
     });
   }
 
@@ -188,6 +197,70 @@ export class UI {
     f.textContent = `LEVEL ${level}!`;
     this.el.hud.appendChild(f);
     setTimeout(() => f.remove(), 2000);
+  }
+
+  // Roguelike level-up choice: pick one attribute boost and one skill
+  // (learn a new ability or rank up an owned one). Pauses the game.
+  showLevelUp(player, onDone) {
+    this.levelModalOpen = true;
+    // Release the pointer lock so the cursor is free to click the cards.
+    if (document.exitPointerLock) document.exitPointerLock();
+    const choices = player.getLevelChoices();
+    let selAttr = null, selSkill = null;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'levelup-modal';
+    const skillEmpty = choices.skills.length === 0;
+
+    const attrCards = choices.attrs.map((a, i) =>
+      `<div class="lu-card" data-kind="attr" data-i="${i}"><div class="lu-name">${a.label}</div><div class="lu-desc">${a.desc}</div></div>`
+    ).join('');
+    const skillCards = skillEmpty
+      ? `<div class="lu-empty">All skills learned & maxed — enjoy the extra attributes!</div>`
+      : choices.skills.map((s, i) =>
+        `<div class="lu-card" data-kind="skill" data-i="${i}">
+           <div class="lu-glyph">${s.glyph}</div>
+           <div class="lu-name">${s.type === 'learn' ? 'Learn' : `Upgrade →R${s.rank + 1}`}: ${s.name}</div>
+           <div class="lu-desc">${s.desc}</div>
+         </div>`).join('');
+
+    wrap.innerHTML = `
+      <div class="lu-panel">
+        <div class="lu-title">LEVEL ${player.stats.level}</div>
+        <div class="lu-sub">Choose an attribute to raise</div>
+        <div class="lu-grid">${attrCards}</div>
+        <div class="lu-sub">${skillEmpty ? 'Skills' : 'Learn or upgrade a skill'}</div>
+        <div class="lu-grid skills">${skillCards}</div>
+        <button class="lu-confirm" disabled>CONFIRM</button>
+      </div>`;
+    this.el.hud.appendChild(wrap);
+
+    const confirmBtn = wrap.querySelector('.lu-confirm');
+    const updateConfirm = () => {
+      confirmBtn.disabled = !(selAttr !== null && (skillEmpty || selSkill !== null));
+    };
+
+    wrap.querySelectorAll('.lu-card').forEach((card) => {
+      card.onclick = () => {
+        const kind = card.dataset.kind, idx = +card.dataset.i;
+        wrap.querySelectorAll(`.lu-card[data-kind="${kind}"]`).forEach((c) => c.classList.remove('sel'));
+        card.classList.add('sel');
+        if (kind === 'attr') selAttr = choices.attrs[idx].id;
+        else selSkill = choices.skills[idx];
+        updateConfirm();
+      };
+    });
+
+    confirmBtn.onclick = () => {
+      player.applyLevelChoice(selAttr, selSkill);
+      this.refreshHotbar(player);
+      wrap.remove();
+      this.levelModalOpen = false;
+      if (selSkill) {
+        this.log(selSkill.type === 'learn' ? `Learned ${selSkill.name}!` : `Upgraded ${selSkill.name}!`, 'xp');
+      }
+      onDone();
+    };
   }
 
   setServerStatus(state, label) {

@@ -40,7 +40,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Space** | Jump — or kick off a wall while climbing |
 | **W into a cliff** | Climb it BotW-style (drains stamina; reach the top to mantle) |
 | **Left Mouse** | Auto-attack (melee swing or ranged bolt by class) |
-| **1 / 2 / 3** | Class abilities |
+| **1 – 6** | Learned class abilities |
 | **Tab** | Cycle target |
 | **E** | Interact / rest at a bonfire |
 | **Enter** | Chat |
@@ -48,22 +48,42 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 
 ## 🗡️ Classes (D&D-inspired)
 
-Each class has unique vitals, a scaling stat, an auto-attack style, and three abilities.
+**Ten** classes, each with unique vitals, a scaling stat, an auto-attack style, and a
+**pool of six abilities you learn over time** (you start with just the first one).
 
-| Class | Style | Abilities |
-|-------|-------|-----------|
-| **Fighter** ⚔️ | Sturdy melee | Cleave, Shield Bash (stun), War Cry |
-| **Barbarian** 🪓 | Berserker | Rage, Whirlwind, Leap Slam |
-| **Rogue** 🗡️ | Burst assassin | Backstab, Shadow Dash, Fan of Knives |
-| **Wizard** 🔮 | Glass cannon | Fireball (AoE), Frost Nova (slow), Blink |
-| **Cleric** ✨ | Holy support | Heal, Smite, Sanctuary (shield) |
-| **Ranger** 🏹 | Marksman | Power Shot (pierce), Multishot, Dodge Roll (i-frames) |
+| Class | Style | Signature kit |
+|-------|-------|---------------|
+| **Fighter** ⚔️ | Sturdy melee | Cleave, Shield Bash, War Cry, Sunder (bleed), Whirlwind, Execute |
+| **Barbarian** 🪓 | Berserker | Rage, Leap Slam, Whirlwind, Earthquake, Bloodlust (lifesteal), Reckless Roar |
+| **Rogue** 🗡️ | Burst assassin | Backstab, Shadow Dash, Fan of Knives, Envenom (poison), Roll, Assassinate |
+| **Wizard** 🔮 | Glass cannon | Fireball, Frost Nova, Blink, Chain Lightning, Meteor, Arcane Orb |
+| **Cleric** ✨ | Holy support | Smite, Heal, Sanctuary, Holy Nova, Consecrate, Judgement |
+| **Ranger** 🏹 | Marksman | Power Shot, Multishot, Roll, Serpent Arrow, Hawk Companion, Arrow Rain |
+| **Paladin** 🛡️ | Holy juggernaut | Crusader Strike, Sacred Shield, Hammer of Justice, Lay on Hands, Consecration, Avenging Wrath |
+| **Warlock** 😈 | Dark afflictor | Shadow Bolt, Drain Life, Corruption, Howl of Fear, Summon Imp, Doom |
+| **Monk** 👊 | Martial artist | Tiger Palm, Flying Kick, Wave Palm, Spinning Crane, Meditate, Thousand Fists |
+| **Druid** 🍃 | Naturalist | Moonfire, Thornfield, Rejuvenation, Cyclone, Summon Treant, Hurricane |
+
+### 📈 Progression & skill depth
+- **Abilities are learned, not given.** You start with one signature skill; each level-up
+  lets you **learn a new ability** (once you meet its level requirement) or **rank up** one
+  you own (more damage, shorter cooldown, extra projectiles, wider AoE — up to Rank 3).
+- **You choose how you grow.** Every level-up opens a roguelike choice screen: pick an
+  **attribute** to raise (STR / DEX / INT / Max HP / resources) *and* a **skill** to learn
+  or upgrade.
+- **Distinct skill kinds**, each with their own feel and visuals: melee arcs, projectiles
+  (piercing, multi-shot, exploding), **ground-targeted AoE** (Meteor, Earthquake, Arrow
+  Rain), **chain lightning**, **damage-over-time** patches (poison, consecrate, corruption),
+  **lifesteal**, buffs & novas (with slow/fear), dashes with i-frames, and **summons**
+  (Imp, Hawk, Treant) that fight alongside you.
 
 ## 🌍 Game systems
 
 - **Open world** — a procedural rolling heightfield with a starter town, scattered
-  trees & rocks, water, climbable cliffs, and bonfire checkpoints. The terrain is
-  generated from a deterministic seed, so it's identical every load and across clients.
+  trees, rocks, bushes & flowers, water, drifting clouds, climbable cliffs, and bonfire
+  checkpoints. The terrain is generated from a deterministic seed, so it's identical
+  every load and across clients. (Cliffs are axis-aligned so their climb collision matches
+  exactly what you see — no invisible walls.)
 - **Movement state machine** — grounded / airborne / climbing, with gravity, jumping,
   sprinting, and wall-climbing, all gated by a **stamina** meter.
 - **Combat** — auto-attacks, cone/AoE/projectile abilities, crits, floating combat

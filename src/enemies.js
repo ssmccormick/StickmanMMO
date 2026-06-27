@@ -54,6 +54,7 @@ export class Enemy {
     this.respawnTimer = 0;
     this.stun = 0;
     this.slow = 0;
+    this.fear = 0;
     this._speed01 = 0;
     this._hitFlash = 0;
 
@@ -111,6 +112,23 @@ export class Enemy {
 
     const toPlayer = player.alive ? new THREE.Vector3().subVectors(player.pos, this.pos) : null;
     const dist = toPlayer ? toPlayer.length() : Infinity;
+
+    // ---- Feared: flee from the player, ignoring all other behavior ----
+    if (this.fear > 0) {
+      this.fear -= dt;
+      if (toPlayer && dist > 0.1) {
+        const flee = toPlayer.clone().setY(0).normalize().multiplyScalar(-1);
+        this.pos.x += flee.x * this.type.speed * 1.1 * dt;
+        this.pos.z += flee.z * this.type.speed * 1.1 * dt;
+        this.facing = Math.atan2(flee.x, flee.z);
+        this._speed01 = 0.8;
+      }
+      const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
+      this.pos.x = res.x; this.pos.z = res.z;
+      this.pos.y = heightAt(this.pos.x, this.pos.z);
+      this._finish(dt);
+      return;
+    }
 
     // ---- FSM ----
     if (player.alive && dist < this.type.aggro) {
@@ -202,6 +220,7 @@ export class Enemy {
 
   applyStun(s) { this.stun = Math.max(this.stun, s); }
   applySlow(s) { this.slow = Math.max(this.slow, s); }
+  applyFear(s) { this.fear = Math.max(this.fear, s); }
 
   _die() {
     this.alive = false;

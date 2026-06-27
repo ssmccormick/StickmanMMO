@@ -72,6 +72,8 @@ ui.onEnter(({ name, classId, server }) => {
   lastHp = player.stats.hp;
   enemies = spawnEnemies(scene, world);
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
+  // Feedback the instant a level is gained (the choice modal opens next frame).
+  combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
 
   ui.enterWorld(player);
   ui.log(`Welcome, ${name} the ${classId}. Slay monsters and grow strong!`, 'sys');
@@ -79,6 +81,10 @@ ui.onEnter(({ name, classId, server }) => {
 
   network.connect(server, { name, classId });
   input.enabled = true;
+
+  // Debug/tinkering handle — inspect or poke the game from the console,
+  // e.g. StickmanGame.player.gainXp(500) to trigger a level-up.
+  window.StickmanGame = { player, world, enemies, combat, ui, followCam };
 });
 
 // ---- Main loop ----
@@ -87,13 +93,31 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
-  world.update(t);
+  world.update(t, dt);
 
   if (started && player) {
-    // Camera look from mouse.
+    // Queue up level-up choice modals (one per pending level). The modal
+    // pauses the world until the player confirms their attribute + skill.
+    if (player.pendingLevelUps > 0 && !ui.levelModalOpen) {
+      ui.showLevelUp(player, () => { lastHp = player.stats.hp; });
+    }
+    const paused = ui.levelModalOpen;
+
+    // Always consume mouse-look so deltas don't pile up while paused.
     const look = input.consumeLook();
-    followCam.handleLook(look.dx, look.dy);
     const w = input.consumeWheel();
+
+    if (paused) {
+      // Frozen: only keep the camera trailing and the HUD live.
+      followCam.update(player.pos, dt);
+      ui.updateHud(player, network.count);
+      ui.drawMinimap(player, enemies, world, network.others);
+      renderer.render(scene, camera);
+      input.endFrame();
+      return;
+    }
+
+    followCam.handleLook(look.dx, look.dy);
     if (w) followCam.handleZoom(w);
 
     // Chat open (Enter) and hint toggle (H).
@@ -104,7 +128,6 @@ function animate() {
     player.update(dt, input, followCam);
     for (const e of enemies) e.update(dt, player, t);
     combat.update(dt, input);
-    combat.updateFx(dt);
     network.update(dt);
     network.sendState(player, dt);
 
