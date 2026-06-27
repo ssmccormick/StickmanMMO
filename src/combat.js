@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { CLASSES } from './classes.js';
 import { createStickman } from './stickman.js';
+import { rollDrop, RARITY } from './items.js';
 
 export class Combat {
   constructor({ scene, player, enemies, ui, camera, audio }) {
@@ -22,15 +23,17 @@ export class Combat {
     this.patches = [];   // lingering DoT areas
     this.pendings = [];  // delayed ground explosions
     this.summons = [];   // temporary helpers
+    this.drops = [];     // world loot pickups
     this._fx = [];
     this.target = null;
+    this.onLoot = null;  // (item) => void, set by main for logging
   }
 
   update(dt, input) {
     const p = this.player;
     if (this.target && !this.target.alive) this.target = null;
 
-    if (p.alive) {
+    if (p.alive && !this.suppressInput) {
       if (input.just('Tab')) this.cycleTarget();
       if (input.lmb && p.attackTimer <= 0) this.autoAttack();
       const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
@@ -41,6 +44,7 @@ export class Combat {
     this._updatePatches(dt);
     this._updatePendings(dt);
     this._updateSummons(dt);
+    this._updateDrops(dt);
     this.updateFx(dt);
   }
 
@@ -291,7 +295,7 @@ export class Combat {
 
   // ---- Damage application ----
   _strike(enemy, amount, { crit = 0 }) {
-    const isCrit = Math.random() < (0.05 + crit);
+    const isCrit = Math.random() < (0.05 + crit + this.player.gearCrit);
     let dmg = amount * (0.9 + Math.random() * 0.2);
     if (isCrit) dmg *= 1.8;
     const res = enemy.takeDamage(dmg, isCrit);
@@ -303,9 +307,56 @@ export class Combat {
       this.ui.log(`Slain ${enemy.type.name} (+${res.xp} XP)`, 'xp');
       if (this.audio) this.audio.play('kill');
       if (levels > 0 && this.onLevelUp) this.onLevelUp();
+      this._dropLoot(enemy);
       if (this.target === enemy) this.target = null;
     }
     return res.dealt;
+  }
+
+  // ---- Loot drops ----
+  _dropLoot(enemy) {
+    const item = rollDrop(enemy.level, enemy.typeId);
+    if (item) this._spawnDrop(item, enemy.pos);
+  }
+  _spawnDrop(item, pos) {
+    const color = RARITY[item.rarity].hex;
+    const g = new THREE.Group();
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), new THREE.MeshBasicMaterial({ color }));
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.06, 0.06, 6, 6),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35 })
+    );
+    beam.position.y = 3;
+    g.add(gem, beam);
+    g.add(new THREE.PointLight(color, 1.2, 5));
+    g.position.set(pos.x, pos.y + 0.7, pos.z);
+    this.scene.add(g);
+    this.drops.push({ item, mesh: g, gem, base: pos.y + 0.7, t: Math.random() * 6 });
+  }
+  _updateDrops(dt) {
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      const d = this.drops[i];
+      d.t += dt;
+      d.gem.rotation.y += dt * 2;
+      d.mesh.position.y = d.base + Math.sin(d.t * 3) * 0.15;
+      // Auto-pickup when the player walks over it.
+      if (this.player.alive && this.player.pos.distanceTo(d.mesh.position) < 1.7) {
+        if (this.player.addItem(d.item)) {
+          const rar = RARITY[d.item.rarity];
+          this.ui.log(`Looted ${d.item.name}`, d.item.rarity === 'common' ? 'sys' : 'xp');
+          this.ui.floater(d.item.glyph + ' ' + rar.name, 'xp', this.player.pos);
+          if (this.audio) this.audio.play('level');
+          if (this.onLoot) this.onLoot(d.item);
+          this._removeDrop(i);
+        }
+        // If bag is full, leave it on the ground.
+      }
+    }
+  }
+  _removeDrop(i) {
+    const d = this.drops[i];
+    this.scene.remove(d.mesh);
+    this.drops.splice(i, 1);
   }
 
   // ---- Projectiles ----

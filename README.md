@@ -43,6 +43,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **1 – 6** | Learned class abilities |
 | **Tab** | Cycle target |
 | **E** | Interact / rest at a bonfire |
+| **I** | Inventory & equipment |
 | **Enter** | Chat |
 | **H** | Toggle the controls hint |
 
@@ -99,6 +100,13 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   overwriting that character's save — true Dark Souls bonfire save points. Saves live in
   the browser's `localStorage`, so they persist across sessions on the same browser
   (including the standalone file).
+- **Loot & gear** — enemies drop procedurally generated **weapons, armor, and
+  accessories** across 5 rarities (Common → Legendary), shown as colored beacons you
+  walk over to pick up. Open the **inventory** (`I`) to equip items into 7 gear slots
+  (weapon, head, chest, hands, feet, ring, amulet). Gear adds **STR/DEX/INT, Max HP/MP/SP,
+  attack damage, armor (damage mitigation), crit, and move speed** — all flowing into
+  combat. Hover any item for a rarity-colored stat tooltip. New characters start with a
+  class-appropriate weapon, and your equipped weapon recolors your stickman by rarity.
 - **Multiplayer** — see other players move and chat in real time when a server is set.
 
 ## 🛰️ Multiplayer (optional)

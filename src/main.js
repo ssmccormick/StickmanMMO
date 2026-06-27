@@ -13,6 +13,7 @@ import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
+import { starterWeapon } from './items.js';
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -75,7 +76,10 @@ function beginGame(classId, name, server, save) {
     // Continue an existing character.
     player.applySave(save);
   } else {
-    // Brand new character → persist it immediately so it joins the roster.
+    // Brand new character → give a starter weapon, then persist so it joins
+    // the roster.
+    player.gear.weapon = starterWeapon(player.def.primary);
+    player.recomputeGear();
     const rec = Saves.create(player.toSave());
     player.saveId = rec.id;
   }
@@ -84,6 +88,8 @@ function beginGame(classId, name, server, save) {
   enemies = spawnEnemies(scene, world);
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
+  // Keep the inventory panel live as loot is picked up.
+  combat.onLoot = () => { if (ui.inventoryOpen) ui.renderInventory(); };
 
   ui.enterWorld(player);
   ui.log(save
@@ -133,16 +139,22 @@ function animate() {
       return;
     }
 
-    followCam.handleLook(look.dx, look.dy);
-    if (w) followCam.handleZoom(w);
+    // Mouse-look only when the inventory isn't open (cursor is freed for it).
+    if (!ui.inventoryOpen) {
+      followCam.handleLook(look.dx, look.dy);
+      if (w) followCam.handleZoom(w);
+    }
 
-    // Chat open (Enter) and hint toggle (H).
+    // Toggle inventory (I), chat (Enter), hint (H).
+    if (input.just('KeyI')) ui.toggleInventory(player);
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
 
-    // Update world entities.
+    // Update world entities. Combat ignores attack/ability input while the
+    // inventory is open, but projectiles/loot/FX keep simulating.
     player.update(dt, input, followCam);
     for (const e of enemies) e.update(dt, player, t);
+    combat.suppressInput = ui.inventoryOpen;
     combat.update(dt, input);
     network.update(dt);
     network.sendState(player, dt);

@@ -5,6 +5,7 @@
 // ============================================================
 import { CLASSES, CLASS_ORDER } from './classes.js';
 import { Saves } from './save.js';
+import { SLOTS, SLOT_LABEL, RARITY, itemTooltip } from './items.js';
 
 export class UI {
   constructor() {
@@ -207,9 +208,9 @@ export class UI {
 
   updateHud(player, playerCount) {
     const s = player.stats;
-    this._bar(this.el.hpFill, this.el.hpText, s.hp, s.maxHp);
-    this._bar(this.el.mpFill, this.el.mpText, s.mp, s.maxMp);
-    this._bar(this.el.spFill, this.el.spText, s.sp, s.maxSp);
+    this._bar(this.el.hpFill, this.el.hpText, s.hp, player.effMaxHp);
+    this._bar(this.el.mpFill, this.el.mpText, s.mp, player.effMaxMp);
+    this._bar(this.el.spFill, this.el.spText, s.sp, player.effMaxSp);
     this.el.charLevel.textContent = s.level;
     const xpPct = (s.xp / s.xpNext) * 100;
     this.el.xpFill.style.width = `${xpPct}%`;
@@ -399,6 +400,124 @@ export class UI {
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';
     ctx.beginPath(); ctx.arc(cx, cy, W / 2 - 2, 0, 7); ctx.stroke();
   }
+
+  // ---- Inventory & Equipment ----
+  _ensureInv() {
+    if (this.invOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel">
+        <div class="inv-header"><span>🎒 Inventory &amp; Equipment</span><button class="inv-close">✕</button></div>
+        <div class="inv-body">
+          <div class="equip-col">
+            <div class="equip-slots"></div>
+            <div class="char-stats"></div>
+          </div>
+          <div class="bag-wrap">
+            <div class="bag-title">Bag</div>
+            <div class="bag-grid"></div>
+          </div>
+        </div>
+      </div>
+      <div class="item-tip hidden"></div>`;
+    document.body.appendChild(ov);
+    this.invOverlay = ov;
+    this.equipSlotsEl = ov.querySelector('.equip-slots');
+    this.charStatsEl = ov.querySelector('.char-stats');
+    this.bagGridEl = ov.querySelector('.bag-grid');
+    this.itemTip = ov.querySelector('.item-tip');
+    ov.querySelector('.inv-close').onclick = () => this.closeInventory();
+    // Click the dark backdrop (outside the panel) to close.
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeInventory(); });
+  }
+
+  toggleInventory(player) {
+    this._ensureInv();
+    this._invPlayer = player;
+    if (this.inventoryOpen) this.closeInventory();
+    else {
+      this.inventoryOpen = true;
+      this.invOverlay.classList.remove('hidden');
+      if (document.exitPointerLock) document.exitPointerLock();
+      this.renderInventory();
+    }
+  }
+  closeInventory() {
+    this.inventoryOpen = false;
+    if (this.invOverlay) this.invOverlay.classList.add('hidden');
+    this._hideTip();
+  }
+
+  renderInventory() {
+    const p = this._invPlayer;
+    if (!p) return;
+
+    // Equipment slots.
+    this.equipSlotsEl.innerHTML = '';
+    for (const slot of SLOTS) {
+      const item = p.gear[slot];
+      const cell = document.createElement('div');
+      cell.className = 'equip-slot' + (item ? ` filled r-${item.rarity}` : '');
+      cell.innerHTML = item
+        ? `<div class="slot-glyph">${item.glyph}</div>`
+        : `<div class="slot-empty">${SLOT_LABEL[slot]}</div>`;
+      if (item) {
+        this._tipFor(cell, item, p.stats.level);
+        cell.onclick = () => {
+          const r = p.unequip(slot);
+          if (r.error === 'full') this.log('Bag is full.', 'sys');
+          this.renderInventory();
+        };
+      }
+      this.equipSlotsEl.appendChild(cell);
+    }
+
+    // Effective stats summary.
+    const b = p.bonus;
+    this.charStatsEl.innerHTML = `
+      <div class="cs-title">${CLASSES[p.classId].name} · Lv ${p.stats.level}</div>
+      <div class="cs-row"><span>STR</span><b>${p.effStr}</b></div>
+      <div class="cs-row"><span>DEX</span><b>${p.effDex}</b></div>
+      <div class="cs-row"><span>INT</span><b>${p.effInt}</b></div>
+      <div class="cs-row"><span>Max HP</span><b>${p.effMaxHp}</b></div>
+      <div class="cs-row"><span>Attack</span><b>${Math.round(p.apower)}</b></div>
+      <div class="cs-row"><span>Armor</span><b>${p.gearArmor}</b></div>
+      <div class="cs-row"><span>Crit</span><b>${Math.round((0.05 + p.gearCrit) * 100)}%</b></div>
+      <div class="cs-row"><span>Move</span><b>+${Math.round(p.gearSpeed * 100)}%</b></div>`;
+
+    // Bag grid.
+    this.bagGridEl.innerHTML = '';
+    for (let i = 0; i < p.maxInventory; i++) {
+      const item = p.inventory[i];
+      const cell = document.createElement('div');
+      cell.className = 'bag-cell' + (item ? ` filled r-${item.rarity}` : '');
+      if (item) {
+        cell.innerHTML = `<div class="slot-glyph">${item.glyph}</div>`;
+        this._tipFor(cell, item, p.stats.level);
+        cell.onclick = () => {
+          const r = p.equipFromInventory(item.uid);
+          if (r.error === 'level') this.log(`Requires level ${item.reqLevel}.`, 'sys');
+          this.renderInventory();
+        };
+      }
+      this.bagGridEl.appendChild(cell);
+    }
+  }
+
+  _tipFor(el, item, level) {
+    el.onmouseenter = () => {
+      this.itemTip.innerHTML = itemTooltip(item, level);
+      this.itemTip.style.borderColor = RARITY[item.rarity].color;
+      this.itemTip.classList.remove('hidden');
+    };
+    el.onmousemove = (e) => {
+      this.itemTip.style.left = Math.min(e.clientX + 16, window.innerWidth - 240) + 'px';
+      this.itemTip.style.top = (e.clientY + 16) + 'px';
+    };
+    el.onmouseleave = () => this._hideTip();
+  }
+  _hideTip() { if (this.itemTip) this.itemTip.classList.add('hidden'); }
 
   // ---- Chat ----
   setupChat(onSend) {

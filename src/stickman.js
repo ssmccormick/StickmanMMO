@@ -60,8 +60,9 @@ export function createStickman({ color = 0x9aa4b2, accent = 0xd8423c, scale = 1 
   const legR = limbMesh(bodyMat, 0.7); legR.position.set(-0.1, 0, 0);
   hip.add(legL, legR);
 
-  // A held "weapon" stick on the right arm (purely cosmetic).
-  const weapon = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 5), accentMat);
+  // A held "weapon" stick on the right arm. Uses its OWN material (cloned)
+  // so recolouring it by gear rarity doesn't tint the arms/crest too.
+  const weapon = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 5), accentMat.clone());
   weapon.position.y = -0.62; weapon.rotation.z = Math.PI / 2.5;
   armR.add(weapon);
 

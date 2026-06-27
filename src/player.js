@@ -11,6 +11,13 @@ import {
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
 } from './classes.js';
 import { heightAt } from './world.js';
+import { sumStats, SLOTS, RARITY } from './items.js';
+
+function emptyGear() {
+  const g = {};
+  for (const s of SLOTS) g[s] = null;
+  return g;
+}
 
 const GRAVITY = 26;
 const JUMP_VEL = 9.5;
@@ -33,6 +40,12 @@ export class Player {
     this.cooldowns = [0];
     this.pendingLevelUps = 0; // levels gained but not yet "spent" in the modal
 
+    // Equipment & inventory.
+    this.gear = emptyGear();
+    this.inventory = [];
+    this.maxInventory = 24;
+    this.bonus = {};        // cached summed gear stats
+
     this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
     scene.add(this.mesh);
 
@@ -50,10 +63,76 @@ export class Player {
 
     this._speed01 = 0;
     this._clock = 0;
+    this.recomputeGear();
   }
 
+  // ---- Equipment-derived effective stats ----
+  recomputeGear() {
+    this.bonus = sumStats(Object.values(this.gear));
+    // Re-clamp current pools to the new effective maxima.
+    this.stats.hp = Math.min(this.stats.hp, this.effMaxHp);
+    this.stats.mp = Math.min(this.stats.mp, this.effMaxMp);
+    this.stats.sp = Math.min(this.stats.sp, this.effMaxSp);
+    this._updateWeaponVisual();
+  }
+  get effMaxHp() { return this.stats.maxHp + (this.bonus.maxHp || 0); }
+  get effMaxMp() { return this.stats.maxMp + (this.bonus.maxMp || 0); }
+  get effMaxSp() { return this.stats.maxSp + (this.bonus.maxSp || 0); }
+  get effStr() { return this.stats.str + (this.bonus.str || 0); }
+  get effDex() { return this.stats.dex + (this.bonus.dex || 0); }
+  get effInt() { return this.stats.int + (this.bonus.int || 0); }
+  get gearCrit() { return this.bonus.crit || 0; }
+  get gearArmor() { return this.bonus.armor || 0; }
+  get gearSpeed() { return this.bonus.speed || 0; }
+
   get apower() {
-    return attackPower(this.classId, this.stats) * (this.buffs.until > this._clock ? this.buffs.dmg : 1);
+    const effStats = { ...this.stats, str: this.effStr, dex: this.effDex, int: this.effInt };
+    let p = attackPower(this.classId, effStats) + (this.bonus.damage || 0);
+    if (this.buffs.until > this._clock) p *= this.buffs.dmg;
+    return p;
+  }
+
+  // ---- Inventory / equipment management ----
+  addItem(item) {
+    if (this.inventory.length >= this.maxInventory) return false;
+    this.inventory.push(item);
+    return true;
+  }
+  _removeUid(uid) {
+    const i = this.inventory.findIndex((x) => x.uid === uid);
+    return i >= 0 ? this.inventory.splice(i, 1)[0] : null;
+  }
+  // Equip a bag item into its slot; any displaced item returns to the bag.
+  equipFromInventory(uid) {
+    const item = this.inventory.find((x) => x.uid === uid);
+    if (!item) return { error: 'missing' };
+    if (this.stats.level < item.reqLevel) return { error: 'level', item };
+    this._removeUid(uid);
+    const prev = this.gear[item.slot];
+    this.gear[item.slot] = item;
+    if (prev) this.addItem(prev);
+    this.recomputeGear();
+    return { equipped: item, replaced: prev };
+  }
+  unequip(slot) {
+    const item = this.gear[slot];
+    if (!item) return { error: 'empty' };
+    if (this.inventory.length >= this.maxInventory) return { error: 'full' };
+    this.gear[slot] = null;
+    this.addItem(item);
+    this.recomputeGear();
+    return { unequipped: item };
+  }
+  dropItem(uid) { return this._removeUid(uid); }
+
+  _updateWeaponVisual() {
+    const j = this.mesh && this.mesh.userData.joints;
+    if (!j || !j.weapon) return;
+    const w = this.gear.weapon;
+    const color = w ? RARITY[w.rarity].hex : this.def.accent;
+    j.weapon.material.color.setHex(color);
+    const tier = w ? 1 + Object.keys(RARITY).indexOf(w.rarity) * 0.14 : 1;
+    j.weapon.scale.setScalar(tier);
   }
 
   // The rank-scaled ability in hotbar slot i (or null).
@@ -80,7 +159,7 @@ export class Player {
     if (this.state === 'climb') {
       this._updateClimb(dt, input, move, moving);
     } else {
-      let speed = WALK_SPEED * (this.buffs.until > this._clock ? this.buffs.speed : 1);
+      let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt; }
 
       this.vel.x = move.x * speed;
@@ -185,9 +264,9 @@ export class Player {
 
   _regen(dt, sprinting) {
     const s = this.stats;
-    if (!sprinting && this.state !== 'climb') s.sp = Math.min(s.maxSp, s.sp + 16 * dt);
-    s.mp = Math.min(s.maxMp, s.mp + (1.5 + s.int * 0.05) * dt);
-    if (this.state === 'ground' && this._speed01 < 0.1) s.hp = Math.min(s.maxHp, s.hp + 2.0 * dt);
+    if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + 16 * dt);
+    s.mp = Math.min(this.effMaxMp, s.mp + (1.5 + this.effInt * 0.05) * dt);
+    if (this.state === 'ground' && this._speed01 < 0.1) s.hp = Math.min(this.effMaxHp, s.hp + 2.0 * dt);
     s.sp = Math.max(0, s.sp);
     for (let i = 0; i < this.cooldowns.length; i++) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     if (this.attackTimer > 0) this.attackTimer -= dt;
@@ -197,6 +276,9 @@ export class Player {
   takeDamage(amount, fromPos) {
     if (!this.alive) return 0;
     if (this._clock < this.iframeUntil) return 0;
+    // Armor mitigation (diminishing, capped at 75%).
+    const armor = this.gearArmor;
+    if (armor > 0) amount *= (1 - Math.min(0.75, armor / (armor + 60 + this.stats.level * 8)));
     if (this.buffs.shieldUntil > this._clock && this.buffs.shield > 0) amount *= (1 - this.buffs.shield);
     amount = Math.max(1, Math.round(amount));
     this.stats.hp -= amount;
@@ -205,7 +287,7 @@ export class Player {
   }
   heal(amount) {
     amount = Math.round(amount);
-    this.stats.hp = Math.min(this.stats.maxHp, this.stats.hp + amount);
+    this.stats.hp = Math.min(this.effMaxHp, this.stats.hp + amount);
     return amount;
   }
   die() { this.alive = false; this.state = 'air'; this.deathAt = this._clock; }
@@ -213,11 +295,11 @@ export class Player {
     this.alive = true;
     this.pos.copy(pos); this.pos.y = heightAt(pos.x, pos.z);
     this.vel.set(0, 0, 0); this.state = 'ground'; this.mesh.rotation.x = 0;
-    this.stats.hp = this.stats.maxHp; this.stats.mp = this.stats.maxMp; this.stats.sp = this.stats.maxSp;
+    this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;
   }
   restAtBonfire(pos) {
     this.respawn = pos.clone();
-    this.stats.hp = this.stats.maxHp; this.stats.mp = this.stats.maxMp; this.stats.sp = this.stats.maxSp;
+    this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;
   }
 
   // ---- Persistence ----
@@ -233,6 +315,8 @@ export class Player {
       str: s.str, dex: s.dex, int: s.int,
       learned: this.learned.map((l) => ({ id: l.id, rank: l.rank })),
       respawn: { x: this.respawn.x, y: this.respawn.y, z: this.respawn.z },
+      gear: this.gear,             // plain item objects, JSON-serializable
+      inventory: this.inventory,
     };
   }
 
@@ -253,6 +337,11 @@ export class Player {
       this.pos.copy(this.respawn);
       this.pos.y = heightAt(this.pos.x, this.pos.z);
     }
+    if (save.gear) this.gear = Object.assign(emptyGear(), save.gear);
+    if (Array.isArray(save.inventory)) this.inventory = save.inventory;
+    this.recomputeGear();
+    // Top vitals to the gear-adjusted maxima after equipping saved items.
+    this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;
   }
 
   // ---- Progression ----
