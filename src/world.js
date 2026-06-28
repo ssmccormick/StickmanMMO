@@ -5,6 +5,7 @@
 // world collision (AABB boxes + ground height query).
 // ============================================================
 import * as THREE from 'three';
+import { createStickman } from './stickman.js';
 
 export const WORLD_SIZE = 220; // half-extent; world spans -220..220
 
@@ -175,6 +176,42 @@ export class World {
     statue.castShadow = true;
     this.group.add(statue);
     this._addBox(statue, false);
+
+    this._vendor();
+  }
+
+  _vendor() {
+    // A merchant stall with a shopkeeper stickman. Press E nearby to trade.
+    const vx = 0, vz = -10, vy = heightAt(0, -10);
+    const g = new THREE.Group();
+    // Counter
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.2), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    counter.position.y = 0.5;
+    // Posts + striped awning
+    const postMat = new THREE.MeshLambertMaterial({ color: 0x5a3a22 });
+    for (const sx of [-1.4, 1.4]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), postMat);
+      post.position.set(sx, 1.3, -0.5); g.add(post);
+    }
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: 0xc23b3b }));
+    awning.position.set(0, 2.5, -0.4); awning.rotation.x = -0.25; g.add(awning);
+    // A coin sign
+    const sign = new THREE.Mesh(new THREE.CircleGeometry(0.35, 16), new THREE.MeshBasicMaterial({ color: 0xffcf3a, side: THREE.DoubleSide }));
+    sign.position.set(0, 2.9, 0.4); g.add(sign);
+    g.add(counter);
+    g.position.set(vx, vy, vz);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this._addBox(counter, false);
+
+    // Shopkeeper behind the counter.
+    const keeper = createStickman({ color: 0xcaa46a, accent: 0x6a4a2a });
+    keeper.position.set(vx, vy, vz - 1.1);
+    keeper.rotation.y = Math.PI;
+    this.group.add(keeper);
+    this.vendorKeeper = keeper;
+
+    this.vendor = { pos: new THREE.Vector3(vx, vy, vz) };
   }
 
   _scatter() {

@@ -45,6 +45,7 @@ export class Player {
     this.inventory = [];
     this.maxInventory = 24;
     this.bonus = {};        // cached summed gear stats
+    this.gold = 0;
 
     this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
     scene.add(this.mesh);
@@ -84,6 +85,7 @@ export class Player {
   get gearCrit() { return this.bonus.crit || 0; }
   get gearArmor() { return this.bonus.armor || 0; }
   get gearSpeed() { return this.bonus.speed || 0; }
+  get gearLifesteal() { return this.bonus.lifesteal || 0; }
 
   get apower() {
     const effStats = { ...this.stats, str: this.effStr, dex: this.effDex, int: this.effInt };
@@ -317,6 +319,7 @@ export class Player {
       respawn: { x: this.respawn.x, y: this.respawn.y, z: this.respawn.z },
       gear: this.gear,             // plain item objects, JSON-serializable
       inventory: this.inventory,
+      gold: this.gold,
     };
   }
 
@@ -339,6 +342,7 @@ export class Player {
     }
     if (save.gear) this.gear = Object.assign(emptyGear(), save.gear);
     if (Array.isArray(save.inventory)) this.inventory = save.inventory;
+    if (typeof save.gold === 'number') this.gold = save.gold;
     this.recomputeGear();
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;

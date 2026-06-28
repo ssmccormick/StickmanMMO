@@ -1,0 +1,45 @@
+name: Deploy to GitHub Pages
+
+# Builds nothing — the game is a static site (vendored Three.js, no build step),
+# so we just upload the repo and publish it to GitHub Pages.
+
+on:
+  push:
+    branches: ['claude/stickman-mmorpg-game-y701ij', 'main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; newer pushes cancel in-progress runs.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        # enablement: true turns Pages on via the API on first run, so no
+        # manual Settings → Pages step is needed.
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

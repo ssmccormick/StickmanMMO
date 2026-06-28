@@ -47,6 +47,17 @@ const PREFIX = {
 };
 const SUFFIX = { str: 'the Bear', dex: 'the Fox', int: 'the Owl', maxHp: 'the Titan', crit: 'Ruin', maxMp: 'the Sage', maxSp: 'the Wind', armor: 'the Mountain', speed: 'Swiftness', damage: 'Wrath' };
 
+// Named legendary uniques — each rolls as a normal legendary for its slot,
+// then gets a fixed name/glyph/flavour plus a signature bonus (e.g. lifesteal).
+const UNIQUES = [
+  { slot: 'weapon', base: 'sword',  name: 'Hungering Edge',       glyph: '🩸', bonus: { lifesteal: 0.14, crit: 0.06 }, flavor: 'It drinks deep of every wound.' },
+  { slot: 'weapon', base: 'staff',  name: 'Starcaller',           glyph: '🌟', bonus: { crit: 0.12, int: 6 },        flavor: 'The heavens answer your call.' },
+  { slot: 'weapon', base: 'dagger', name: "Whisper, the Last Word", glyph: '🗡️', bonus: { crit: 0.16, speed: 0.05 },  flavor: 'You never hear it coming.' },
+  { slot: 'ring',   name: 'Bloodthirster Band',  glyph: '💍', bonus: { lifesteal: 0.10, crit: 0.05 }, flavor: 'Hunger, given a circle to wear.' },
+  { slot: 'amulet', name: 'Heart of the Phoenix', glyph: '🔥', bonus: { lifesteal: 0.06, maxHp: 70 },  flavor: 'Warmth that will not die.' },
+  { slot: 'chest',  name: 'Aegis of the Colossus', glyph: '🛡️', bonus: { armor: 45, maxHp: 90 },        flavor: 'Unbroken for a thousand years.' },
+];
+
 let UID = 1;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -125,12 +136,39 @@ export function starterWeapon(primary) {
   return it;
 }
 
+// Turn any item into one of the named uniques (keeps its rolled stats,
+// adds the signature bonus + flavour). Used when a legendary drops.
+export function makeUnique(ilvl) {
+  const u = pick(UNIQUES);
+  const it = generateItem({ slot: u.slot, level: ilvl, forceRarity: 'legendary' });
+  it.name = u.name; it.glyph = u.glyph; it.unique = true; it.flavor = u.flavor;
+  if (u.base) it.baseId = u.base;
+  for (const k in u.bonus) it.stats[k] = (it.stats[k] || 0) + u.bonus[k];
+  return it;
+}
+
 // Roll a drop for a slain enemy. Tougher types drop more & better.
 export function rollDrop(enemyLevel, enemyTypeId) {
   const chance = { slime: 0.22, grunt: 0.3, wolf: 0.28, knight: 0.42, brute: 0.55 }[enemyTypeId] ?? 0.3;
   if (Math.random() > chance) return null;
   const boost = { knight: 0.5, brute: 1.0 }[enemyTypeId] || 0.15;
-  return generateItem({ level: enemyLevel + (Math.random() < 0.3 ? 1 : 0), rarityBoost: boost });
+  const item = generateItem({ level: enemyLevel + (Math.random() < 0.3 ? 1 : 0), rarityBoost: boost });
+  // A legendary has a good chance to be a named unique instead.
+  if (item.rarity === 'legendary' && Math.random() < 0.6) return makeUnique(item.ilvl);
+  return item;
+}
+
+// Gold/value of an item — used for vendor buy & sell prices.
+export function itemValue(item) {
+  return Math.max(1, Math.round(item.ilvl * RARITY[item.rarity].mult * 9));
+}
+export function buyPrice(item) { return itemValue(item) * 2; }
+export function sellPrice(item) { return Math.max(1, Math.floor(itemValue(item) * 0.35)); }
+
+// Gold dropped by a slain enemy.
+export function goldDrop(enemyLevel, enemyTypeId) {
+  const mult = { slime: 0.7, grunt: 1, wolf: 0.9, knight: 1.6, brute: 2.4 }[enemyTypeId] ?? 1;
+  return Math.max(1, Math.round((3 + enemyLevel * 2.2) * mult * rnd(0.7, 1.3)));
 }
 
 // Total stat contribution of a set of equipped items.
@@ -140,20 +178,38 @@ export function sumStats(items) {
   return t;
 }
 
-// HTML tooltip for an item (rarity-coloured, stat lines).
-export function itemTooltip(item, playerLevel) {
+const STAT_ORDER = ['damage', 'armor', 'str', 'dex', 'int', 'maxHp', 'maxMp', 'maxSp', 'crit', 'speed', 'lifesteal'];
+const STAT_LABEL = { damage: 'Damage', armor: 'Armor', str: 'STR', dex: 'DEX', int: 'INT', maxHp: 'Max HP', maxMp: 'Max MP', maxSp: 'Max SP', crit: 'Crit', speed: 'Move Speed', lifesteal: 'Lifesteal' };
+const PCT_STATS = new Set(['crit', 'speed', 'lifesteal']);
+const fmtStat = (k, v) => (PCT_STATS.has(k) ? `${v > 0 ? '+' : ''}${Math.round(v * 100)}%` : `${v > 0 ? '+' : ''}${v}`);
+
+// HTML tooltip for an item. If `equipped` is provided, shows a comparison
+// block with per-stat deltas vs. what's currently worn in that slot.
+export function itemTooltip(item, playerLevel, equipped) {
   const rar = RARITY[item.rarity];
-  const order = ['damage', 'armor', 'str', 'dex', 'int', 'maxHp', 'maxMp', 'maxSp', 'crit', 'speed'];
-  const label = { damage: 'Damage', armor: 'Armor', str: 'STR', dex: 'DEX', int: 'INT', maxHp: 'Max HP', maxMp: 'Max MP', maxSp: 'Max SP', crit: 'Crit', speed: 'Move Speed' };
-  const lines = order.filter((k) => item.stats[k]).map((k) => {
-    const v = item.stats[k];
-    const disp = (k === 'crit' || k === 'speed') ? `+${Math.round(v * 100)}%` : `+${v}`;
-    return `<div class="tip-stat">${disp} ${label[k]}</div>`;
-  }).join('');
+  const lines = STAT_ORDER.filter((k) => item.stats[k]).map((k) =>
+    `<div class="tip-stat">${fmtStat(k, item.stats[k])} ${STAT_LABEL[k]}</div>`).join('');
   const reqBad = playerLevel != null && playerLevel < item.reqLevel;
+  const flavor = item.flavor ? `<div class="tip-flavor">“${item.flavor}”</div>` : '';
+
+  let compare = '';
+  if (equipped && equipped.uid !== item.uid) {
+    const keys = new Set([...Object.keys(item.stats), ...Object.keys(equipped.stats)]);
+    const deltas = [...keys].filter((k) => STAT_LABEL[k]).sort((a, b) => STAT_ORDER.indexOf(a) - STAT_ORDER.indexOf(b))
+      .map((k) => {
+        const d = (item.stats[k] || 0) - (equipped.stats[k] || 0);
+        if (Math.abs(d) < (PCT_STATS.has(k) ? 0.001 : 0.5)) return '';
+        const col = d > 0 ? '#7be38a' : '#ff7b7b';
+        return `<div class="tip-stat" style="color:${col}">${fmtStat(k, d)} ${STAT_LABEL[k]}</div>`;
+      }).filter(Boolean).join('');
+    compare = `<div class="tip-cmp"><div class="tip-cmp-h">vs. equipped ${equipped.glyph} <span style="color:${RARITY[equipped.rarity].color}">${equipped.name}</span></div>${deltas || '<div class="tip-stat" style="opacity:.6">no stat change</div>'}</div>`;
+  }
+
   return `
-    <div class="tip-name" style="color:${rar.color}">${item.glyph} ${item.name}</div>
+    <div class="tip-name" style="color:${rar.color}">${item.glyph} ${item.name}${item.unique ? ' ✦' : ''}</div>
     <div class="tip-sub">${rar.name} ${SLOT_LABEL[item.slot]} · ilvl ${item.ilvl}</div>
     ${lines}
-    <div class="tip-req" style="color:${reqBad ? '#ff6b6b' : '#9a9'}">Requires level ${item.reqLevel}</div>`;
+    ${flavor}
+    <div class="tip-req" style="color:${reqBad ? '#ff6b6b' : '#9a9'}">Requires level ${item.reqLevel}</div>
+    ${compare}`;
 }

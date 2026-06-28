@@ -17,7 +17,9 @@ in solo mode.
 
 ## ▶️ Play
 
-The game uses ES modules + import maps, which require an `http(s)` origin (they
+**Online:** https://ssmccormick.github.io/StickmanMMO/ (auto-deployed from this branch via GitHub Pages).
+
+**Locally:** The game uses ES modules + import maps, which require an `http(s)` origin (they
 won't load from a `file://` URL). Serve the folder with the bundled zero-dependency
 static server:
 
@@ -104,9 +106,16 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   accessories** across 5 rarities (Common → Legendary), shown as colored beacons you
   walk over to pick up. Open the **inventory** (`I`) to equip items into 7 gear slots
   (weapon, head, chest, hands, feet, ring, amulet). Gear adds **STR/DEX/INT, Max HP/MP/SP,
-  attack damage, armor (damage mitigation), crit, and move speed** — all flowing into
-  combat. Hover any item for a rarity-colored stat tooltip. New characters start with a
-  class-appropriate weapon, and your equipped weapon recolors your stickman by rarity.
+  attack damage, armor (damage mitigation), crit, lifesteal, and move speed** — all flowing
+  into combat. Hover any bag item for a rarity-colored tooltip that **compares it to what
+  you have equipped** (per-stat deltas). Click to equip, right-click to drop. New characters
+  start with a class-appropriate weapon, and your equipped weapon recolors your stickman by
+  rarity.
+- **Named uniques** — legendaries can roll as **named unique items** (e.g. *Hungering Edge*,
+  *Heart of the Phoenix*) with flavor text and signature effects like **lifesteal**.
+- **Gold & a town merchant** — enemies drop **gold**; visit the **merchant stall** in town
+  (press `E`) to **buy** a rotating stock of level-appropriate gear and **sell** your spare
+  loot. Gold is saved with your character.
 - **Multiplayer** — see other players move and chat in real time when a server is set.
 
 ## 🛰️ Multiplayer (optional)

@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { CLASSES } from './classes.js';
 import { createStickman } from './stickman.js';
-import { rollDrop, RARITY } from './items.js';
+import { rollDrop, goldDrop, RARITY } from './items.js';
 
 export class Combat {
   constructor({ scene, player, enemies, ui, camera, audio }) {
@@ -301,11 +301,17 @@ export class Combat {
     const res = enemy.takeDamage(dmg, isCrit);
     if (this.audio) this.audio.play('hit');
     this.ui.floater(`${res.dealt}${isCrit ? '!' : ''}`, isCrit ? 'crit' : 'dmg', enemy.pos);
+    // Lifesteal from gear (e.g. unique weapons) heals on every hit.
+    if (this.player.gearLifesteal > 0 && res.dealt > 0) this.player.heal(res.dealt * this.player.gearLifesteal);
     if (res.killed) {
       const levels = this.player.gainXp(res.xp);
       this.ui.floater(`+${res.xp} XP`, 'xp', enemy.pos);
       this.ui.log(`Slain ${enemy.type.name} (+${res.xp} XP)`, 'xp');
       if (this.audio) this.audio.play('kill');
+      // Gold drop.
+      const gold = goldDrop(enemy.level, enemy.typeId);
+      this.player.gold += gold;
+      this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
       if (levels > 0 && this.onLevelUp) this.onLevelUp();
       this._dropLoot(enemy);
       if (this.target === enemy) this.target = null;

@@ -139,8 +139,10 @@ function animate() {
       return;
     }
 
-    // Mouse-look only when the inventory isn't open (cursor is freed for it).
-    if (!ui.inventoryOpen) {
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen;
+
+    // Mouse-look only when no cursor-driven menu is open.
+    if (!menuOpen) {
       followCam.handleLook(look.dx, look.dy);
       if (w) followCam.handleZoom(w);
     }
@@ -150,11 +152,11 @@ function animate() {
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
 
-    // Update world entities. Combat ignores attack/ability input while the
-    // inventory is open, but projectiles/loot/FX keep simulating.
+    // Update world entities. Combat ignores attack/ability input while a menu
+    // is open, but projectiles/loot/FX keep simulating.
     player.update(dt, input, followCam);
     for (const e of enemies) e.update(dt, player, t);
-    combat.suppressInput = ui.inventoryOpen;
+    combat.suppressInput = menuOpen;
     combat.update(dt, input);
     network.update(dt);
     network.sendState(player, dt);
@@ -184,10 +186,16 @@ function animate() {
       }, 2600);
     }
 
-    // Bonfire interaction.
+    // Interactions: vendor takes priority near the stall, else bonfire.
     if (restCooldown > 0) restCooldown -= dt;
+    const nearVendor = world.vendor && player.alive && world.vendor.pos.distanceTo(player.pos) < 4.5;
     const bonfire = world.nearestBonfire(player.pos, 4.5);
-    if (bonfire && player.alive) {
+    if (menuOpen) {
+      ui.hidePrompt();
+    } else if (nearVendor) {
+      ui.showPrompt('Press <b>E</b> to trade with the merchant');
+      if (input.just('KeyE')) ui.openVendor(player);
+    } else if (bonfire && player.alive) {
       ui.showPrompt('Press <b>E</b> to rest at the bonfire');
       if (input.just('KeyE') && restCooldown <= 0) {
         restCooldown = 1;

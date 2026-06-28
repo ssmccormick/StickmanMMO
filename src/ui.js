@@ -5,7 +5,7 @@
 // ============================================================
 import { CLASSES, CLASS_ORDER } from './classes.js';
 import { Saves } from './save.js';
-import { SLOTS, SLOT_LABEL, RARITY, itemTooltip } from './items.js';
+import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice } from './items.js';
 
 export class UI {
   constructor() {
@@ -32,6 +32,7 @@ export class UI {
       charName: document.getElementById('char-name'),
       charClass: document.getElementById('char-class'),
       charLevel: document.getElementById('char-level'),
+      gold: document.getElementById('gold'),
 
       hotbar: document.getElementById('hotbar'),
       minimap: document.getElementById('minimap'),
@@ -215,6 +216,7 @@ export class UI {
     const xpPct = (s.xp / s.xpNext) * 100;
     this.el.xpFill.style.width = `${xpPct}%`;
     this.el.xpText.textContent = `XP ${Math.floor(s.xp)} / ${s.xpNext}`;
+    this.el.gold.textContent = player.gold;
     this.el.playerCount.textContent = playerCount;
 
     // hotbar cooldowns
@@ -415,7 +417,7 @@ export class UI {
             <div class="char-stats"></div>
           </div>
           <div class="bag-wrap">
-            <div class="bag-title">Bag</div>
+            <div class="bag-title">Bag · <span style="opacity:.6">click to equip · right-click to drop</span></div>
             <div class="bag-grid"></div>
           </div>
         </div>
@@ -484,7 +486,9 @@ export class UI {
       <div class="cs-row"><span>Attack</span><b>${Math.round(p.apower)}</b></div>
       <div class="cs-row"><span>Armor</span><b>${p.gearArmor}</b></div>
       <div class="cs-row"><span>Crit</span><b>${Math.round((0.05 + p.gearCrit) * 100)}%</b></div>
-      <div class="cs-row"><span>Move</span><b>+${Math.round(p.gearSpeed * 100)}%</b></div>`;
+      <div class="cs-row"><span>Move</span><b>+${Math.round(p.gearSpeed * 100)}%</b></div>
+      ${p.gearLifesteal ? `<div class="cs-row"><span>Lifesteal</span><b>${Math.round(p.gearLifesteal * 100)}%</b></div>` : ''}
+      <div class="cs-row"><span>💰 Gold</span><b>${p.gold}</b></div>`;
 
     // Bag grid.
     this.bagGridEl.innerHTML = '';
@@ -494,10 +498,19 @@ export class UI {
       cell.className = 'bag-cell' + (item ? ` filled r-${item.rarity}` : '');
       if (item) {
         cell.innerHTML = `<div class="slot-glyph">${item.glyph}</div>`;
-        this._tipFor(cell, item, p.stats.level);
+        // Compare against whatever is equipped in that slot.
+        this._tipFor(cell, item, p.stats.level, p.gear[item.slot]);
         cell.onclick = () => {
           const r = p.equipFromInventory(item.uid);
           if (r.error === 'level') this.log(`Requires level ${item.reqLevel}.`, 'sys');
+          this.renderInventory();
+        };
+        // Right-click to drop/destroy.
+        cell.oncontextmenu = (e) => {
+          e.preventDefault();
+          p.dropItem(item.uid);
+          this.log(`Dropped ${item.name}.`, 'sys');
+          this._hideTip();
           this.renderInventory();
         };
       }
@@ -505,9 +518,9 @@ export class UI {
     }
   }
 
-  _tipFor(el, item, level) {
+  _tipFor(el, item, level, equipped) {
     el.onmouseenter = () => {
-      this.itemTip.innerHTML = itemTooltip(item, level);
+      this.itemTip.innerHTML = itemTooltip(item, level, equipped);
       this.itemTip.style.borderColor = RARITY[item.rarity].color;
       this.itemTip.classList.remove('hidden');
     };
@@ -518,6 +531,123 @@ export class UI {
     el.onmouseleave = () => this._hideTip();
   }
   _hideTip() { if (this.itemTip) this.itemTip.classList.add('hidden'); }
+
+  // ---- Vendor / merchant ----
+  _ensureVendor() {
+    if (this.vendorOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel vendor-panel">
+        <div class="inv-header"><span>🛒 Merchant <span class="vendor-gold"></span></span><button class="inv-close">✕</button></div>
+        <div class="vendor-body">
+          <div class="vendor-col">
+            <div class="bag-title">Buy</div>
+            <div class="vendor-buy"></div>
+          </div>
+          <div class="vendor-col">
+            <div class="bag-title">Sell <span style="opacity:.6">(your bag)</span></div>
+            <div class="vendor-sell"></div>
+          </div>
+        </div>
+      </div>
+      <div class="item-tip hidden"></div>`;
+    document.body.appendChild(ov);
+    this.vendorOverlay = ov;
+    this.vendorBuyEl = ov.querySelector('.vendor-buy');
+    this.vendorSellEl = ov.querySelector('.vendor-sell');
+    this.vendorGoldEl = ov.querySelector('.vendor-gold');
+    this.vendorTip = ov.querySelector('.item-tip');
+    ov.querySelector('.inv-close').onclick = () => this.closeVendor();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeVendor(); });
+  }
+
+  openVendor(player) {
+    this._ensureVendor();
+    this._vendorPlayer = player;
+    // Generate a fresh stock scaled to the player's level.
+    const lvl = player.stats.level;
+    this._vendorStock = [];
+    for (let i = 0; i < 8; i++) {
+      this._vendorStock.push(generateItem({ level: Math.max(1, lvl + (i % 3) - 1), rarityBoost: 0.4 }));
+    }
+    this.vendorOpen = true;
+    this.vendorOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.renderVendor();
+  }
+  closeVendor() {
+    this.vendorOpen = false;
+    if (this.vendorOverlay) this.vendorOverlay.classList.add('hidden');
+    if (this.vendorTip) this.vendorTip.classList.add('hidden');
+  }
+
+  renderVendor() {
+    const p = this._vendorPlayer;
+    if (!p) return;
+    this.vendorGoldEl.textContent = `💰 ${p.gold}`;
+
+    // Buy list.
+    this.vendorBuyEl.innerHTML = '';
+    this._vendorStock.forEach((item, i) => {
+      const price = buyPrice(item);
+      const row = this._vendorRow(item, price, p, p.gold >= price ? 'Buy' : 'Need 💰');
+      row.onclick = () => {
+        if (p.gold < price) { this.log('Not enough gold.', 'sys'); return; }
+        if (p.inventory.length >= p.maxInventory) { this.log('Bag is full.', 'sys'); return; }
+        p.gold -= price; p.addItem(item);
+        this._vendorStock.splice(i, 1);
+        this.log(`Bought ${item.name} for ${price}g.`, 'xp');
+        this.renderVendor();
+      };
+      this._tipForEl(row, item, p.stats.level, p.gear[item.slot], this.vendorTip);
+      this.vendorBuyEl.appendChild(row);
+    });
+    if (!this._vendorStock.length) this.vendorBuyEl.innerHTML = '<div class="roster-empty">Sold out — come back later.</div>';
+
+    // Sell list (bag).
+    this.vendorSellEl.innerHTML = '';
+    p.inventory.forEach((item) => {
+      const price = sellPrice(item);
+      const row = this._vendorRow(item, price, p, 'Sell');
+      row.onclick = () => {
+        p.gold += price; p.dropItem(item.uid);
+        this.log(`Sold ${item.name} for ${price}g.`, 'xp');
+        this.renderVendor();
+      };
+      this._tipForEl(row, item, p.stats.level, p.gear[item.slot], this.vendorTip);
+      this.vendorSellEl.appendChild(row);
+    });
+    if (!p.inventory.length) this.vendorSellEl.innerHTML = '<div class="roster-empty">Your bag is empty.</div>';
+  }
+
+  _vendorRow(item, price, p, action) {
+    const rar = RARITY[item.rarity];
+    const row = document.createElement('div');
+    row.className = `vendor-row r-${item.rarity}`;
+    row.innerHTML = `
+      <div class="vr-glyph">${item.glyph}</div>
+      <div class="vr-info">
+        <div class="vr-name" style="color:${rar.color}">${item.name}</div>
+        <div class="vr-meta">${rar.name} ${SLOT_LABEL[item.slot]} · ilvl ${item.ilvl}</div>
+      </div>
+      <div class="vr-price">💰 ${price}<span class="vr-act">${action}</span></div>`;
+    return row;
+  }
+
+  // Tooltip bound to a specific tip element (vendor uses its own).
+  _tipForEl(el, item, level, equipped, tipEl) {
+    el.addEventListener('mouseenter', () => {
+      tipEl.innerHTML = itemTooltip(item, level, equipped);
+      tipEl.style.borderColor = RARITY[item.rarity].color;
+      tipEl.classList.remove('hidden');
+    });
+    el.addEventListener('mousemove', (e) => {
+      tipEl.style.left = Math.min(e.clientX + 16, window.innerWidth - 250) + 'px';
+      tipEl.style.top = Math.min(e.clientY + 16, window.innerHeight - 200) + 'px';
+    });
+    el.addEventListener('mouseleave', () => tipEl.classList.add('hidden'));
+  }
 
   // ---- Chat ----
   setupChat(onSend) {
