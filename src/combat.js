@@ -77,6 +77,20 @@ export class Combat {
   }
 
   _faceCam() { const f = this.cam.forward(); this.player.facing = Math.atan2(f.x, f.z); }
+  _face(dir) { this.player.facing = Math.atan2(dir.x, dir.z); }
+
+  // The direction offensive skills should travel: toward the locked target
+  // (or the enemy nearest the crosshair within `arc`), else straight ahead.
+  // This is what makes projectiles "go where you're aiming".
+  _aimDir(range, arc = 0.42) {
+    const e = this._aimEnemy(range, arc);
+    if (e) {
+      const d = new THREE.Vector3().subVectors(e.pos, this.player.pos);
+      d.y = 0;
+      if (d.lengthSq() > 0.0001) return d.normalize();
+    }
+    return this.cam.forward();
+  }
 
   // A point in front of the player, clamped to a max range (for ground AoE).
   _aimPoint(maxRange) {
@@ -91,14 +105,16 @@ export class Combat {
     const p = this.player;
     p.attackTimer = this.def.attackSpeed;
     p.attackAnim = 1;
-    this._faceCam();
     if (this.audio) this.audio.play('swing');
     if (this.def.ranged) {
-      this.spawnProjectile(p.pos, this.cam.forward(), {
+      const dir = this._aimDir(this.def.range, 0.5);
+      this._face(dir);
+      this.spawnProjectile(p.pos, dir, {
         speed: 24, mult: 1, color: this.def.projColor || 0xffffff,
         shape: this.def.projGlyph === 'arrow' ? 'arrow' : 'orb', range: this.def.range,
       });
     } else {
+      this._faceCam();
       const e = this._aimEnemy(this.def.range, 1.0);
       if (e) this._strike(e, p.apower, { crit: this.def.critBonus || 0 });
     }
@@ -149,7 +165,9 @@ export class Combat {
   _kProjectile(ab) {
     const count = ab.count || 1;
     const spread = ab.spread || 0;
-    const baseDir = this.cam.forward();
+    // Aim the volley at the target/enemy under the crosshair (else forward).
+    const baseDir = this._aimDir(34, 0.5);
+    this._face(baseDir);
     for (let k = 0; k < count; k++) {
       const t = count === 1 ? 0 : (k / (count - 1) - 0.5);
       const dir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), t * spread);

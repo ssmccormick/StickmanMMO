@@ -131,6 +131,7 @@ function animate() {
 
     if (paused) {
       // Frozen: only keep the camera trailing and the HUD live.
+      ui.el.crosshair.classList.add('hidden');
       followCam.update(player.pos, dt);
       ui.updateHud(player, network.count);
       ui.drawMinimap(player, enemies, world, network.others);
@@ -139,7 +140,10 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen;
+
+    // Crosshair shows while mouse-look is active (aiming), hidden in menus.
+    ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
 
     // Mouse-look only when no cursor-driven menu is open.
     if (!menuOpen) {
@@ -147,8 +151,9 @@ function animate() {
       if (w) followCam.handleZoom(w);
     }
 
-    // Toggle inventory (I), chat (Enter), hint (H).
+    // Toggle inventory (I), skills (K), chat (Enter), hint (H).
     if (input.just('KeyI')) ui.toggleInventory(player);
+    if (input.just('KeyK')) ui.toggleSkills(player);
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
 

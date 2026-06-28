@@ -45,6 +45,7 @@ export class UI {
       floaters: document.getElementById('floaters'),
       death: document.getElementById('death-screen'),
       hint: document.getElementById('controls-hint'),
+      crosshair: document.getElementById('crosshair'),
     };
     this.selectedClass = 'fighter';
     this.minimapCtx = this.el.minimap.getContext('2d');
@@ -531,6 +532,144 @@ export class UI {
     el.onmouseleave = () => this._hideTip();
   }
   _hideTip() { if (this.itemTip) this.itemTip.classList.add('hidden'); }
+
+  // ---- Skills window ----
+  _ensureSkills() {
+    if (this.skillsOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel skills-panel">
+        <div class="inv-header"><span>📖 Skills</span><button class="inv-close">✕</button></div>
+        <div class="skills-note"></div>
+        <div class="skills-body"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    this.skillsOverlay = ov;
+    this.skillsBody = ov.querySelector('.skills-body');
+    this.skillsNote = ov.querySelector('.skills-note');
+    ov.querySelector('.inv-close').onclick = () => this.closeSkills();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeSkills(); });
+  }
+  toggleSkills(player) {
+    this._ensureSkills();
+    this._skillsPlayer = player;
+    if (this.skillsOpen) this.closeSkills();
+    else {
+      this.skillsOpen = true;
+      this.skillsOverlay.classList.remove('hidden');
+      if (document.exitPointerLock) document.exitPointerLock();
+      this.renderSkills(player);
+    }
+  }
+  closeSkills() { this.skillsOpen = false; if (this.skillsOverlay) this.skillsOverlay.classList.add('hidden'); }
+
+  renderSkills(player) {
+    const def = CLASSES[player.classId];
+    const owned = new Set(player.learned.map((l) => l.id));
+    this.skillsNote.innerHTML = `Your attack power is <b>${Math.round(player.apower)}</b> — damage values below scale with it (and your gear).`;
+
+    let html = '';
+    player.learned.forEach((l, i) => {
+      const ab = player.ability(i);
+      const pips = '★'.repeat(l.rank) + '·'.repeat(Math.max(0, 3 - l.rank));
+      const meta = `Key ${i + 1} · ${ab.cost} ${ab.costType.toUpperCase()} · ${ab.cooldown}s CD${this._rangeStr(ab)}`;
+      const stats = this._abilityLines(player, ab)
+        .map(([k, v]) => `<div class="sk-stat"><span>${k}</span><b>${v}</b></div>`).join('');
+      html += `
+        <div class="sk-card">
+          <div class="sk-head"><span class="sk-glyph">${ab.glyph}</span>
+            <div><div class="sk-name">${ab.name} <span class="sk-pips">${pips}</span></div>
+            <div class="sk-meta">${meta}</div></div></div>
+          <div class="sk-desc">${ab.desc}</div>
+          <div class="sk-stats">${stats}</div>
+        </div>`;
+    });
+    // Not-yet-learned abilities, shown locked.
+    def.abilities.filter((a) => !owned.has(a.id)).forEach((a) => {
+      const ready = player.stats.level >= a.reqLevel;
+      html += `
+        <div class="sk-card locked">
+          <div class="sk-head"><span class="sk-glyph">${a.glyph}</span>
+            <div><div class="sk-name">${a.name}</div>
+            <div class="sk-meta">🔒 ${ready ? 'Available at your next level-up' : `Unlocks at level ${a.reqLevel}`}</div></div></div>
+          <div class="sk-desc">${a.desc}</div>
+        </div>`;
+    });
+    this.skillsBody.innerHTML = html;
+  }
+
+  _rangeStr(ab) {
+    if (ab.kind === 'melee') return ` · ${ab.range}yd arc`;
+    if (ab.kind === 'heal' || ab.kind === 'buff') return '';
+    if (ab.radius) return ` · ${ab.radius}yd radius`;
+    if (ab.range) return ` · ${ab.range}yd`;
+    return '';
+  }
+
+  // Human-readable, value-accurate damage/effect lines for a skill.
+  _abilityLines(player, ab) {
+    const ap = player.apower;
+    const hit = (m) => Math.round(ap * m);
+    const pct = (v) => `${Math.round(v * 100)}%`;
+    const L = [];
+    switch (ab.kind) {
+      case 'melee':
+      case 'dash':
+        if (ab.mult > 0) L.push(['Damage', `~${hit(ab.mult)}${ab.arc > 1.5 ? ' each' : ''}`]);
+        if (ab.stun) L.push(['Stun', `${ab.stun}s`]);
+        if (ab.crit) L.push(['Bonus crit', `+${pct(ab.crit)}`]);
+        if (ab.execute) L.push(['Execute', '+80% vs low HP']);
+        if (ab.iframes) L.push(['Invuln', `${ab.iframes}s`]);
+        break;
+      case 'projectile': {
+        const per = hit(ab.mult);
+        L.push(['Damage', ab.count > 1 ? `~${per} ×${ab.count} (${per * ab.count} total)` : `~${per}`]);
+        if (ab.aoe) L.push(['Splash', `${ab.aoe}yd`]);
+        if (ab.pierce) L.push(['Pierce', 'all in path']);
+        if (ab.stunOnHit) L.push(['Stun', `${ab.stunOnHit}s`]);
+        break;
+      }
+      case 'groundaoe':
+        L.push(['Damage', `~${hit(ab.mult)}`]);
+        L.push(['Radius', `${ab.aoe}yd`]);
+        L.push(['Delay', `${ab.delay}s`]);
+        break;
+      case 'chain':
+        L.push(['Damage', `~${hit(ab.mult)}`]);
+        L.push(['Jumps', `${ab.jumps}`]);
+        break;
+      case 'dot':
+        L.push(['Damage', `${ab.dotDps}/s for ${ab.dotDur}s`]);
+        L.push(['Total', `~${Math.round(ab.dotDps * ab.dotDur)}`]);
+        L.push(['Radius', `${ab.radius}yd`]);
+        break;
+      case 'lifesteal':
+        L.push(['Damage', `~${hit(ab.mult)}`]);
+        L.push(['Heal', `${pct(ab.leech)} of damage`]);
+        break;
+      case 'heal':
+        L.push(['Heal', `~${Math.round(player.effMaxHp * ab.amount)} (${pct(ab.amount)} HP)`]);
+        break;
+      case 'buff':
+        if (ab.buff && ab.buff.dmg) L.push(['Damage', `+${Math.round((ab.buff.dmg - 1) * 100)}% / ${ab.buff.dur}s`]);
+        if (ab.buff && ab.buff.speed) L.push(['Speed', `+${Math.round((ab.buff.speed - 1) * 100)}%`]);
+        if (ab.buff && ab.buff.shield) L.push(['Shield', `${pct(ab.buff.shield)} absorb / ${ab.buff.dur}s`]);
+        if (ab.selfHeal) L.push(['Heal', `${pct(ab.selfHeal)} HP`]);
+        if (ab.nova) {
+          if (ab.nova.mult) L.push(['Nova dmg', `~${hit(ab.nova.mult)}`]);
+          if (ab.nova.slow) L.push(['Slow', `${ab.nova.slow}s`]);
+          if (ab.nova.fear) L.push(['Fear', `${ab.nova.fear}s`]);
+          L.push(['Radius', `${ab.nova.radius}yd`]);
+        }
+        break;
+      case 'summon':
+        L.push(['Duration', `${ab.dur}s`]);
+        L.push(['Hit', `~${hit(ab.mult)} / ${ab.atkEvery}s`]);
+        break;
+    }
+    return L;
+  }
 
   // ---- Vendor / merchant ----
   _ensureVendor() {
