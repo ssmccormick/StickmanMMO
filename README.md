@@ -52,6 +52,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **C** | Character sheet |
 | **M** | World map (click a discovered bonfire to fast-travel) |
 | **J** | Quest log |
+| **L** | Codex / lore-board |
 | **Q** | Quaff a health potion |
 | **Enter** | Chat |
 | **H** | Toggle the controls hint |
@@ -122,11 +123,21 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **World map (`M`)** showing towns, named areas & levels, elite camps, world bosses, and
   bonfires. Rested bonfires become **fast-travel** points — open the map at a bonfire/town
   and click one to teleport.
-- **Quests & chains** — quest-giver NPCs across all towns (look for the ❗ marker) offer
-  **multi-step quest chains** and **boss-slaying quests** — slay N of a type, clear a camp
-  chest, defeat a named boss, etc. Track them on the HUD and in the **quest log (`J`)**;
-  turn them in for **XP, gold, gear, and potions** (boss quests reward epics/legendaries).
-  Progress is saved with your character.
+- **A world with a story** — **Aethelgard** is a world shattered by *the Sundering*, its
+  binding flame (the **Emberheart**) broken and its four reaches overrun by the **Blight**.
+  Bonfires are *Embers* of that flame — which is the in-world reason you respawn — and **you
+  are one of the Ashbound**, a hero called back from the ash to reclaim the four shards held
+  by the four world bosses. Read the whole lore-board in the **Codex (`L`)**: prologue, the
+  world, the Sundering, the Ashbound (with a **personalized entry written from your own
+  character**), the four reaches, the Archfiends, a bestiary, and the deep places.
+- **Story-driven quests** — quest-giver NPCs across all towns (look for the ❗ marker) offer
+  **multi-step quest chains** and **boss-slaying quests**, each framed by the overarching
+  story: every kill thins the Blight, every Archfiend returns a shard, and the chain builds
+  toward rekindling the Emberheart. The **quest-giver popup** is a roomy dialog where the
+  giver's words **type out letter by letter** (click to fill instantly), then reveal the
+  objective and reward. Track quests on the HUD and in the **quest log (`J`)**; turn them in
+  for **XP, gold, gear, and potions** (boss quests reward epics/legendaries). Saved with
+  your character.
 - **Gear sets** — some gear belongs to a **set** (Warden's Vigil, Nightstalker, Archmage
   Regalia, Bloodrage Plate). Wearing 2 or 4 pieces grants escalating bonuses, shown on the
   item tooltip and the **character sheet (`C`)**, which breaks down all your stats.

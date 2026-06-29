@@ -8,17 +8,9 @@ import { Saves } from './save.js';
 import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import * as Quests from './quests.js';
 import { TOWNS, AREAS } from './world.js';
+import { CODEX, PROLOGUE, WORLD_NAME, ashboundEntry, TOWN_CHATTER } from './lore.js';
 
-const LORE_LINES = [
-  'They say the Nexus was raised by the first heroes, ages past.',
-  'Mind the deep wilds — the further out, the deadlier the beasts.',
-  'A bonfire remembers you, traveller. Rest, and you can return.',
-  'The Mirelord has not been seen in a generation… until now.',
-  'Merchants here trade fair. The alchemist\'s elixirs saved my life.',
-  'Frostgard\'s walls have never fallen. Long may they stand.',
-  'Gold buys gear, but courage clears the camps.',
-  'Stay on the roads after dark, friend.',
-];
+const LORE_LINES = TOWN_CHATTER;
 
 export class UI {
   constructor() {
@@ -1013,51 +1005,91 @@ export class UI {
     this.questDialogOpen = true;
     if (document.exitPointerLock) document.exitPointerLock();
     const id = Quests.giverActiveQuest(player, gv.giver);
-    if (!id) {
+
+    // Render the dialog: a portrait header, a narrative line that types itself
+    // out, and a footer (objective + reward + action) revealed once typing ends.
+    const present = (title, narrative, objectiveHtml, rewardHtml, btnLabel, onAct) => {
       this.qdEl.innerHTML = `
-        <div class="inv-header"><span>📜 ${gv.name}</span><button class="inv-close">✕</button></div>
-        <div class="qd-body"><div class="qd-desc">"Nothing for you right now, hero. Come back later."</div>
-        <button class="qd-btn">Close</button></div>`;
+        <div class="inv-header"><span>🗨️ ${gv.name}</span><button class="inv-close">✕</button></div>
+        <div class="qd-body">
+          ${title ? `<div class="qd-title">${title}</div>` : ''}
+          <div class="qd-narrative"></div>
+          <div class="qd-foot" style="display:none">
+            ${objectiveHtml ? `<div class="qd-objective">${objectiveHtml}</div>` : ''}
+            ${rewardHtml ? `<div class="qd-reward">${rewardHtml}</div>` : ''}
+            <button class="qd-btn">${btnLabel}</button>
+          </div>
+          <div class="qd-hint">▸ click to continue</div>
+        </div>`;
       this.qdOverlay.classList.remove('hidden');
       this.qdEl.querySelector('.inv-close').onclick = () => this.closeQuestDialog();
-      this.qdEl.querySelector('.qd-btn').onclick = () => this.closeQuestDialog();
+      const foot = this.qdEl.querySelector('.qd-foot');
+      const hint = this.qdEl.querySelector('.qd-hint');
+      const reveal = () => {
+        hint.style.display = 'none';
+        foot.style.display = '';
+        this.qdEl.querySelector('.qd-btn').onclick = (e) => {
+          e.stopPropagation();
+          onAct(); this.closeQuestDialog(); this.refreshGiverMarkers(player);
+        };
+      };
+      // Clicking the body fast-forwards the typewriter (and is a no-op after).
+      this.qdEl.querySelector('.qd-body').onclick = () => this._skipTypewriter();
+      this._startTypewriter(this.qdEl.querySelector('.qd-narrative'), '“' + narrative + '”', reveal);
+    };
+
+    if (!id) {
+      present('', 'Nothing for you right now, Ashbound. Rest at the Ember, and come back when the world needs you again.', '', '', 'Farewell', () => {});
       return;
     }
-    const giver = { name: gv.name }; const q = Quests.QUESTS[id]; const st = Quests.statusOf(player, id);
-    const reward = this._rewardText(q.reward);
-    let body, label, act;
+    const q = Quests.QUESTS[id]; const st = Quests.statusOf(player, id);
+    const reward = `Reward: <b>${this._rewardText(q.reward)}</b>`;
     if (st === 'available') {
-      body = q.desc; label = 'Accept Quest';
-      act = () => { Quests.accept(player, id); this.log(`Quest accepted: ${q.title}`, 'xp'); };
+      present(q.title, q.intro, `<span class="qd-task">Objective</span> ${q.desc}`, reward, 'Accept Quest',
+        () => { Quests.accept(player, id); this.log(`Quest accepted: ${q.title}`, 'xp'); });
     } else if (st === 'active') {
-      body = `${q.desc}<br><br>Progress: <b>${Quests.progressOf(player, id)} / ${q.count}</b>`;
-      label = 'Close'; act = () => {};
+      present(q.title, 'The deed isn\'t done yet. Come back when it is, Ashbound — the flame is waiting, and so am I.',
+        `<span class="qd-task">Progress</span> <b>${Quests.progressOf(player, id)} / ${q.count}</b> — ${q.desc}`, reward, 'Close', () => {});
     } else if (st === 'complete') {
-      body = `${q.desc}<br><br><b style="color:#7be38a">Objective complete!</b>`;
-      label = 'Turn In'; act = () => {
-        const out = Quests.turnIn(player, id);
-        this.log(`Quest complete: ${q.title}! Reward: ${this._rewardText(q.reward)}`, 'xp');
-        out.items.forEach((it) => this.log(`Received ${it.name}.`, 'xp'));
-      };
-    } else { body = 'You have already completed this quest. Thank you, hero.'; label = 'Close'; act = () => {}; }
-
-    this.qdEl.innerHTML = `
-      <div class="inv-header"><span>📜 ${giver.name}</span><button class="inv-close">✕</button></div>
-      <div class="qd-body">
-        <div class="qd-title">${q.title}</div>
-        <div class="qd-desc">${body}</div>
-        <div class="qd-reward">Reward: <b>${reward}</b></div>
-        <button class="qd-btn">${label}</button>
-      </div>`;
-    this.qdOverlay.classList.remove('hidden');
-    this.qdEl.querySelector('.inv-close').onclick = () => this.closeQuestDialog();
-    this.qdEl.querySelector('.qd-btn').onclick = () => {
-      act();
-      this.closeQuestDialog();
-      this.refreshGiverMarkers(player);
-    };
+      present(q.title, q.outro, `<b style="color:#7be38a">✓ Objective complete!</b>`, reward, 'Turn In',
+        () => {
+          const out = Quests.turnIn(player, id);
+          this.log(`Quest complete: ${q.title}! Reward: ${this._rewardText(q.reward)}`, 'xp');
+          out.items.forEach((it) => this.log(`Received ${it.name}.`, 'xp'));
+        });
+    } else {
+      present(q.title, 'Already done, and done well. The Emberheart remembers it, Ashbound. So do I.', '', '', 'Farewell', () => {});
+    }
   }
-  closeQuestDialog() { this.questDialogOpen = false; if (this.qdOverlay) this.qdOverlay.classList.add('hidden'); }
+  // Reveal `text` into `el` character by character; calls onComplete when done.
+  // Long passages aren't slower overall — the per-tick step scales with length.
+  _startTypewriter(el, text, onComplete) {
+    if (this._twTimer) clearInterval(this._twTimer);
+    this._twEl = el; this._twText = text; this._twOnComplete = onComplete; this._twDone = false;
+    el.textContent = '';
+    let i = 0;
+    const step = Math.max(1, Math.round(text.length / 170));
+    this._twTimer = setInterval(() => {
+      i += step;
+      if (i >= text.length) { el.textContent = text; this._finishTypewriter(); }
+      else el.textContent = text.slice(0, i);
+    }, 16);
+  }
+  _finishTypewriter() {
+    if (this._twTimer) { clearInterval(this._twTimer); this._twTimer = null; }
+    if (this._twDone) return;
+    this._twDone = true;
+    if (this._twEl) this._twEl.textContent = this._twText;
+    const cb = this._twOnComplete; this._twOnComplete = null;
+    if (cb) cb();
+  }
+  _skipTypewriter() { if (!this._twDone) this._finishTypewriter(); }
+  closeQuestDialog() {
+    this.questDialogOpen = false;
+    if (this._twTimer) { clearInterval(this._twTimer); this._twTimer = null; }
+    this._twDone = true; this._twOnComplete = null;
+    if (this.qdOverlay) this.qdOverlay.classList.add('hidden');
+  }
 
   // Refresh every giver's floating marker based on its active quest.
   refreshGiverMarkers(player) {
@@ -1104,6 +1136,57 @@ export class UI {
         <div class="sk-desc">${q.desc}</div>
         <div class="sk-meta">${tag} · Reward: ${this._rewardText(q.reward)}</div></div>`;
     }).join('');
+  }
+
+  // ---- Codex / Lore board (L) ----
+  _ensureCodex() {
+    if (this.cxOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel codex-panel">
+      <div class="inv-header"><span>📖 Codex — ${WORLD_NAME}</span><button class="inv-close">✕</button></div>
+      <div class="codex-body"><div class="codex-rail"></div><div class="codex-content"></div></div>
+    </div>`;
+    document.body.appendChild(ov);
+    this.cxOverlay = ov;
+    this.cxRail = ov.querySelector('.codex-rail');
+    this.cxContent = ov.querySelector('.codex-content');
+    ov.querySelector('.inv-close').onclick = () => this.closeCodex();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeCodex(); });
+  }
+  toggleCodex(player) {
+    this._ensureCodex();
+    this._cxPlayer = player;
+    if (this.codexOpen) { this.closeCodex(); return; }
+    this.codexOpen = true;
+    this.cxOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.renderCodex();
+  }
+  closeCodex() { this.codexOpen = false; if (this.cxOverlay) this.cxOverlay.classList.add('hidden'); }
+  _codexSections() {
+    // Prologue first, then the codex; the personalized "You" entry is appended
+    // into the Ashbound section so the player is written into the world.
+    const sections = [{ id: 'prologue', title: 'Prologue', icon: '✦', entries: [{ title: `The World of ${WORLD_NAME}`, body: PROLOGUE }] }];
+    for (const s of CODEX) {
+      if (s.id === 'ashbound' && this._cxPlayer) sections.push({ ...s, entries: [...s.entries, ashboundEntry(this._cxPlayer)] });
+      else sections.push(s);
+    }
+    return sections;
+  }
+  renderCodex() {
+    const sections = this._codexSections();
+    if (!sections.find((s) => s.id === this._cxSection)) this._cxSection = sections[0].id;
+    this.cxRail.innerHTML = sections.map((s) =>
+      `<button class="cx-tab ${s.id === this._cxSection ? 'active' : ''}" data-id="${s.id}">${s.icon} ${s.title}</button>`).join('');
+    this.cxRail.querySelectorAll('.cx-tab').forEach((b) => { b.onclick = () => { this._cxSection = b.dataset.id; this.renderCodex(); }; });
+    const sec = sections.find((s) => s.id === this._cxSection);
+    this.cxContent.innerHTML = sec.entries.map((e) =>
+      `<div class="cx-entry"><div class="cx-entry-title">${e.title}</div><div class="cx-entry-body">${this._loreToHtml(e.body)}</div></div>`).join('');
+    this.cxContent.scrollTop = 0;
+  }
+  _loreToHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   }
 
   // ---- Area banner ----

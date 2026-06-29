@@ -515,18 +515,46 @@ html, body {
 .bb-fill { height: 100%; width: 100%; background: linear-gradient(180deg, #ff6b5a, #b51a1a); transition: width 0.15s ease; }
 
 /* ---------------- Quest dialog ---------------- */
-.quest-dialog { width: min(460px, 92vw); }
-.qd-body { padding: 16px 20px 20px; }
-.qd-title { font-size: 18px; font-weight: bold; color: var(--gold); margin-bottom: 8px; }
+.quest-dialog { width: min(620px, 94vw); }
+.qd-body { padding: 20px 26px 24px; cursor: pointer; }
+.qd-title { font-size: 22px; font-weight: bold; color: var(--gold); margin-bottom: 12px; letter-spacing: 0.5px; }
 .qd-desc { font-size: 14px; line-height: 1.55; opacity: 0.92; }
-.qd-reward { margin-top: 12px; font-size: 13px; opacity: 0.85; }
+/* Typed narrative: a roomy quote with a blinking cursor while it fills in. */
+.qd-narrative {
+  font-size: 16px; line-height: 1.7; min-height: 7.5em; white-space: pre-wrap;
+  color: #f0e9da; font-style: italic;
+  border-left: 3px solid rgba(216,178,74,0.5); padding-left: 14px;
+}
+.qd-narrative::after { content: '▏'; color: var(--gold); animation: qd-blink 1s steps(1) infinite; }
+@keyframes qd-blink { 50% { opacity: 0; } }
+.qd-foot { margin-top: 16px; border-top: 1px solid var(--panel-edge); padding-top: 14px; animation: qd-fade 0.35s ease; }
+@keyframes qd-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.qd-objective { font-size: 14px; line-height: 1.5; opacity: 0.95; }
+.qd-task { display: inline-block; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--gold); background: rgba(216,178,74,0.12); border-radius: 5px; padding: 1px 7px; margin-right: 6px; }
+.qd-reward { margin-top: 8px; font-size: 13px; opacity: 0.85; }
 .qd-reward b { color: #ffd980; }
+.qd-hint { margin-top: 14px; font-size: 12px; letter-spacing: 1px; opacity: 0.5; text-align: right; }
 .qd-btn {
-  margin-top: 16px; width: 100%; padding: 11px; font-size: 15px; letter-spacing: 2px;
+  margin-top: 14px; width: 100%; padding: 11px; font-size: 15px; letter-spacing: 2px;
   font-weight: bold; cursor: pointer; border: none; border-radius: 9px;
   background: linear-gradient(180deg, #d8b24a, #a8821f); color: #1a1405; box-shadow: 0 4px 0 #6f5512;
 }
 .qd-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #6f5512; }
+
+/* ---------------- Codex / lore board ---------------- */
+.codex-panel { width: min(860px, 96vw); height: 82vh; }
+.codex-body { display: grid; grid-template-columns: 200px 1fr; gap: 0; flex: 1; min-height: 0; }
+.codex-rail { display: flex; flex-direction: column; gap: 4px; padding: 14px 10px; overflow-y: auto;
+  border-right: 1px solid var(--panel-edge); background: rgba(0,0,0,0.18); }
+.cx-tab { text-align: left; background: none; border: none; color: var(--ink); cursor: pointer;
+  font-size: 13.5px; padding: 9px 11px; border-radius: 8px; opacity: 0.75; }
+.cx-tab:hover { opacity: 1; background: rgba(255,255,255,0.05); }
+.cx-tab.active { opacity: 1; background: rgba(216,178,74,0.16); color: var(--gold); font-weight: bold; }
+.codex-content { padding: 18px 26px 24px; overflow-y: auto; }
+.cx-entry { margin-bottom: 20px; }
+.cx-entry-title { font-size: 17px; font-weight: bold; color: var(--gold); margin-bottom: 6px; }
+.cx-entry-body { font-size: 14px; line-height: 1.65; opacity: 0.9; }
 
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
