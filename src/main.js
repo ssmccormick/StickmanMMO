@@ -156,7 +156,7 @@ function beginGame(classId, name, server, save) {
   input.enabled = true;
 
   // Debug/tinkering handle — e.g. StickmanGame.player.gainXp(500).
-  window.StickmanGame = { player, world, enemies, combat, ui, followCam };
+  window.StickmanGame = { player, world, enemies, combat, ui, followCam, renderer };
 }
 
 ui.setupStart({
@@ -183,6 +183,8 @@ function animate() {
   world.update(t, dt);
 
   if (started && player) {
+    // Stream the world: only show objects near the player (the rest is fogged).
+    world.cull(player.pos.x, player.pos.z);
     // Dungeon resets: once a sealed dungeon's timer elapses, revive its pack,
     // re-scale it toward the player's level (so repeat runs stay relevant), and
     // re-lock the chest. Each member keeps its level offset from the dungeon.
@@ -256,7 +258,14 @@ function animate() {
     // Update world entities. Combat ignores attack/ability input while a menu
     // is open, but projectiles/loot/FX keep simulating.
     player.update(dt, input, followCam);
-    for (const e of enemies) e.update(dt, player, t);
+    // Only tick (and draw) enemies near the player — far ones freeze offscreen.
+    // Saves the per-frame AI/animation/collision cost of the world's ~300 mobs.
+    const ACTIVE2 = 130 * 130;
+    for (const e of enemies) {
+      const near = e.pos.distanceToSquared(player.pos) < ACTIVE2;
+      e.mesh.visible = near;
+      if (near) e.update(dt, player, t);
+    }
     // Boss phase reactions: announce enrage and spawn minion adds.
     const newMinions = [];
     for (const e of enemies) {

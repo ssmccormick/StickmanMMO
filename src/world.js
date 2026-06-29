@@ -11,6 +11,7 @@ import { GIVERS } from './quests.js';
 
 export const WORLD_SIZE = 380; // half-extent; world spans -380..380
 export const WATER_LEVEL = -4.0;
+const EMPTY_COLLIDERS = []; // shared empty list for resolveCircle grid misses
 
 // Deterministic value-noise so the world is the same every load and
 // the server/client agree on terrain height without sharing data.
@@ -358,11 +359,61 @@ export class World {
     this._treasures();
     this._ambientLife();
     this._aerial();
+    this._setupCulling();
+  }
+
+  // ---- Streaming / culling: only draw objects near the player ----
+  // Bucket every non-essential object into a coarse grid; cull() then shows
+  // only the cells around the player. Colliders get their own finer grid so
+  // movement only tests nearby boxes instead of all ~1500 of them.
+  _setupCulling() {
+    const CELL = 56;
+    this._cullCell = CELL;
+    this._cullRadiusCells = 4; // ~224u shown; the tight fog (~205) hides the cull edge
+    this._cullBuckets = new Map();
+    for (const obj of this.group.children) {
+      if (obj.userData.noCull) continue;
+      const k = Math.floor(obj.position.x / CELL) + ',' + Math.floor(obj.position.z / CELL);
+      let arr = this._cullBuckets.get(k); if (!arr) this._cullBuckets.set(k, arr = []);
+      arr.push(obj);
+      obj.visible = false;
+    }
+    this._cullActive = new Set();
+    this._cullKey = null;
+    this._indexColliders();
+    this.cull(0, 0); // show the Nexus area immediately (spawn + start-screen backdrop)
+  }
+  cull(px, pz) {
+    if (!this._cullBuckets) return;
+    const CELL = this._cullCell, R = this._cullRadiusCells;
+    const pcx = Math.floor(px / CELL), pcz = Math.floor(pz / CELL);
+    const key = pcx + ',' + pcz;
+    if (key === this._cullKey) return; // only re-evaluate when the player crosses a cell
+    this._cullKey = key;
+    const want = new Set();
+    for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) want.add((pcx + dx) + ',' + (pcz + dz));
+    for (const k of this._cullActive) if (!want.has(k)) { const a = this._cullBuckets.get(k); if (a) for (const o of a) o.visible = false; }
+    for (const k of want) if (!this._cullActive.has(k)) { const a = this._cullBuckets.get(k); if (a) for (const o of a) o.visible = true; }
+    this._cullActive = want;
+  }
+  _indexColliders() {
+    const CELL = 32, PAD = 2; // pad so an entity's own cell holds every box it could touch
+    this._colCell = CELL;
+    this._colGrid = new Map();
+    for (const c of this.colliders) {
+      const minx = Math.floor((c.min.x - PAD) / CELL), maxx = Math.floor((c.max.x + PAD) / CELL);
+      const minz = Math.floor((c.min.z - PAD) / CELL), maxz = Math.floor((c.max.z + PAD) / CELL);
+      for (let gx = minx; gx <= maxx; gx++) for (let gz = minz; gz <= maxz; gz++) {
+        const k = gx + ',' + gz; let a = this._colGrid.get(k); if (!a) this._colGrid.set(k, a = []); a.push(c);
+      }
+    }
   }
 
   _sky() {
     this.scene.background = new THREE.Color(0x9fc4e8);
-    this.scene.fog = new THREE.Fog(0x9fc4e8, 140, 620);
+    // Tight distance fog: things fade out by ~200u so the world reads as a
+    // misty continent and distant objects can be culled without a visible pop.
+    this.scene.fog = new THREE.Fog(0x9fc4e8, 60, 205);
 
     const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x6a7050, 0.85);
     this.scene.add(hemi);
@@ -390,11 +441,13 @@ export class World {
       sp.push(Math.cos(a) * Math.cos(el) * r, Math.sin(el) * r + 60, Math.sin(a) * Math.cos(el) * r);
     }
     starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
-    this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, transparent: true, opacity: 0 }));
+    // fog:false so the far-off star field / clouds stay as a backdrop despite the tight fog.
+    this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, transparent: true, opacity: 0, fog: false }));
+    this.stars.userData.noCull = true;
     this.scene.add(this.stars);
 
     // Stylized drifting clouds for the 2.5D backdrop.
-    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
+    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, fog: false });
     this.clouds = [];
     for (let i = 0; i < 30; i++) {
       const c = new THREE.Group();
@@ -406,6 +459,7 @@ export class World {
       }
       c.position.set((hash2(i, 1) - 0.5) * 460, 64 + hash2(i, 2) * 40, (hash2(i, 3) - 0.5) * 460);
       c.userData.drift = 1.2 + hash2(i, 5) * 2.2; // units/sec along +x
+      c.userData.noCull = true;
       this.group.add(c);
       this.clouds.push(c);
     }
@@ -438,6 +492,7 @@ export class World {
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
+    mesh.userData.noCull = true; // one big ground mesh — always drawn (fog hides the far parts)
     this.group.add(mesh);
 
     // Water plane (lakes/seas sit in the low biome areas).
@@ -447,6 +502,7 @@ export class World {
     );
     water.rotation.x = -Math.PI / 2;
     water.position.y = WATER_LEVEL;
+    water.userData.noCull = true;
     this.group.add(water);
     this.water = water;
   }
@@ -1456,6 +1512,7 @@ export class World {
       color: 0xffe98a, size: 0.55, transparent: true, opacity: 0,
       blending: THREE.AdditiveBlending, depthWrite: false,
     }));
+    this.fireflies.userData.noCull = true;
     this.group.add(this.fireflies);
 
     const matRabbit = new THREE.MeshLambertMaterial({ color: 0xb9a98a });
@@ -1519,6 +1576,7 @@ export class World {
       const alt = 38 + hash2(i, 517) * 46;
       b.position.set(cx, alt, cz);
       b.scale.setScalar(1.4 + hash2(i, 519) * 1.6);
+      b.userData.noCull = true;
       this.group.add(b);
       this.birds.push({ mesh: b, cx, cz, alt, r: 28 + hash2(i, 523) * 90,
         sp: 0.12 + hash2(i, 529) * 0.22, ph: hash2(i, 531) * 6.28, flapSp: 7 + hash2(i, 537) * 5 });
@@ -1558,6 +1616,7 @@ export class World {
     tail.position.z = -N * 1.7 - 0.9; tail.rotation.x = -Math.PI / 2; g.add(tail);
     g.scale.setScalar(2.3);
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.noCull = true;
     this.group.add(g);
     this.dragon = { group: g, segs, wings, orbitR: 250, alt: 158, sp: 0.06, ph: 0 };
   }
@@ -1615,8 +1674,10 @@ export class World {
       }
     }
 
-    // Critters wander toward roaming targets near their home patch.
+    // Critters wander toward roaming targets near their home patch (skip the
+    // far ones the culler has hidden).
     for (const c of this.critters) {
+      if (!c.mesh.visible) continue;
       c.t -= dt;
       if (c.t <= 0) {
         const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 7;
@@ -1722,7 +1783,12 @@ export class World {
   // Returns the climbable collider it is pressed against, if any.
   resolveCircle(cx, cz, r) {
     let touchingClimb = null;
-    for (const c of this.colliders) {
+    // Only test colliders in the entity's grid cell (padded so it holds every
+    // box within reach), instead of all ~1500 — a big win for movement.
+    const list = this._colGrid
+      ? (this._colGrid.get(Math.floor(cx / this._colCell) + ',' + Math.floor(cz / this._colCell)) || EMPTY_COLLIDERS)
+      : this.colliders;
+    for (const c of list) {
       // closest point on AABB (xz only)
       const nx = THREE.MathUtils.clamp(cx, c.min.x, c.max.x);
       const nz = THREE.MathUtils.clamp(cz, c.min.z, c.max.z);
