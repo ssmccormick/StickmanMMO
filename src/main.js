@@ -3,7 +3,7 @@
 // player, camera, enemies, combat, UI, audio, and networking.
 // ============================================================
 import * as THREE from 'three';
-import { World, areaAt } from './world.js';
+import { World, areaAt, WATER_LEVEL } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
@@ -13,7 +13,7 @@ import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
-import { starterWeapon, makeStoneSword } from './items.js';
+import { starterWeapon, makeStoneSword, makeFish } from './items.js';
 import * as Quests from './quests.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -167,11 +167,55 @@ ui.setupStart({
 // Quaff the first health potion in the bag (hotkey Q).
 function quickHeal() {
   if (!player || !player.alive) return;
-  const pot = player.inventory.find((it) => it.type === 'consumable' && it.kind === 'heal');
+  // Prefer an actual potion over a fish so Q doesn't eat your catch.
+  const pot = player.inventory.find((it) => it.type === 'consumable' && it.kind === 'heal' && it.baseId !== 'fish')
+    || player.inventory.find((it) => it.type === 'consumable' && it.kind === 'heal');
   if (!pot) { ui.log('No health potion in your bag.', 'sys'); return; }
   const r = player.useConsumable(pot.uid);
   if (r.heal != null) { ui.log(`Used ${pot.name} (+${r.heal} HP).`, 'heal'); ui.floater(`+${r.heal}`, 'heal', player.pos); }
   if (ui.inventoryOpen) ui.renderInventory();
+}
+
+// ---- Fishing: cast at a water spot, wait for a bite, reel it in with E ----
+let fishing = null;
+function startFishing(spot, t) {
+  const bob = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff5a3c }));
+  bob.position.set(spot.x, WATER_LEVEL + 0.15, spot.z);
+  scene.add(bob);
+  player.facing = Math.atan2(spot.x - player.pos.x, spot.z - player.pos.z); // face the water
+  fishing = { stage: 'wait', biteAt: t + 2.5 + Math.random() * 5, biteUntil: 0, bobber: bob, anchor: player.pos.clone() };
+  ui.log('You cast your line into the water…', 'sys');
+  audio.play('cast');
+}
+function endFishing(msg, type) {
+  if (fishing && fishing.bobber) scene.remove(fishing.bobber);
+  fishing = null;
+  if (msg) ui.log(msg, type || 'sys');
+}
+function updateFishing(t) {
+  if (!player.alive || player.pos.distanceTo(fishing.anchor) > 1.6) { endFishing('You stop fishing.'); return; }
+  const bob = fishing.bobber;
+  if (fishing.stage === 'wait') {
+    bob.position.y = WATER_LEVEL + 0.15 + Math.sin(t * 2) * 0.04;
+    ui.showPrompt('🎣 Waiting for a bite…  <span style="opacity:.7">(move to stop)</span>');
+    if (t >= fishing.biteAt) { fishing.stage = 'bite'; fishing.biteUntil = t + 1.5; ui.log('Something bites!', 'xp'); audio.play('cast'); }
+    else if (input.just('KeyE')) endFishing('You reeled in too early — nothing.');
+  } else if (fishing.stage === 'bite') {
+    bob.position.y = WATER_LEVEL - 0.15 + Math.sin(t * 24) * 0.12; // dipping
+    ui.showPrompt('❗ <b>A bite!</b> Press <b>E</b> to reel it in!');
+    if (input.just('KeyE')) {
+      const area = areaAt(player.pos.x, player.pos.z);
+      const lvl = (area && area.level) || Math.round(Math.hypot(player.pos.x, player.pos.z) / 9);
+      const fish = makeFish(lvl);
+      if (player.addItem(fish)) {
+        ui.log(`You reel in a <b>${fish.name}</b>! (${fish.rarity}, worth ${fish.value}g)`, 'xp');
+        ui.floater(`${fish.glyph} ${fish.name}`, 'xp', player.pos);
+        if (ui.inventoryOpen) ui.renderInventory();
+        audio.play('level');
+      } else ui.log(`A ${fish.name} slipped away — your bag is full.`, 'sys');
+      endFishing();
+    } else if (t >= fishing.biteUntil) endFishing('It got away…');
+  }
 }
 
 // ---- Main loop ----
@@ -275,7 +319,7 @@ function animate() {
       if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
     }
     if (newMinions.length) enemies.push(...newMinions);
-    combat.suppressInput = menuOpen || player.mounted; // dismount (R) to fight
+    combat.suppressInput = menuOpen || player.mounted || !!fishing; // no attacking while fishing
     combat.update(dt, input);
     network.update(dt);
     network.sendState(player, dt);
@@ -307,6 +351,7 @@ function animate() {
 
     // Interactions, by priority: vendor → quest giver → camp chest → bonfire.
     if (restCooldown > 0) restCooldown -= dt;
+    let fishSpot = null;
     const nearVendor = player.alive ? world.nearestVendor(player.pos, 4.5) : null;
     const giver = player.alive ? world.questGivers.find((g) => g.pos.distanceTo(player.pos) < 4.5) : null;
     const giverQuest = giver ? Quests.giverActiveQuest(player, giver.giver) : null;
@@ -315,6 +360,8 @@ function animate() {
     const bonfire = world.nearestBonfire(player.pos, 4.5);
     if (menuOpen) {
       ui.hidePrompt();
+    } else if (fishing) {
+      updateFishing(t);
     } else if (nearVendor) {
       ui.showPrompt(`Press <b>E</b> to trade with the <b>${nearVendor.label}</b>`);
       if (input.just('KeyE')) ui.openVendor(player, nearVendor);
@@ -465,6 +512,9 @@ function animate() {
         ui.floater(saved ? 'Saved' : 'Rested', 'heal', player.pos);
         audio.play('rest');
       }
+    } else if (player.alive && player.state === 'ground' && !player.mounted && (fishSpot = world.nearWater(player.pos.x, player.pos.z))) {
+      ui.showPrompt('Press <b>E</b> to cast a line and fish');
+      if (input.just('KeyE')) startFishing(fishSpot, t);
     } else {
       ui.hidePrompt();
     }

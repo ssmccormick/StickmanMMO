@@ -90,6 +90,37 @@ export function makeConsumable(id) {
   };
 }
 
+// Fish you reel in — edible (small heal) and sellable. Rarer fish are worth
+// more and heal more; the deeper/farther the water, the better the odds.
+const FISH = [
+  { name: 'Minnow',      glyph: '🐟', rarity: 'common',    heal: 0.08, value: 6 },
+  { name: 'River Bass',  glyph: '🐟', rarity: 'common',    heal: 0.12, value: 12 },
+  { name: 'Silverscale', glyph: '🐠', rarity: 'uncommon',  heal: 0.18, value: 28 },
+  { name: 'Rainbow Trout', glyph: '🐠', rarity: 'uncommon', heal: 0.22, value: 40 },
+  { name: 'Gleamfin Pike', glyph: '🐡', rarity: 'rare',    heal: 0.30, value: 85 },
+  { name: 'Emberscale Eel', glyph: '🐍', rarity: 'rare',   heal: 0.32, value: 110 },
+  { name: 'Golden Koi',  glyph: '🎏', rarity: 'epic',      heal: 0.45, value: 240 },
+  { name: 'Leviathan Fry', glyph: '🐉', rarity: 'legendary', heal: 0.6, value: 600 },
+];
+export function makeFish(level = 1) {
+  // Weighted toward common; a small luck boost from deeper water (level).
+  const boost = Math.min(0.5, level * 0.012);
+  const r = Math.random();
+  let idx;
+  if (r < 0.5 - boost) idx = Math.floor(Math.random() * 2);           // common
+  else if (r < 0.82 - boost) idx = 2 + Math.floor(Math.random() * 2); // uncommon
+  else if (r < 0.96) idx = 4 + Math.floor(Math.random() * 2);         // rare
+  else if (r < 0.995) idx = 6;                                        // epic
+  else idx = 7;                                                       // legendary
+  const f = FISH[idx];
+  return {
+    uid: 'f' + (UID++) + '_' + Math.random().toString(36).slice(2, 7),
+    baseId: 'fish', name: f.name, glyph: f.glyph, slot: 'consumable', type: 'consumable',
+    rarity: f.rarity, kind: 'heal', heal: f.heal, value: f.value,
+    desc: `A ${f.rarity} catch. Eat to restore ${Math.round(f.heal * 100)}% HP, or sell it.`,
+  };
+}
+
 function rollRarity(boost = 0) {
   // boost shifts the weighted roll toward higher tiers.
   const entries = RARITY_ORDER.map((id) => [id, RARITY[id].weight * (1 + (RARITY_ORDER.indexOf(id) * boost))]);

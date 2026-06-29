@@ -1838,6 +1838,19 @@ export class World {
     return null;
   }
 
+  // If the player is at a water's edge, return a nearby spot on the water to
+  // cast a fishing bobber to (else null). Used by the fishing interaction.
+  nearWater(x, z, reach = 7) {
+    if (heightAt(x, z) < WATER_LEVEL) return null; // already in the water
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 5) {
+      for (let d = 2.5; d <= reach; d += 2) {
+        const px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
+        if (heightAt(px, pz) < WATER_LEVEL - 0.5) return { x: px, z: pz };
+      }
+    }
+    return null;
+  }
+
   // Top Y of a collider (for finishing a climb / standing on cliffs).
   topOf(collider) { return collider.max.y; }
 }
