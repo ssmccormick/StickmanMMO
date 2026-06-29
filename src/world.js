@@ -6,6 +6,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { createStickman } from './stickman.js';
+import { buildWeaponMesh } from './weapons.js';
 import { GIVERS } from './quests.js';
 
 export const WORLD_SIZE = 380; // half-extent; world spans -380..380
@@ -276,7 +277,9 @@ export class World {
     this._caves();
     this._bonfires();
     this._spawnZones();
+    this._swordInStone();
     this._ambientLife();
+    this._aerial();
   }
 
   _sky() {
@@ -1106,6 +1109,47 @@ export class World {
     return null;
   }
 
+  // The blade in the stone — hidden far from the roads. Drawing it out requires
+  // the worthy (a level + total-attribute gate, checked in main.js).
+  _swordInStone() {
+    const x = 312, z = -300; // a lonely outcrop in the far reaches
+    const y = heightAt(x, z);
+    const g = new THREE.Group();
+    // A mossy anvil-stone.
+    const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(2.1, 0), new THREE.MeshLambertMaterial({ color: 0x6b6b62 }));
+    stone.scale.set(1.15, 0.65, 1.15); stone.position.y = 0.9; stone.rotation.y = 0.6;
+    g.add(stone);
+    // A ring of guardian rocks around the base.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7 + (i % 3) * 0.25, 0), new THREE.MeshLambertMaterial({ color: 0x5e5e55 }));
+      r.position.set(Math.cos(a) * 3.4, 0.3, Math.sin(a) * 3.4); r.rotation.set(a, a * 2, a);
+      g.add(r);
+    }
+    // The embedded sword — hilt up, blade buried in the stone.
+    const sword = buildWeaponMesh('sword', 0xdfe6ff);
+    sword.scale.setScalar(2.4);
+    sword.rotation.x = Math.PI;        // flip so the blade points down
+    sword.position.set(0, 3.5, 0);     // hilt rises above the stone, blade sinks in
+    g.add(sword);
+    // A soft beacon glow so the worthy can find it.
+    const glow = new THREE.PointLight(0x9fd0ff, 1.4, 16); glow.position.set(0, 3.2, 0);
+    g.add(glow);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this.swordStone = {
+      pos: new THREE.Vector3(x, y, z), group: g, sword, glow, pulled: false,
+      req: { level: 14, total: 60 }, // need Lv14+ AND STR+DEX+INT >= 60
+    };
+  }
+  setSwordStonePulled() {
+    if (!this.swordStone) return;
+    this.swordStone.pulled = true;
+    this.swordStone.sword.visible = false;
+    this.swordStone.glow.intensity = 0;
+  }
+
   // Fireflies (glow at dusk/night near forests & swamp) plus small wandering
   // critters — rabbits that hop, snakes that slither, little birds. Purely
   // decorative: no colliders, no combat. They just make the world feel alive.
@@ -1171,6 +1215,67 @@ export class World {
   nearestCamp(pos, maxDist = 4.5) {
     for (const c of this.camps) { if (c.pos.distanceTo(pos) < maxDist) return c; }
     return null;
+  }
+
+  // Birds flapping across the sky + one great dragon circling high above.
+  _aerial() {
+    this.birds = [];
+    const birdMat = new THREE.MeshLambertMaterial({ color: 0x2b2b30 });
+    for (let i = 0; i < 20; i++) {
+      const b = new THREE.Group();
+      const wings = [];
+      for (const s of [1, -1]) {
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.05, 0.32), birdMat);
+        wing.geometry.translate(s * 0.5, 0, 0); // pivot at the body center
+        b.add(wing); wings.push(wing);
+      }
+      b.userData.wings = wings;
+      const cx = (hash2(i, 511) - 0.5) * WORLD_SIZE * 1.5;
+      const cz = (hash2(i, 513) - 0.5) * WORLD_SIZE * 1.5;
+      const alt = 38 + hash2(i, 517) * 46;
+      b.position.set(cx, alt, cz);
+      b.scale.setScalar(1.4 + hash2(i, 519) * 1.6);
+      this.group.add(b);
+      this.birds.push({ mesh: b, cx, cz, alt, r: 28 + hash2(i, 523) * 90,
+        sp: 0.12 + hash2(i, 529) * 0.22, ph: hash2(i, 531) * 6.28, flapSp: 7 + hash2(i, 537) * 5 });
+    }
+    this._buildDragon();
+  }
+
+  _buildDragon() {
+    const g = new THREE.Group();
+    const scaleMat = new THREE.MeshLambertMaterial({ color: 0x4a2030 });
+    const bellyMat = new THREE.MeshLambertMaterial({ color: 0x73402c });
+    const membrane = new THREE.MeshLambertMaterial({ color: 0x2a1020, side: THREE.DoubleSide });
+    const segs = []; const N = 9;
+    for (let i = 0; i < N; i++) {
+      const r = 1.8 * (1 - i / (N + 3));
+      const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 7), scaleMat);
+      seg.position.z = -i * 1.7; g.add(seg); segs.push(seg);
+    }
+    // Head (forward at +Z): skull, snout, horns, glowing eyes.
+    const head = new THREE.Group(); head.position.z = 2.2; g.add(head);
+    head.add(new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.6, 2.4), scaleMat));
+    const snout = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 1.5), scaleMat); snout.position.set(0, -0.2, 1.7); head.add(snout);
+    for (const s of [1, -1]) {
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.26, 1.3, 5), bellyMat); horn.position.set(s * 0.55, 1.05, -0.5); horn.rotation.x = -0.5; head.add(horn);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.24, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb13c })); eye.position.set(s * 0.72, 0.35, 1.05); head.add(eye);
+    }
+    // Wings: a spar + a broad membrane, flapping from the shoulders.
+    const wings = [];
+    for (const s of [1, -1]) {
+      const wing = new THREE.Group(); wing.position.set(s * 1.1, 0.6, -2.2);
+      const spar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.07, 6.4, 5), bellyMat);
+      spar.rotation.z = Math.PI / 2; spar.position.x = s * 3.2; wing.add(spar);
+      const mem = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.06, 4.6), membrane); mem.position.set(s * 3.2, 0, -1.3); wing.add(mem);
+      g.add(wing); wings.push(wing);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.75, 2.4, 5), scaleMat);
+    tail.position.z = -N * 1.7 - 0.9; tail.rotation.x = -Math.PI / 2; g.add(tail);
+    g.scale.setScalar(2.3);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this.dragon = { group: g, segs, wings, orbitR: 250, alt: 158, sp: 0.06, ph: 0 };
   }
 
   // Animate flickering bonfires + drifting clouds + day/night.
@@ -1249,6 +1354,33 @@ export class World {
       } else {
         // Hop bob (taller while moving).
         m.position.y = gy + Math.abs(Math.sin(t * 8 + c.ph)) * (d > 0.15 ? 0.25 : 0.05);
+      }
+    }
+
+    // The sword in the stone pulses its beacon until drawn.
+    if (this.swordStone && !this.swordStone.pulled) this.swordStone.glow.intensity = 1.0 + Math.sin(t * 2.5) * 0.5;
+
+    // Birds: drift in lazy circles, flapping.
+    for (const b of this.birds) {
+      const x = b.cx + Math.cos(t * b.sp + b.ph) * b.r;
+      const z = b.cz + Math.sin(t * b.sp + b.ph) * b.r;
+      b.mesh.position.set(x, b.alt + Math.sin(t * 0.6 + b.ph) * 3, z);
+      b.mesh.rotation.y = Math.atan2(-Math.sin(t * b.sp + b.ph), Math.cos(t * b.sp + b.ph)) + Math.PI / 2;
+      const f = Math.sin(t * b.flapSp + b.ph) * 0.7;
+      b.mesh.userData.wings[0].rotation.z = f; b.mesh.userData.wings[1].rotation.z = -f;
+    }
+
+    // The dragon: a wide, high orbit with flapping wings and an undulating body.
+    if (this.dragon) {
+      const d = this.dragon; d.ph += dt * d.sp;
+      const x = Math.cos(d.ph) * d.orbitR, z = Math.sin(d.ph) * d.orbitR;
+      d.group.position.set(x, d.alt + Math.sin(d.ph * 3) * 9, z);
+      d.group.rotation.y = Math.atan2(-Math.sin(d.ph), Math.cos(d.ph)); // face the way it flies
+      const flap = Math.sin(t * 2.1) * 0.55;
+      d.wings[0].rotation.z = -0.15 - flap; d.wings[1].rotation.z = 0.15 + flap;
+      for (let i = 0; i < d.segs.length; i++) {
+        d.segs[i].position.y = Math.sin(t * 1.8 + i * 0.5) * 0.5;
+        d.segs[i].position.x = Math.sin(t * 1.4 + i * 0.6) * 0.6;
       }
     }
   }

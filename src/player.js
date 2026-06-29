@@ -6,6 +6,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { createStickman, animateStickman } from './stickman.js';
+import { buildWeaponMesh } from './weapons.js';
 import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
@@ -49,6 +50,7 @@ export class Player {
     this.timed = [];        // active consumable buffs: {until, label, color, str?, dmgMult?, speedMult?...}
     this.questLog = {};     // id -> { accepted, progress, turnedIn }
     this.discovered = [];   // names of bonfires rested at (fast-travel points)
+    this.stoneSwordPulled = false; // has the blade in the stone been drawn?
 
     this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
     scene.add(this.mesh);
@@ -180,12 +182,30 @@ export class Player {
 
   _updateWeaponVisual() {
     const j = this.mesh && this.mesh.userData.joints;
-    if (!j || !j.weapon) return;
+    if (!j || !j.armR) return;
     const w = this.gear.weapon;
+    const kind = w ? (w.kind || 'sword') : null;
     const color = w ? RARITY[w.rarity].hex : this.def.accent;
-    j.weapon.material.color.setHex(color);
-    const tier = w ? 1 + Object.keys(RARITY).indexOf(w.rarity) * 0.14 : 1;
-    j.weapon.scale.setScalar(tier);
+    // Swap the held model only when the weapon kind/rarity actually changes.
+    const key = kind ? kind + ':' + w.rarity : 'none';
+    if (key !== this._heldKey) {
+      if (this._heldWeapon) {
+        j.armR.remove(this._heldWeapon);
+        this._heldWeapon.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+        this._heldWeapon = null;
+      }
+      if (j.weapon) j.weapon.visible = false; // hide the generic stick
+      if (kind) {
+        const wm = buildWeaponMesh(kind, color);
+        wm.position.set(0, -0.62, 0);
+        wm.rotation.z = Math.PI / 2.5; // mount it in the hand like the old stick
+        const tier = 1 + Object.keys(RARITY).indexOf(w.rarity) * 0.06;
+        wm.scale.setScalar(tier);
+        j.armR.add(wm);
+        this._heldWeapon = wm;
+      }
+      this._heldKey = key;
+    }
   }
 
   // The rank-scaled ability in hotbar slot i (or null).
@@ -470,6 +490,7 @@ export class Player {
       gold: this.gold,
       questLog: this.questLog,
       discovered: this.discovered,
+      stoneSword: this.stoneSwordPulled,
     };
   }
 
@@ -495,6 +516,7 @@ export class Player {
     if (typeof save.gold === 'number') this.gold = save.gold;
     if (save.questLog && typeof save.questLog === 'object') this.questLog = save.questLog;
     if (Array.isArray(save.discovered)) this.discovered = save.discovered;
+    this.stoneSwordPulled = !!save.stoneSword;
     this.recomputeGear();
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;

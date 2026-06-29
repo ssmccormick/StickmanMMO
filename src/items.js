@@ -180,6 +180,22 @@ export function makeUnique(ilvl) {
   return it;
 }
 
+// The blade in the stone — a fixed legendary reward for the worthy. Always a
+// sword, scaled a bit above the player's level, with a heroic stat package.
+export function makeStoneSword(level = 20) {
+  const it = generateItem({ slot: 'weapon', level: level + 4, forceRarity: 'legendary' });
+  const base = BASES.weapon.find((b) => b.id === 'sword');
+  it.baseId = base.id; it.kind = base.kind; it.glyph = '⚔️';
+  it.name = 'Aetherbrand, the Kingmaker';
+  it.unique = true;
+  it.flavor = 'Drawn from the stone by the worthy alone. The Emberheart hums where it rests.';
+  it.stats.damage = (it.stats.damage || 0) + Math.round(20 + level * 2.5);
+  it.stats.str = (it.stats.str || 0) + 14;
+  it.stats.crit = (it.stats.crit || 0) + 0.1;
+  it.stats.lifesteal = (it.stats.lifesteal || 0) + 0.08;
+  return it;
+}
+
 // Signature uniques dropped by specific world bosses.
 export const BOSS_UNIQUES = {
   'Gorath the Wildking': { slot: 'weapon', base: 'axe', name: "Gorath's Wildaxe", glyph: '🪓', bonus: { lifesteal: 0.12, str: 12, speed: 0.05 }, flavor: 'Torn from the Wildking’s dying grip.' },

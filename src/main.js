@@ -13,7 +13,7 @@ import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
-import { starterWeapon } from './items.js';
+import { starterWeapon, makeStoneSword } from './items.js';
 import * as Quests from './quests.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -111,6 +111,9 @@ function beginGame(classId, name, server, save) {
     const rec = Saves.create(player.toSave());
     player.saveId = rec.id;
   }
+
+  // If this character already drew the blade in the stone, leave the stone empty.
+  if (player.stoneSwordPulled) world.setSwordStonePulled();
 
   lastHp = player.stats.hp;
   enemies = spawnEnemies(scene, world);
@@ -386,6 +389,28 @@ function animate() {
         }
       } else {
         ui.showPrompt('Defeat the <b>elite camp</b> to unlock the chest');
+      }
+    } else if (player.alive && world.swordStone && !world.swordStone.pulled && player.pos.distanceTo(world.swordStone.pos) < 4.5) {
+      const ss = world.swordStone;
+      const total = player.effStr + player.effDex + player.effInt;
+      const worthy = player.stats.level >= ss.req.level && total >= ss.req.total;
+      if (worthy) {
+        ui.showPrompt('A blade waits in the stone. Press <b>E</b> to draw it.');
+        if (input.just('KeyE')) {
+          world.setSwordStonePulled();
+          player.stoneSwordPulled = true;
+          const blade = makeStoneSword(player.stats.level);
+          if (player.addItem(blade)) {
+            ui.log(`The stone yields! You draw <b>${blade.name}</b>.`, 'xp');
+            ui.floater('★ Aetherbrand drawn!', 'crit', player.pos);
+            if (ui.inventoryOpen) ui.renderInventory();
+          } else {
+            ui.log('Your pack is too full to draw the blade.', 'sys');
+            world.swordStone.pulled = false; world.swordStone.sword.visible = true; player.stoneSwordPulled = false;
+          }
+        }
+      } else {
+        ui.showPrompt(`A blade rests in the stone, but you are not yet worthy.<br><span style="opacity:.8">Requires <b>Level ${ss.req.level}</b> and <b>${ss.req.total}</b> total STR+DEX+INT (you have Lv ${player.stats.level}, ${Math.round(total)}).</span>`);
       }
     } else if (bonfire && player.alive) {
       ui.showPrompt('Press <b>E</b> to rest at the bonfire');
