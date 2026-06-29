@@ -44,19 +44,27 @@ export const CODEX = [
     ],
   },
   {
-    id: 'reaches', title: 'The Four Reaches', icon: '🗺️', entries: [
+    id: 'reaches', title: 'The Reaches', icon: '🗺️', entries: [
       { title: 'The Greenwood (Forest)', body: 'A vast, overgrown wood watched over by the town of Thornhollow and its rangers. Beautiful and deadly — even the wolves have turned. The stag-lord Gorath rules its depths.' },
       { title: 'The Frostpeaks (Snow)', body: 'A range of bitter cold and old stone, anchored by the fortress-town of Frostgard, whose walls have never fallen. The dead walk thick here, marshalled by the Fallen Lord, Frosthelm.' },
       { title: 'The Dunes (Desert)', body: 'An endless burning waste, crossed only by the caravans of Dustmarket. Hill-giants and worse roam it, and beneath the sand hunts the Devourer, Sandmaw.' },
       { title: 'The Mire (Swamp)', body: 'The oldest wound of the Sundering — a drowned, rotting fen ringed by sunken Gloomfen. The Blight is densest here, coiled around the thing at its heart: the Mirelord.' },
+      { title: 'The Emberwastes (Ash)', body: 'A scorched volcanic waste of charred trees and ember-lit ash, where the Blight burns rather than rots. The forge-town of Cinderhold endures the heat; the Emberwyrm Pyraxis prowls its molten reaches.' },
+      { title: 'The Verdant Wilds (Jungle)', body: 'A riotous, suffocating jungle of towering palms and tangled vine, ruled from the canopy-town of Verdanthul. Older and hungrier than the Greenwood — and Mossfang the Ancient is older still.' },
+      { title: 'Shardspire Highlands (Crystal)', body: 'Pale, glittering highlands of crystal spires that hum with Ember-light, anchored by Prismhold. The light here is no comfort: Vael, the Prism Tyrant, bends it to cruel ends.' },
+      { title: 'The Scarlands (Badlands)', body: 'A cracked country of rust-red mesas and bone-dry canyons, held by the frontier-town of Rustmarket. The farthest, harshest reach — and the Bonelord Skarn rules its dead canyons.' },
     ],
   },
   {
-    id: 'archfiends', title: 'The Four Archfiends', icon: '☠️', entries: [
+    id: 'archfiends', title: 'The Archfiends', icon: '☠️', entries: [
       { title: 'Gorath the Wildking', body: 'A stag-lord of the old wood, swollen monstrous by the Blight that crowned him. The shard lodged in his heart keeps the whole Greenwood corrupted.' },
       { title: 'Frosthelm the Fallen', body: 'Once a First Hero who helped raise the Nexus. He died in the Sundering and rose wrong; now the Blight wears his armor — and his shard of the Emberheart.' },
       { title: 'Sandmaw the Devourer', body: 'Hunger given shape, burrowing the deep desert with a shard lodged in its gut. It will not stop eating until the world is bones.' },
       { title: 'The Mirelord', body: 'The Blight made flesh — the first thing to crawl from the cracks at the Sundering. It is rooted at the swamp\'s heart around the largest shard of all.' },
+      { title: 'Pyraxis the Emberwyrm', body: 'A beast born of the Sundering\'s fire, wreathed in the Emberwastes\' ash. The shard in its breast smolders, keeping the volcanic reach forever burning.' },
+      { title: 'Mossfang the Ancient', body: 'A primordial thing that woke in the jungle\'s heart when the world broke, vast and root-bound. Its shard pulses beneath layers of bark and moss.' },
+      { title: 'Vael the Prism Tyrant', body: 'A being of fractured Ember-light that rules the crystal highlands, splitting the flame into a hundred cruel colors. Its shard is the brightest — and the coldest.' },
+      { title: 'Skarn the Bonelord', body: 'The marshal of the Scarlands\' endless dead, throned in bone at the bottom of Bonechew Canyon. Its shard is the last and most distant of all.' },
     ],
   },
   {

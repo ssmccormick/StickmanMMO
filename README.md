@@ -90,16 +90,21 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 
 ## 🌍 Game systems
 
-- **Open world & biomes** — a procedural heightfield split into smoothly-blended biomes,
-  each with its own **terrain character**: the **Greenwood** forest (plateaus), the snowy
-  **Frostpeaks** (tall peaks), the **Mire** swamp (sunken lowlands), and the **Dunes**
-  desert (rolling dunes), around the central meadow. Distinct palettes, props, and rocks
+- **Open world & eight biomes** — a procedural heightfield split into smoothly-blended
+  biomes, each with its own **terrain character** and palette: the **Greenwood** forest
+  (plateaus), snowy **Frostpeaks** (tall peaks), the **Mire** swamp (sunken lowlands), the
+  **Dunes** desert (rolling dunes), plus four farther end-game reaches — the **Emberwastes**
+  (charred volcanic ridges), the **Verdant Wilds** (lush jungle hills with towering palms),
+  the **Shardspire Highlands** (stepped crystal plateaus), and the **Scarlands** (rust-red
+  badland mesas). Each fans out from the Nexus on its own heading, so the world is laid out
+  organically (a soft-Voronoi of biome regions, not a neat grid). Distinct props and rocks
   blend along noise-distorted borders. Scattered trees, rocks, bushes, flowers, water,
-  drifting clouds, and **ruins** dress the land. Climbable cliffs, and **solid collision**
-  on structures for both you and monsters.
-- **A big, spread-out world** with **dirt roads** linking the Nexus to every town,
-  **named areas** within each biome (Whisperwood Glade, Frostfang Pass, The Bonewaste,
-  Rotheart Hollow…) each with a recommended level and a **zone banner** on entry, plus
+  drifting clouds, **ruins**, and big snow-capped **mountains** dress the land. Climbable
+  cliffs, and **solid collision** on structures for both you and monsters.
+- **A big, spread-out world** with **winding dirt roads** that bend like natural trails
+  linking the Nexus to every town, **named areas** within each biome (Whisperwood Glade,
+  The Bonewaste, The Shardspire, Bonechew Canyon…) each with a recommended level and a
+  **zone banner** on entry, plus
   **lakes you can swim in** — dive with Shift, surface with Space, and watch your **air
   bar** while submerged (run out and you drown).
 - **Mountains & caves** — big craggy **mountains** with snow caps rise as landmarks and
@@ -111,9 +116,16 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   densely packed with **tall, layered trees** that tower over the lighter world-wide
   scatter, so the woods feel genuinely deep.
 - **A world that feels alive** — **fireflies** drift and glow over the forests and swamp at
-  dusk and through the night, and small **critters** wander everywhere: rabbits that hop,
-  little birds, and **snakes** that slither across the ground. Purely ambient — they just
-  make the world breathe.
+  dusk and through the night, small **critters** wander everywhere (rabbits that hop, little
+  birds, **snakes** that slither), **flocks of birds** wheel across the sky, and a great
+  **dragon** circles high overhead. Purely ambient — they just make the world breathe.
+- **Flying enemies** — **Sky Wraiths** patrol the air above the wilds, cruising high until
+  you stray close, then **diving down to attack** before climbing back out of reach.
+- **The sword in the stone** — a glowing blade is hidden in a lonely outcrop in the far
+  reaches. Draw it (E) only if you're **worthy** (Level 14+ and 60+ total STR/DEX/INT) to
+  claim **Aetherbrand, the Kingmaker**, a fixed legendary sword.
+- **Weapon models** — your equipped weapon now renders as the real thing — sword, axe,
+  mace, dagger, bow, staff, or wand — tinted and scaled by its rarity.
 - **Towns are safe havens** — no monsters spawn near or wander into a town. Each has its
   own **campfire**. The central hub **The Nexus** (big plaza, glowing portal-obelisk,
   watchtower, well, and **four merchants** — Weaponsmith, Armorer, Alchemist, Trader) is
@@ -144,12 +156,13 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Elite war-camps** — scattered through the biomes are camps of **elite** monsters
   (bigger, golden-named, much tougher) guarding a **treasure chest**. Clear the whole camp
   to unlock the chest, then open it for a burst of **high-rarity loot** (often uniques).
-- **World bosses** — a powerful named **boss** lurks deep in each biome (Gorath the
-  Wildking, Frosthelm the Fallen, Sandmaw the Devourer, The Mirelord) — enormous, ~8× HP,
-  with a **telegraphed shockwave slam**, **multiple phases** (they enrage at 66%/33% HP —
-  faster, harder, and they **summon minions**), and a dedicated **boss health bar**. They
-  drop their own **signature named unique** (Gorath's Wildaxe, The Frosthelm, Maw of the
-  Dunes, Shroud of the Mire) plus high-rarity gear and a pile of gold.
+- **World bosses** — a powerful named **boss** lurks deep in each of the eight biomes
+  (Gorath the Wildking, Frosthelm the Fallen, Sandmaw the Devourer, The Mirelord, and the
+  four end-game Archfiends — Pyraxis the Emberwyrm, Mossfang the Ancient, Vael the Prism
+  Tyrant, and Skarn the Bonelord up at Level 44) — enormous, ~8× HP, with a **telegraphed
+  shockwave slam**, **multiple phases** (they enrage at 66%/33% HP — faster, harder, and
+  they **summon minions**), and a dedicated **boss health bar**. The first four drop their
+  own **signature named unique** plus high-rarity gear and a pile of gold.
 - **Consumables** — **health potions** and **elixirs** (temporary buffs to move speed,
   damage, or all attributes). Buy them from the merchant, use them from your bag, or hit
   **`Q`** to quaff a health potion in a pinch. Active buffs show on the HUD with a timer.

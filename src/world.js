@@ -57,6 +57,27 @@ const BIOME_LAYOUT = [
     high: { name: 'Rotheart Hollow', level: 22, off: 20, dist: 250, r: 54, count: 13 },
     camp: { id: 'camp_swamp', level: 14, off: 7, dist: 210 },
     boss: { name: 'The Mirelord', type: 'knight', level: 27 } },
+  // --- Four farther reaches (end-game), interleaved between the first four ---
+  { biome: 'ash', heading: 56, dist: 188, town: 'Cinderhold', townDist: 178,
+    low: { name: 'Cinderfields', level: 24, off: -15, dist: 108, r: 46, count: 12 },
+    high: { name: 'The Ashen Reach', level: 33, off: 17, dist: 256, r: 56, count: 14 },
+    camp: { id: 'camp_ash', level: 28, off: 8, dist: 214 },
+    boss: { name: 'Pyraxis the Emberwyrm', type: 'brute', level: 36 } },
+  { biome: 'jungle', heading: 142, dist: 182, town: 'Verdanthul', townDist: 172,
+    low: { name: 'Tanglevine Basin', level: 26, off: -14, dist: 106, r: 46, count: 12 },
+    high: { name: 'Heartroot Hollow', level: 35, off: 18, dist: 252, r: 56, count: 14 },
+    camp: { id: 'camp_jungle', level: 30, off: 9, dist: 212 },
+    boss: { name: 'Mossfang the Ancient', type: 'brute', level: 38 } },
+  { biome: 'crystal', heading: 244, dist: 190, town: 'Prismhold', townDist: 180,
+    low: { name: 'Glimmerfront', level: 28, off: 14, dist: 110, r: 46, count: 12 },
+    high: { name: 'The Shardspire', level: 37, off: -17, dist: 256, r: 56, count: 14 },
+    camp: { id: 'camp_crystal', level: 32, off: -8, dist: 216 },
+    boss: { name: 'Vael the Prism Tyrant', type: 'knight', level: 40 } },
+  { biome: 'badlands', heading: 332, dist: 184, town: 'Rustmarket', townDist: 174,
+    low: { name: 'Rustgulch', level: 30, off: -13, dist: 104, r: 46, count: 12 },
+    high: { name: 'Bonechew Canyon', level: 40, off: 19, dist: 254, r: 56, count: 14 },
+    camp: { id: 'camp_badlands', level: 34, off: 7, dist: 210 },
+    boss: { name: 'Skarn the Bonelord', type: 'knight', level: 44 } },
 ];
 
 // Biome region centers — used by biomeWeights as soft-Voronoi sites.
@@ -71,7 +92,7 @@ export function biomeWeights(x, z) {
   const nz = z + (smoothNoise(x * 0.02 + 9.1, z * 0.02 + 4.2) - 0.5) * 70;
   const town = 1 - smoothstep(20, 60, Math.hypot(x, z)); // meadow core (true position)
   const outer = 1 - town;
-  const w = { forest: 0, snow: 0, swamp: 0, desert: 0, meadow: town };
+  const w = { forest: 0, snow: 0, swamp: 0, desert: 0, ash: 0, jungle: 0, crystal: 0, badlands: 0, meadow: town };
   let sum = 0; const inf = [];
   for (const r of BIOME_REGIONS) {
     const d = Math.hypot(nx - r.x, nz - r.z);
@@ -201,6 +222,18 @@ export function heightAt(x, z) {
     const plat = Math.round((smoothNoise(x * 0.02 + 60, z * 0.02 + 60) * 22) / 6) * 6;
     h += w.forest * (plat - 6);
   }
+  if (w.ash > 0.001)     h += w.ash * (smoothNoise(x * 0.03 + 80, z * 0.03 + 80) * 30 - 2);        // jagged volcanic ridges
+  if (w.jungle > 0.001)  h += w.jungle * (smoothNoise(x * 0.025 + 110, z * 0.025 + 110) * 12 + 2);  // lush rolling hills
+  if (w.crystal > 0.001) {
+    // Crystal highlands: tall, stepped plateaus.
+    const step = Math.round((smoothNoise(x * 0.018 + 140, z * 0.018 + 140) * 34) / 8) * 8;
+    h += w.crystal * (step + 4);
+  }
+  if (w.badlands > 0.001) {
+    // Badlands mesas: flat-topped steps separated by canyons.
+    const mesa = Math.round((smoothNoise(x * 0.022 + 170, z * 0.022 + 170) * 28) / 10) * 10;
+    h += w.badlands * (mesa - 2);
+  }
 
   // Flatten the nearest town to a level plateau.
   let flat = 1;
@@ -231,6 +264,10 @@ export const BIOMES = {
   snow: { name: 'Frostpeaks', ground: 0xe2ebf2, ground2: 0xc2d4e2, rock: 0x9aa6b2, prop: 'pine' },
   swamp: { name: 'The Mire', ground: 0x49583a, ground2: 0x3a4a32, rock: 0x55564a, prop: 'dead' },
   desert: { name: 'The Dunes', ground: 0xd9c486, ground2: 0xc7a866, rock: 0xbaa06e, prop: 'cactus' },
+  ash: { name: 'The Emberwastes', ground: 0x40322c, ground2: 0x5a3326, rock: 0x7a2a1a, prop: 'charred' },
+  jungle: { name: 'The Verdant Wilds', ground: 0x2f6e2a, ground2: 0x3f8230, rock: 0x4a5a3a, prop: 'jungle' },
+  crystal: { name: 'Shardspire Highlands', ground: 0x8a9ad0, ground2: 0xb2a8e2, rock: 0x9a8ad8, prop: 'crystal' },
+  badlands: { name: 'The Scarlands', ground: 0xb0663a, ground2: 0xc98a4a, rock: 0xa0522d, prop: 'cactus' },
 };
 
 // Discrete biome (for prop choice / camps) — the dominant weight, distorted
@@ -239,7 +276,7 @@ export function biomeAt(x, z) {
   if (Math.hypot(x, z) < 22) return BIOMES.meadow;
   const w = biomeWeights(x, z);
   let best = 'forest', bv = -1;
-  for (const k of ['forest', 'snow', 'swamp', 'desert', 'meadow']) if (w[k] > bv) { bv = w[k]; best = k; }
+  for (const k of ['forest', 'snow', 'swamp', 'desert', 'ash', 'jungle', 'crystal', 'badlands', 'meadow']) if (w[k] > bv) { bv = w[k]; best = k; }
   return BIOMES[best];
 }
 
@@ -408,6 +445,10 @@ export class World {
       snow: { wall: 0xcdd6e0, wall2: 0xbcc6d2, roofs: [0x6a7a8a, 0x7a8aa0, 0xeaf2ff], plaza: 0xc2cdd8 },
       desert: { wall: 0xd8c79a, wall2: 0xc8b486, roofs: [0xc08a4a, 0xb07a3a, 0x9a6a3a], plaza: 0xcdbb88 },
       swamp: { wall: 0x6a6a55, wall2: 0x5a5a48, roofs: [0x4a5a3a, 0x3a4a30, 0x55603a], plaza: 0x6a6a52 },
+      ash: { wall: 0x4a3c36, wall2: 0x3a2e2a, roofs: [0x8a2a1a, 0x6a2414, 0xb04a2a], plaza: 0x423630 },
+      jungle: { wall: 0x6a7a4a, wall2: 0x5a6a3a, roofs: [0x2f6e2a, 0x3f7e2f, 0x4a5a2a], plaza: 0x5e6a44 },
+      crystal: { wall: 0xb4bce0, wall2: 0xc8c2ec, roofs: [0x7a6ad0, 0x9a8ad8, 0xa8b0f0], plaza: 0xc2c6e8 },
+      badlands: { wall: 0xc08856, wall2: 0xa86a3a, roofs: [0x8a4a2a, 0xa0522d, 0x6a3a22], plaza: 0xbb8a5a },
     }[biome] || { wall: 0xc9c0a8, wall2: 0xb8a98a, roofs: [0x9a4a3a], plaza: 0xb9b2a0 };
   }
 
@@ -647,6 +688,11 @@ export class World {
     const leafMats = [0x3f7d3a, 0x4f8f3f, 0x5a6f2f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const pineMats = [0x2f6f4a, 0x357a52].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const snowCapMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+    const charredMat = new THREE.MeshLambertMaterial({ color: 0x2a1f1a });
+    const emberMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a });
+    const jungleTrunk = new THREE.MeshLambertMaterial({ color: 0x6a5a3a });
+    const frondMats = [0x2f7e2a, 0x3a8e34, 0x256e22].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const crystalScatter = [0x7ab0ff, 0xb07bff, 0x9a8ad8].map((c) => new THREE.MeshBasicMaterial({ color: c }));
 
     for (let i = 0; i < 1100; i++) {
       const ang = hash2(i, 11) * Math.PI * 2;
@@ -693,6 +739,38 @@ export class World {
             br.rotation.z = (hash2(i, k) - 0.5) * 2; g.add(br);
           }
           this._addBox(trunk, false);
+        } else if (biome.prop === 'charred') {
+          // Charred, twisted dead tree with a faint ember at its root.
+          const th = 1.8 + hash2(i, 19) * 2.2;
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.3, th, 6), charredMat);
+          trunk.position.y = th / 2; g.add(trunk);
+          for (let k = 0; k < 2; k++) {
+            const br = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 0.9, 4), charredMat);
+            br.position.y = th * (0.6 + k * 0.18); br.rotation.z = (hash2(i, k) - 0.5) * 2.2; g.add(br);
+          }
+          const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 0), emberMat); ember.position.y = 0.16; g.add(ember);
+        } else if (biome.prop === 'jungle') {
+          // Tall jungle palm: a slim trunk crowned with broad drooping fronds.
+          const th = 3.2 + hash2(i, 19) * 3.4;
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.22, th, 6), jungleTrunk);
+          trunk.position.y = th / 2; g.add(trunk);
+          const n = 5 + Math.floor(hash2(i, 21) * 3);
+          for (let k = 0; k < n; k++) {
+            const a = (k / n) * Math.PI * 2;
+            const frond = new THREE.Mesh(new THREE.ConeGeometry(0.32, 2.1, 4), frondMats[(i + k) % frondMats.length]);
+            frond.position.set(Math.cos(a) * 0.7, th - 0.3, Math.sin(a) * 0.7);
+            frond.rotation.set(Math.sin(a) * 1.35, -a, -Math.cos(a) * 1.35); g.add(frond);
+          }
+          this._addBox(trunk, false);
+        } else if (biome.prop === 'crystal') {
+          // A cluster of glowing crystal spikes jutting from the ground.
+          const n = 2 + Math.floor(hash2(i, 19) * 3);
+          for (let k = 0; k < n; k++) {
+            const ch = 1.0 + hash2(i, 20 + k) * 2.4;
+            const cry = new THREE.Mesh(new THREE.ConeGeometry(0.18 + hash2(i, k) * 0.14, ch, 5), crystalScatter[(i + k) % crystalScatter.length]);
+            cry.position.set((hash2(i, k) - 0.5) * 1.5, ch / 2, (hash2(k, i) - 0.5) * 1.5);
+            cry.rotation.z = (hash2(i, k) - 0.5) * 0.4; g.add(cry);
+          }
         } else {
           // Leafy tree.
           const th = 2 + hash2(i, 19) * 2.5;
@@ -724,7 +802,7 @@ export class World {
   _forests() {
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3f28 });
     const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => new THREE.MeshLambertMaterial({ color: c }));
-    const forestAreas = AREAS.filter((a) => a.biome === 'forest' && !a.safe);
+    const forestAreas = AREAS.filter((a) => (a.biome === 'forest' || a.biome === 'jungle') && !a.safe);
     for (const fa of forestAreas) {
       for (let i = 0; i < 80; i++) {
         const a = hash2(i, fa.x + 7) * Math.PI * 2;
