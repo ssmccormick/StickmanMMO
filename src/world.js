@@ -299,6 +299,14 @@ export function biomeColorAt(x, z, y) {
   return _bc;
 }
 
+// Buff shrines — pray at one for a long-lived blessing (30–60 min).
+export const SHRINE_TYPES = [
+  { id: 'might', name: 'Shrine of Might', glyph: '⚔️', color: 0xff6a2a, buff: { dmgMult: 1.25 }, dur: 2700, desc: '+25% damage' },
+  { id: 'swift', name: 'Shrine of Swiftness', glyph: '🪽', color: 0x6fc8ff, buff: { speedMult: 1.20 }, dur: 2700, desc: '+20% move speed' },
+  { id: 'titan', name: 'Shrine of the Titan', glyph: '💪', color: 0x9be29e, buff: { str: 14, dex: 14, int: 14 }, dur: 1800, desc: '+14 to all attributes' },
+  { id: 'fury', name: 'Shrine of Fury', glyph: '🔥', color: 0xffae42, buff: { dmgMult: 1.18, speedMult: 1.10 }, dur: 3600, desc: '+18% damage & +10% speed' },
+];
+
 export class World {
   constructor(scene) {
     this.scene = scene;
@@ -315,6 +323,8 @@ export class World {
     this.caves = [];       // { id, name, entrance, spawn, exit, chest, ... }
     this.mountains = [];    // { pos, r, h }
     this.critters = [];    // ambient wandering creatures
+    this.treasures = [];   // hidden loot chests scattered in the wild
+    this.shrines = [];     // buff shrines
     this._build();
   }
 
@@ -334,6 +344,8 @@ export class World {
     this._bonfires();
     this._spawnZones();
     this._swordInStone();
+    this._shrines();
+    this._treasures();
     this._ambientLife();
     this._aerial();
   }
@@ -1247,6 +1259,77 @@ export class World {
     this.swordStone.glow.intensity = 0;
   }
 
+  // Buff shrines: one of each type, scattered so each region has one. Pray at
+  // a shrine (E) for a long blessing; it then dims on a short cooldown.
+  _shrines() {
+    for (let i = 0; i < BIOME_LAYOUT.length; i++) {
+      const b = BIOME_LAYOUT[i];
+      const type = SHRINE_TYPES[i % SHRINE_TYPES.length];
+      // Tuck the shrine off to the side of the low area, a little hidden.
+      const p = polar(b.heading + b.low.off + 22, b.low.dist + 26);
+      let x = p.x, z = p.z, y = heightAt(x, z);
+      if (y < -3) { x = p.x * 0.85; z = p.z * 0.85; y = heightAt(x, z); }
+      const g = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.0, 0.5, 8), new THREE.MeshLambertMaterial({ color: 0x6a6a62 }));
+      base.position.y = 0.25;
+      const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 2.2, 6), new THREE.MeshLambertMaterial({ color: 0x8a8478 }));
+      plinth.position.y = 1.35;
+      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), new THREE.MeshBasicMaterial({ color: type.color }));
+      orb.position.y = 2.9;
+      const light = new THREE.PointLight(type.color, 1.6, 16); light.position.y = 2.9;
+      // Four small pillars around it.
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + 0.4;
+        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.8, 6), new THREE.MeshLambertMaterial({ color: 0x7a7468 }));
+        pil.position.set(Math.cos(a) * 1.7, 0.9, Math.sin(a) * 1.7); g.add(pil);
+      }
+      g.add(base, plinth, orb, light);
+      g.position.set(x, y, z);
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(g);
+      this._addBox(plinth, false);
+      this.shrines.push({ type, pos: new THREE.Vector3(x, y, z), orb, light, cooldownUntil: 0 });
+    }
+  }
+  nearestShrine(pos, maxDist = 4.5) {
+    for (const s of this.shrines) if (s.pos.distanceTo(pos) < maxDist) return s;
+    return null;
+  }
+
+  // Hidden treasure chests scattered across the wild — tucked off the roads and
+  // away from towns to reward exploration. Loot scales with how far out it sits.
+  _treasures() {
+    const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
+    const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });
+    let placed = 0;
+    for (let i = 0; i < 200 && placed < 30; i++) {
+      const ang = hash2(i, 611) * Math.PI * 2;
+      const rad = 70 + hash2(i, 613) * (WORLD_SIZE - 90);
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      const y = heightAt(x, z);
+      if (y < -3) continue;                                   // not underwater
+      if (this.inSafeZone(x, z) || roadDistance(x, z) < 8) continue; // hidden, off the roads
+      const area = areaAt(x, z);
+      const level = area ? area.level + 1 : Math.max(3, Math.round(rad / 9));
+      const chest = new THREE.Group();
+      const baseM = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 1.0), chestMat); baseM.position.y = 0.4;
+      const lid = new THREE.Group();
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.42, 1.0), lidMat); lidMesh.position.set(0, 0.21, 0);
+      lid.position.set(0, 0.8, -0.5); lid.add(lidMesh);
+      const glow = new THREE.PointLight(0xffcf3a, 0.7, 7); glow.position.y = 1.1;
+      chest.add(baseM, lid, glow);
+      chest.position.set(x, y, z);
+      chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(chest);
+      this.treasures.push({ pos: new THREE.Vector3(x, y, z), level, chest, lid, glow, opened: false });
+      placed++;
+    }
+  }
+  nearestTreasure(pos, maxDist = 3.5) {
+    for (const t of this.treasures) if (!t.opened && t.pos.distanceTo(pos) < maxDist) return t;
+    return null;
+  }
+
   // Fireflies (glow at dusk/night near forests & swamp) plus small wandering
   // critters — rabbits that hop, snakes that slither, little birds. Purely
   // decorative: no colliders, no combat. They just make the world feel alive.
@@ -1456,6 +1539,19 @@ export class World {
 
     // The sword in the stone pulses its beacon until drawn.
     if (this.swordStone && !this.swordStone.pulled) this.swordStone.glow.intensity = 1.0 + Math.sin(t * 2.5) * 0.5;
+
+    // Shrines: glow & bob when ready, dim while on cooldown.
+    for (const s of this.shrines) {
+      const ready = t >= s.cooldownUntil;
+      s.light.intensity = ready ? 1.6 + Math.sin(t * 3 + s.pos.x) * 0.5 : 0.2;
+      s.orb.position.y = 2.9 + (ready ? Math.sin(t * 2 + s.pos.z) * 0.12 : 0);
+      s.orb.rotation.y += dt * (ready ? 1.2 : 0.2);
+    }
+    // Treasure chests: shimmer until opened, then swing the lid up.
+    for (const tr of this.treasures) {
+      if (tr.opened) { tr.lid.rotation.x = THREE.MathUtils.lerp(tr.lid.rotation.x, -2.2, Math.min(1, dt * 6)); tr.glow.intensity = 0; }
+      else tr.glow.intensity = 0.55 + Math.sin(t * 3 + tr.pos.x) * 0.35;
+    }
 
     // Birds: drift in lazy circles, flapping.
     for (const b of this.birds) {

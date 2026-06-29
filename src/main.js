@@ -391,6 +391,30 @@ function animate() {
       } else {
         ui.showPrompt('Defeat the <b>elite camp</b> to unlock the chest');
       }
+    } else if (player.alive && world.nearestShrine(player.pos)) {
+      const s = world.nearestShrine(player.pos);
+      if (t < s.cooldownUntil) {
+        ui.showPrompt(`<b>${s.type.name}</b> lies dormant — ${Math.ceil(s.cooldownUntil - t)}s`);
+      } else {
+        const mins = Math.round(s.type.dur / 60);
+        ui.showPrompt(`Press <b>E</b> to pray at the <b>${s.type.name}</b><br><span style="opacity:.8">${s.type.desc} for ${mins} min</span>`);
+        if (input.just('KeyE')) {
+          player.applyTimedBuff(s.type.buff, s.type.dur, { label: s.type.name, glyph: s.type.glyph, color: '#' + s.type.color.toString(16).padStart(6, '0') });
+          s.cooldownUntil = t + 120;
+          ui.log(`Blessed by the ${s.type.name}: ${s.type.desc} for ${mins} minutes.`, 'xp');
+          ui.floater(`${s.type.glyph} Blessed`, 'heal', player.pos);
+          audio.play('rest');
+        }
+      }
+    } else if (player.alive && world.nearestTreasure(player.pos)) {
+      const tr = world.nearestTreasure(player.pos);
+      ui.showPrompt('Press <b>E</b> to open the hidden treasure');
+      if (input.just('KeyE')) {
+        tr.opened = true;
+        combat.openChest({ level: tr.level + 1, pos: tr.pos });
+        ui.log('You uncover a hidden treasure chest!', 'xp');
+        ui.floater('Treasure!', 'xp', player.pos);
+      }
     } else if (player.alive && world.swordStone && !world.swordStone.pulled && player.pos.distanceTo(world.swordStone.pos) < 4.5) {
       const ss = world.swordStone;
       const total = player.effStr + player.effDex + player.effInt;

@@ -147,6 +147,13 @@ export class Player {
     return { error: 'invalid' };
   }
 
+  // Apply a long-lived timed buff (used by shrines). Re-praying refreshes it
+  // rather than stacking duplicates.
+  applyTimedBuff(buff, dur, { label, glyph, color }) {
+    this.timed = this.timed.filter((b) => b.label !== label);
+    this.timed.push({ ...buff, until: this._clock + dur, label, glyph, color, dur });
+  }
+
   // ---- Inventory / equipment management ----
   addItem(item) {
     if (this.inventory.length >= this.maxInventory) return false;
