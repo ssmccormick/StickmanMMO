@@ -61,6 +61,21 @@ export class UI {
     this.questTracker = document.createElement('div');
     this.questTracker.className = 'quest-tracker';
     this.el.hud.appendChild(this.questTracker);
+
+    // Boss health bar (top-center, shown only when fighting a boss).
+    this.bossBar = document.createElement('div');
+    this.bossBar.className = 'boss-bar hidden';
+    this.bossBar.innerHTML = '<div class="bb-name"></div><div class="bb-track"><div class="bb-fill"></div></div>';
+    this.el.hud.appendChild(this.bossBar);
+    this.bbName = this.bossBar.querySelector('.bb-name');
+    this.bbFill = this.bossBar.querySelector('.bb-fill');
+  }
+
+  updateBossBar(enemy) {
+    if (!enemy || !enemy.alive) { this.bossBar.classList.add('hidden'); return; }
+    this.bossBar.classList.remove('hidden');
+    this.bbName.textContent = `☠ ${enemy.bossName || 'Boss'}  ·  Lv ${enemy.level}`;
+    this.bbFill.style.width = `${Math.max(0, (enemy.hp / enemy.maxHp) * 100)}%`;
   }
 
   setWorld(world) { this._world = world; }

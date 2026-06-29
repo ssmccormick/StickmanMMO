@@ -7,7 +7,7 @@ import { World } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -88,6 +88,7 @@ function beginGame(classId, name, server, save) {
   lastHp = player.stats.hp;
   enemies = spawnEnemies(scene, world);
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
+  enemies.push(...spawnBosses(scene, world)); // world bosses
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
   // Keep panels live as loot is picked up; refresh quest markers on kills.
@@ -148,6 +149,7 @@ function animate() {
     if (paused) {
       // Frozen: only keep the camera trailing and the HUD live.
       ui.el.crosshair.classList.add('hidden');
+      ui.updateBossBar(null);
       followCam.update(player.pos, dt);
       ui.updateHud(player, network.count);
       ui.drawMinimap(player, enemies, world, network.others);
@@ -260,6 +262,11 @@ function animate() {
 
     // Target frame: locked target or current aim.
     ui.setTarget(combat.target);
+
+    // Boss health bar: show for an aggroed nearby boss (or a targeted one).
+    let boss = enemies.find((e) => e.boss && e.alive && (e.state === 'chase' || e.state === 'attack') && e.pos.distanceTo(player.pos) < 50);
+    if (!boss && combat.target && combat.target.boss && combat.target.alive) boss = combat.target;
+    ui.updateBossBar(boss || null);
 
     // Camera follows the player.
     followCam.update(player.pos, dt);

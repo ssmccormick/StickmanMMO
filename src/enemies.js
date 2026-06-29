@@ -34,22 +34,38 @@ export class Enemy {
     this.level = level;
     this.home = home.clone();
     this.elite = !!opts.elite;
+    this.boss = !!opts.boss;
+    this.bossName = opts.bossName || null;
     this.campId = opts.campId || null;
+    this.scene = scene;
 
     const lvlScale = 1 + (level - 1) * 0.32;
-    const em = this.elite ? 2.4 : 1;       // elite stat multiplier
+    const em = this.boss ? 8 : this.elite ? 2.4 : 1;       // hp multiplier
     this.maxHp = Math.round(this.type.hp * lvlScale * em);
     this.hp = this.maxHp;
-    this.dmg = this.type.dmg * (1 + (level - 1) * 0.22) * (this.elite ? 1.5 : 1);
-    this.xp = Math.round(this.type.xp * (1 + (level - 1) * 0.4) * (this.elite ? 2.5 : 1));
-    this.displayScale = this.type.scale * (this.elite ? 1.35 : 1);
+    this.dmg = this.type.dmg * (1 + (level - 1) * 0.22) * (this.boss ? 1.9 : this.elite ? 1.5 : 1);
+    this.xp = Math.round(this.type.xp * (1 + (level - 1) * 0.4) * (this.boss ? 7 : this.elite ? 2.5 : 1));
+    this.displayScale = this.type.scale * (this.boss ? 2.3 : this.elite ? 1.35 : 1);
 
     this.mesh = createStickman({
-      color: this.elite ? 0x2a2a2a : this.type.color,
-      accent: this.elite ? 0xffcf3a : this.type.accent,
+      color: this.boss ? 0x1f1320 : this.elite ? 0x2a2a2a : this.type.color,
+      accent: this.boss ? 0xff3030 : this.elite ? 0xffcf3a : this.type.accent,
       scale: this.displayScale,
     });
     scene.add(this.mesh);
+
+    if (this.boss) {
+      // Telegraphed shockwave ring (lives in world space, not scaled by the body).
+      this.specialCd = 4;
+      this._shock = null;
+      this._shockRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.85, 1, 30),
+        new THREE.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+      );
+      this._shockRing.rotation.x = -Math.PI / 2;
+      this._shockRing.visible = false;
+      scene.add(this._shockRing);
+    }
 
     this.pos = home.clone();
     this.pos.y = heightAt(this.pos.x, this.pos.z);
@@ -89,10 +105,11 @@ export class Enemy {
     ctx.clearRect(0, 0, 256, 64);
     ctx.font = 'bold 22px Trebuchet MS, sans-serif';
     ctx.textAlign = 'center';
-    const label = `${this.elite ? '★ Elite ' : ''}${this.type.name}  Lv${this.level}`;
+    const label = this.boss ? `☠ ${this.bossName || this.type.name}  Lv${this.level}`
+      : `${this.elite ? '★ Elite ' : ''}${this.type.name}  Lv${this.level}`;
     ctx.fillStyle = '#000';
     ctx.fillText(label, 129, 23);
-    ctx.fillStyle = this.elite ? '#ffae42' : (this.hp < this.maxHp ? '#ff6b6b' : '#ffd24a');
+    ctx.fillStyle = this.boss ? '#ff5a3c' : this.elite ? '#ffae42' : (this.hp < this.maxHp ? '#ff6b6b' : '#ffd24a');
     ctx.fillText(label, 128, 22);
     // hp bar
     ctx.fillStyle = '#000'; ctx.fillRect(40, 34, 176, 12);
@@ -121,6 +138,8 @@ export class Enemy {
 
     const toPlayer = player.alive ? new THREE.Vector3().subVectors(player.pos, this.pos) : null;
     const dist = toPlayer ? toPlayer.length() : Infinity;
+
+    if (this.boss) this._bossShockwave(dt, player, dist);
 
     // ---- Feared: flee from the player, ignoring all other behavior ----
     if (this.fear > 0) {
@@ -227,6 +246,34 @@ export class Enemy {
     return { dealt: amount, killed: false, crit };
   }
 
+  // Boss-only telegraphed ground slam: a ring expands, then everything within
+  // it takes heavy damage.
+  _bossShockwave(dt, player, dist) {
+    const RADIUS = 7;
+    if (this._shock) {
+      this._shock.t += dt;
+      const r = Math.min(RADIUS, (this._shock.t / 0.7) * RADIUS);
+      this._shockRing.position.set(this.pos.x, this.pos.y + 0.15, this.pos.z);
+      this._shockRing.scale.set(r, r, r);
+      this._shockRing.material.opacity = 0.55 * Math.max(0, 1 - this._shock.t);
+      this._shockRing.visible = true;
+      if (this._shock.t >= 0.7 && !this._shock.applied) {
+        this._shock.applied = true;
+        if (player.alive && this.pos.distanceTo(player.pos) <= RADIUS + 0.6) {
+          player.takeDamage(this.dmg * 1.6, this.pos);
+          player.lastHitBy = this;
+        }
+      }
+      if (this._shock.t >= 1) { this._shock = null; this._shockRing.visible = false; }
+    } else {
+      this.specialCd -= dt;
+      if (this.specialCd <= 0 && player.alive && dist < 14 && (this.state === 'chase' || this.state === 'attack')) {
+        this._shock = { t: 0, applied: false };
+        this.specialCd = 6;
+      }
+    }
+  }
+
   applyStun(s) { this.stun = Math.max(this.stun, s); }
   applySlow(s) { this.slow = Math.max(this.slow, s); }
   applyFear(s) { this.fear = Math.max(this.fear, s); }
@@ -263,6 +310,20 @@ export function spawnEnemies(scene, world) {
     }
   }
   return enemies;
+}
+
+// World bosses — one powerful named boss deep in each biome.
+export function spawnBosses(scene, world) {
+  const specs = [
+    { name: 'Gorath the Wildking', type: 'brute', x: 96, z: 86, level: 12 },
+    { name: 'Frosthelm the Fallen', type: 'knight', x: -96, z: 90, level: 16 },
+    { name: 'Sandmaw the Devourer', type: 'brute', x: 100, z: -90, level: 21 },
+    { name: 'The Mirelord', type: 'knight', x: -100, z: -94, level: 27 },
+  ];
+  return specs.map((sp) => {
+    const home = new THREE.Vector3(sp.x, 0, sp.z);
+    return new Enemy(scene, world, sp.type, sp.level, home, { boss: true, bossName: sp.name });
+  });
 }
 
 // Populate each elite war-camp with a pack of elites guarding its chest.

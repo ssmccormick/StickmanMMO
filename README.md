@@ -88,10 +88,11 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Open world & biomes** — a procedural rolling heightfield split into distinct biomes —
   the central **Greenmeadow** town, the **Greenwood** (leafy forest), the snowy
   **Frostpeaks** (snow-capped pines), the **Mire** (dead trees & murky ground), and the
-  **Dunes** (sand & cacti) — each with its own palette, props, and rock tint. Scattered
-  trees, rocks, bushes, flowers, water, and drifting clouds dress the land. Deterministic
-  seed → identical every load. (Cliffs are axis-aligned so climb collision matches what you
-  see — no invisible walls.)
+  **Dunes** (sand & cacti) — each with its own palette, props, and rock tint, and they
+  **blend smoothly** into one another along noise-distorted borders (no hard quadrant
+  lines). Scattered trees, rocks, bushes, flowers, water, and drifting clouds dress the
+  land. Deterministic seed → identical every load. (Cliffs are axis-aligned so climb
+  collision matches what you see — no invisible walls.)
 - **Expanded town** — a larger plaza with a fountain, many houses, lamp posts, market
   crates, a merchant, and quest-giver NPCs.
 - **Quests** — quest-giver NPCs (look for the ❗ marker) offer objectives — slay N of a
@@ -100,13 +101,18 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Elite war-camps** — scattered through the biomes are camps of **elite** monsters
   (bigger, golden-named, much tougher) guarding a **treasure chest**. Clear the whole camp
   to unlock the chest, then open it for a burst of **high-rarity loot** (often uniques).
+- **World bosses** — a powerful named **boss** lurks deep in each biome (Gorath the
+  Wildking, Frosthelm the Fallen, Sandmaw the Devourer, The Mirelord) — enormous, ~8× HP,
+  with a **telegraphed shockwave slam** and a dedicated **boss health bar**. They always
+  drop a **unique** plus high-rarity gear and a pile of gold.
 - **Consumables** — **health potions** and **elixirs** (temporary buffs to move speed,
   damage, or all attributes). Buy them from the merchant, use them from your bag, or hit
   **`Q`** to quaff a health potion in a pinch. Active buffs show on the HUD with a timer.
 - **Movement state machine** — grounded / airborne / climbing, with gravity, jumping,
   sprinting, and wall-climbing, all gated by a **stamina** meter.
 - **Combat** — auto-attacks, cone/AoE/projectile abilities, crits, floating combat
-  text, target framing & nameplates, and class-scaled damage.
+  text, target framing & nameplates, and class-scaled damage. Offensive skills aim at your
+  target/crosshair; **movement skills (dashes, blinks, rolls) go where you're moving**.
 - **Enemies & AI** — stickman monsters (slimes, bandits, wolves, knights, ogres) with
   an idle→chase→attack FSM, telegraphed attacks, level-scaled stats, and respawns.
 - **Progression** — XP, leveling with stat growth, six escalating-difficulty zones.

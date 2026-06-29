@@ -50,12 +50,54 @@ export const BIOMES = {
   desert: { name: 'The Dunes', ground: 0xd9c486, ground2: 0xc7a866, rock: 0xbaa06e, prop: 'cactus' },
 };
 
+function smoothstep(a, b, x) { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+
+// Smooth, noise-distorted membership weights for each biome at a point.
+// The noise makes the borders wander instead of running along straight
+// quadrant lines, and the weights let us blend colors across transitions.
+export function biomeWeights(x, z) {
+  const nx = x + (smoothNoise(x * 0.018 + 1.3, z * 0.018 + 2.7) - 0.5) * 52;
+  const nz = z + (smoothNoise(x * 0.018 + 9.1, z * 0.018 + 4.2) - 0.5) * 52;
+  const ex = smoothstep(-30, 30, nx);   // 0 = west, 1 = east
+  const ez = smoothstep(-30, 30, nz);   // 0 = south, 1 = north
+  const town = 1 - smoothstep(16, 44, Math.hypot(x, z));
+  const outer = 1 - town;
+  return {
+    forest: ex * ez * outer,
+    snow: (1 - ex) * ez * outer,
+    swamp: (1 - ex) * (1 - ez) * outer,
+    desert: ex * (1 - ez) * outer,
+    meadow: town,
+  };
+}
+
+// Discrete biome (for prop choice / camps) — the dominant weight, distorted
+// so prop regions interleave at borders to match the blended terrain.
 export function biomeAt(x, z) {
-  if (Math.hypot(x, z) < 26) return BIOMES.meadow;   // town & surrounds
-  if (x >= 0 && z >= 0) return BIOMES.forest;
-  if (x < 0 && z >= 0) return BIOMES.snow;
-  if (x < 0 && z < 0) return BIOMES.swamp;
-  return BIOMES.desert;
+  if (Math.hypot(x, z) < 22) return BIOMES.meadow;
+  const w = biomeWeights(x, z);
+  let best = 'forest', bv = -1;
+  for (const k of ['forest', 'snow', 'swamp', 'desert', 'meadow']) if (w[k] > bv) { bv = w[k]; best = k; }
+  return BIOMES[best];
+}
+
+// Blended ground color at a point (used per terrain vertex).
+const _bc = new THREE.Color(), _g1 = new THREE.Color(), _g2 = new THREE.Color(), _rk = new THREE.Color();
+export function biomeColorAt(x, z, y) {
+  const w = biomeWeights(x, z);
+  const t = THREE.MathUtils.clamp((y + 6) / 20, 0, 1);
+  _bc.setRGB(0, 0, 0); let rockR = 0, rockG = 0, rockB = 0, total = 0;
+  for (const key in w) {
+    const wt = w[key]; if (wt <= 0.0001) continue;
+    const b = BIOMES[key];
+    _g1.setHex(b.ground); _g2.setHex(b.ground2);
+    _g1.lerp(_g2, t * 0.6);
+    _bc.r += _g1.r * wt; _bc.g += _g1.g * wt; _bc.b += _g1.b * wt;
+    _rk.setHex(b.rock); rockR += _rk.r * wt; rockG += _rk.g * wt; rockB += _rk.b * wt; total += wt;
+  }
+  if (total > 0) { _bc.r /= total; _bc.g /= total; _bc.b /= total; rockR /= total; rockG /= total; rockB /= total; }
+  if (y > 9) { _bc.r = _bc.r * 0.3 + rockR * 0.7; _bc.g = _bc.g * 0.3 + rockG * 0.7; _bc.b = _bc.b * 0.3 + rockB * 0.7; }
+  return _bc;
 }
 
 export class World {
@@ -126,16 +168,13 @@ export class World {
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = [];
-    const c1 = new THREE.Color(), c2 = new THREE.Color(), cr = new THREE.Color();
+    const col = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const y = heightAt(x, z);
       pos.setY(i, y);
-      // Color by biome + elevation for a painted, region-distinct look.
-      const b = biomeAt(x, z);
-      c1.setHex(b.ground); c2.setHex(b.ground2); cr.setHex(b.rock);
-      const t = THREE.MathUtils.clamp((y + 6) / 20, 0, 1);
-      const col = y > 9 ? cr.clone().lerp(c2, 0.3) : c1.clone().lerp(c2, t * 0.6);
+      // Smoothly blended biome color (borders wander via noise).
+      col.copy(biomeColorAt(x, z, y));
       // tiny per-vertex noise so flats aren't a single flat color
       const n = (smoothNoise(x * 0.3, z * 0.3) - 0.5) * 0.06;
       col.offsetHSL(0, 0, n);

@@ -259,7 +259,9 @@ export class Combat {
 
   _kDash(ab) {
     const p = this.player;
-    const dir = this.cam.forward();
+    // Movement skills go where you're MOVING (WASD), not where you're aiming.
+    // Fall back to camera-forward when standing still.
+    const dir = (p.moveDir && p.moveDir.lengthSq() > 0.001) ? p.moveDir.clone().normalize() : this.cam.forward();
     const steps = 12;
     for (let s = 1; s <= steps; s++) {
       const nx = p.pos.x + dir.x * (ab.range / steps);
@@ -327,8 +329,8 @@ export class Combat {
       this.ui.floater(`+${res.xp} XP`, 'xp', enemy.pos);
       this.ui.log(`Slain ${enemy.type.name} (+${res.xp} XP)`, 'xp');
       if (this.audio) this.audio.play('kill');
-      // Gold drop (elites pay out far more).
-      const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.elite ? 4 : 1));
+      // Gold drop (elites and especially bosses pay out far more).
+      const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1));
       this.player.gold += gold;
       this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
       // Quest progress for kills.
@@ -343,6 +345,16 @@ export class Combat {
 
   // ---- Loot drops ----
   _dropLoot(enemy) {
+    if (enemy.boss) {
+      // Bosses always drop a unique plus a couple of high-rarity pieces.
+      this._spawnDrop(makeUnique(enemy.level), enemy.pos);
+      for (let i = 0; i < 2; i++) {
+        const off = new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
+        this._spawnDrop(generateItem({ level: enemy.level, rarityBoost: 1.5 }), enemy.pos.clone().add(off));
+      }
+      this.ui.log(`${enemy.bossName} has fallen!`, 'xp');
+      return;
+    }
     if (enemy.elite) {
       // Elites always drop something good.
       let item = generateItem({ level: enemy.level, rarityBoost: 1.2 });

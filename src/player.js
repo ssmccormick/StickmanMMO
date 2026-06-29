@@ -55,6 +55,7 @@ export class Player {
     this.pos = new THREE.Vector3(0, heightAt(0, 0), 6);
     this.vel = new THREE.Vector3();
     this.facing = 0;
+    this.moveDir = null;    // current WASD world-space move direction (null if still)
     this.state = 'ground';
     this.alive = true;
     this.respawn = this.pos.clone();
@@ -210,6 +211,7 @@ export class Player {
       else if (this.state !== 'climb') this.state = 'air';
 
       if (moving) this.facing = Math.atan2(move.x, move.z);
+      this.moveDir = moving ? move.clone() : null;
       this._speed01 = THREE.MathUtils.clamp(Math.hypot(this.vel.x, this.vel.z) / (WALK_SPEED * SPRINT_MULT), 0, 1);
     }
 
