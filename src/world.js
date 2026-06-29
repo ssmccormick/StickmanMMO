@@ -122,8 +122,9 @@ export const TOWNS = [
 const capOff = (o) => Math.max(-9, Math.min(9, o));
 export const AREAS = [
   { name: 'Greenmeadow', x: 0, z: 0, r: 40, level: 0, biome: 'meadow', safe: true },
-  // A small starter glen just outside the Nexus where the Ashbound wakes.
-  { name: 'The Waking Vale', ...polar(14, 74), r: 24, level: 1, count: 7, biome: 'meadow' },
+  // A small starter glen across the first bridge from the Nexus, where the
+  // Ashbound takes their first steps onto the mainland.
+  { name: 'The Waking Vale', ...polar(14, 110), r: 24, level: 1, count: 7, biome: 'meadow' },
   ...BIOME_LAYOUT.flatMap((b) => [
     { name: b.low.name, level: b.low.level, biome: b.biome, r: b.low.r, count: b.low.count, ...polar(b.heading + capOff(b.low.off), b.low.dist) },
     { name: b.high.name, level: b.high.level, biome: b.biome, r: b.high.r, count: b.high.count, ...polar(b.heading + capOff(b.high.off), b.high.dist) },
@@ -182,9 +183,9 @@ export function roadDistance(x, z) {
 // Dungeons: an overworld entrance portal that teleports you to an instanced
 // room far off the map. The room sites get a hard-flat floor in heightAt.
 export const DUNGEONS = [
-  { id: 'undervault', name: 'The Undervault', ex: 34, ez: -28, sx: 720, sz: 0, level: 6 },
-  { id: 'frostcrypt', name: 'Frostcrypt', ex: -64, ez: 62, sx: -720, sz: 0, level: 12 },
-  { id: 'sunkentomb', name: 'Sunken Tomb', ex: 64, ez: -62, sx: 0, sz: 720, level: 19 },
+  { id: 'undervault', name: 'The Undervault', ex: 30, ez: -25, sx: 720, sz: 0, level: 6 },  // on the Nexus island
+  { id: 'frostcrypt', name: 'Frostcrypt', ex: -82, ez: 78, sx: -720, sz: 0, level: 12 },    // forest/snow shore
+  { id: 'sunkentomb', name: 'Sunken Tomb', ex: 82, ez: -78, sx: 0, sz: 720, level: 19 },    // jungle/desert shore
 ];
 const DUNGEON_SITES = DUNGEONS.map((d) => ({ x: d.sx, z: d.sz, radius: 44, floorY: 0 }));
 
@@ -207,6 +208,8 @@ export const CAVES = [
   { id: 'cave_deep', name: 'The Deepvein', ex: 255, ez: 70, sx: -720, sz: -720, floorY: -48, level: 9 },
 ];
 const CAVE_SITES = CAVES.map((c) => ({ x: c.sx, z: c.sz, radius: 40, floorY: c.floorY }));
+
+const SEA_IN = 52, SEA_OUT = 92; // inner/outer radius of the Sundered Sea ring
 
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
@@ -253,6 +256,18 @@ export function heightAt(x, z) {
   h *= flat;
   // Lift terrain so flattened towns sit at a consistent, walkable height.
   h += (1 - flat) * townBaseHeight(x, z);
+
+  // The Sundered Sea: a ring of deep water encircling the Nexus heartland, so
+  // the central capital is an island and the eight reaches lie beyond the
+  // water. Only the land-bridge roads stay above the waves — they're the
+  // causeways you cross to leave the heartland.
+  const rad = Math.hypot(x, z);
+  const ring = smoothstep(SEA_IN - 8, SEA_IN, rad) * (1 - smoothstep(SEA_OUT, SEA_OUT + 10, rad));
+  if (ring > 0.002) {
+    const bridge = roadDistance(x, z) < 8 ? 1 : 0;
+    const seaFloor = WATER_LEVEL - 6 + smoothNoise(x * 0.05, z * 0.05) * 2.5;
+    h = THREE.MathUtils.lerp(h, seaFloor, ring * (1 - bridge));
+  }
   return h;
 }
 
@@ -983,12 +998,13 @@ export class World {
     // world AABB is larger than the box itself, which produced "invisible
     // walls" you could climb where no rock appeared. Axis-aligned keeps the
     // collider exactly matching what you see.
+    // Out in the reaches (beyond the Sundered Sea), as climbable landmarks.
     const specs = [
-      { x: 40, z: 30, w: 22, h: 16, d: 7 },
-      { x: -50, z: -20, w: 30, h: 20, d: 8 },
-      { x: 20, z: -55, w: 26, h: 14, d: 7 },
-      { x: -35, z: 50, w: 24, h: 22, d: 7 },
-      { x: 70, z: -40, w: 34, h: 26, d: 9 },
+      { x: 135, z: 58, w: 22, h: 16, d: 7 },
+      { x: -158, z: 96, w: 30, h: 20, d: 8 },
+      { x: -112, z: -138, w: 26, h: 14, d: 7 },
+      { x: 56, z: -162, w: 24, h: 22, d: 7 },
+      { x: 186, z: -34, w: 34, h: 26, d: 9 },
     ];
     for (const sp of specs) {
       const baseY = heightAt(sp.x, sp.z);
@@ -1062,9 +1078,11 @@ export class World {
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x6e6a63 });
     const rockDark = new THREE.MeshLambertMaterial({ color: 0x595550 });
     const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
-    const borders = [35, 77, 120, 171, 222, 266, 310, 353]; // bisectors of the 8 region headings
+    // Borders run along the bisector between each pair of neighbouring regions.
+    const headings = BIOME_REGIONS.map((r) => (Math.atan2(r.z, r.x) * 180 / Math.PI + 360) % 360).sort((a, b) => a - b);
+    const borders = headings.map((a, i) => (((a + (i + 1 < headings.length ? headings[i + 1] : headings[0] + 360)) / 2) % 360));
     this.passes = [];
-    const RIN = 72, ROUT = WORLD_SIZE - 12;
+    const RIN = SEA_OUT + 4, ROUT = WORLD_SIZE - 12; // ranges start at the far shore of the Sundered Sea
     const addPeak = (px, pz, rad, hgt, mat) => {
       const baseY = heightAt(px, pz);
       if (baseY < -3) return;
@@ -1360,7 +1378,7 @@ export class World {
   // The Waking Vale: a small starter glen just outside the Nexus, marked by an
   // Ember-cairn — the spot where the Ashbound wakes from the ash. Pure flavor.
   _wakingVale() {
-    const p = polar(14, 74), x = p.x, z = p.z, y = heightAt(x, z);
+    const p = polar(14, 110), x = p.x, z = p.z, y = heightAt(x, z);
     const g = new THREE.Group();
     const cols = [0x6a6a60, 0x5e5e55, 0x72706a];
     let yy = 0;

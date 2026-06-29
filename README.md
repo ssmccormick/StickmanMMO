@@ -101,13 +101,18 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   blend along noise-distorted borders. Scattered trees, rocks, bushes, flowers, water,
   drifting clouds, **ruins**, and big snow-capped **mountains** dress the land. Climbable
   cliffs, and **solid collision** on structures for both you and monsters.
-- **Mountain-walled regions & passes** — each biome is its own region, **walled off from
-  its neighbours by mountain ranges**. To travel between regions you funnel through a
-  **mountain pass** (a gap in the range, flanked by tall snow-capped marker peaks) — or
-  brave the high country. The **Nexus** is a large central **walled city** (two rings of
-  houses, a glowing portal-obelisk, four merchants, lamps and villagers) with a small
-  starter glen beside it — **The Waking Vale**, marked by an Ember-cairn, where the Ashbound
-  wakes and takes their first steps.
+- **An island-capital continent** — the **Nexus** is a large **walled city on an island**
+  ringed by the **Sundered Sea**. Long **land-bridge causeways** (the roads) cross the water
+  to the eight surrounding reaches — to leave the heartland you take a bridge (or brave the
+  cold sea). Each reach is then **walled off from its neighbours by mountain ranges**, so
+  region-to-region travel funnels through a **mountain pass** (a gap flanked by tall
+  snow-capped marker peaks). The Nexus itself has two rings of houses, a glowing
+  portal-obelisk, four merchants, lamps and villagers, with **The Waking Vale** — a small
+  starter glen marked by an Ember-cairn — just across the first bridge, where the Ashbound
+  takes their first steps onto the mainland.
+- **Streamed for performance** — the world is large, so **distance fog** fades the horizon
+  and only objects and enemies **near the player are drawn and updated** (the rest stream
+  out), keeping the frame rate smooth despite a continent's worth of content.
 - **Hidden treasure & shrines** — **30 treasure chests** are tucked off the roads across
   the wild (loot scales with how far out they sit), and **buff shrines** in each region
   grant a long blessing (30–60 min) — Might (+25% dmg), Swiftness (+20% speed), Titan (+14
