@@ -47,6 +47,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **E** | Interact / rest at a bonfire |
 | **I** | Inventory & equipment |
 | **K** | Skills (details & damage) |
+| **C** | Character sheet |
 | **J** | Quest log |
 | **Q** | Quaff a health potion |
 | **Enter** | Chat |
@@ -85,26 +86,34 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 
 ## 🌍 Game systems
 
-- **Open world & biomes** — a procedural rolling heightfield split into distinct biomes —
-  the central **Greenmeadow** town, the **Greenwood** (leafy forest), the snowy
-  **Frostpeaks** (snow-capped pines), the **Mire** (dead trees & murky ground), and the
-  **Dunes** (sand & cacti) — each with its own palette, props, and rock tint, and they
-  **blend smoothly** into one another along noise-distorted borders (no hard quadrant
-  lines). Scattered trees, rocks, bushes, flowers, water, and drifting clouds dress the
-  land. Deterministic seed → identical every load. (Cliffs are axis-aligned so climb
-  collision matches what you see — no invisible walls.)
-- **Expanded town** — a larger plaza with a fountain, many houses, lamp posts, market
-  crates, a merchant, and quest-giver NPCs.
-- **Quests** — quest-giver NPCs (look for the ❗ marker) offer objectives — slay N of a
-  monster type, clear a camp chest, etc. Track them on the HUD and in the **quest log (`J`)**;
-  turn them in for **XP, gold, gear, and potions**. Quest progress is saved with your character.
+- **Open world & biomes** — a procedural heightfield split into smoothly-blended biomes,
+  each with its own **terrain character**: the **Greenwood** forest (plateaus), the snowy
+  **Frostpeaks** (tall peaks), the **Mire** swamp (sunken lowlands), and the **Dunes**
+  desert (rolling dunes), around the central meadow. Distinct palettes, props, and rocks
+  blend along noise-distorted borders. Scattered trees, rocks, bushes, flowers, water,
+  drifting clouds, and **ruins** dress the land. Climbable cliffs, and **solid collision**
+  on structures for both you and monsters.
+- **Towns** — the central hub **The Nexus** (big plaza, glowing portal-obelisk, many
+  houses, watchtower, well, merchant, and three quest-givers) plus four biome outposts —
+  **Thornhollow** (forest), **Frostgard** (snow), **Dustmarket** (desert), and **Gloomfen**
+  (swamp) — each biome-styled and stocked with a **merchant**, a **quest-giver**, and
+  ambient villagers.
+- **Quests & chains** — quest-giver NPCs across all towns (look for the ❗ marker) offer
+  **multi-step quest chains** and **boss-slaying quests** — slay N of a type, clear a camp
+  chest, defeat a named boss, etc. Track them on the HUD and in the **quest log (`J`)**;
+  turn them in for **XP, gold, gear, and potions** (boss quests reward epics/legendaries).
+  Progress is saved with your character.
+- **Gear sets** — some gear belongs to a **set** (Warden's Vigil, Nightstalker, Archmage
+  Regalia, Bloodrage Plate). Wearing 2 or 4 pieces grants escalating bonuses, shown on the
+  item tooltip and the **character sheet (`C`)**, which breaks down all your stats.
 - **Elite war-camps** — scattered through the biomes are camps of **elite** monsters
   (bigger, golden-named, much tougher) guarding a **treasure chest**. Clear the whole camp
   to unlock the chest, then open it for a burst of **high-rarity loot** (often uniques).
 - **World bosses** — a powerful named **boss** lurks deep in each biome (Gorath the
   Wildking, Frosthelm the Fallen, Sandmaw the Devourer, The Mirelord) — enormous, ~8× HP,
-  with a **telegraphed shockwave slam** and a dedicated **boss health bar**. They always
-  drop a **unique** plus high-rarity gear and a pile of gold.
+  with a **telegraphed shockwave slam**, **multiple phases** (they enrage at 66%/33% HP —
+  faster, harder, and they **summon minions**), and a dedicated **boss health bar**. They
+  always drop a **unique** plus high-rarity gear and a pile of gold.
 - **Consumables** — **health potions** and **elixirs** (temporary buffs to move speed,
   damage, or all attributes). Buy them from the merchant, use them from your bag, or hit
   **`Q`** to quaff a health potion in a pinch. Active buffs show on the HUD with a timer.

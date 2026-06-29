@@ -7,7 +7,7 @@ import { World } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -158,7 +158,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen;
 
     // Crosshair shows while mouse-look is active (aiming), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
@@ -173,6 +173,7 @@ function animate() {
     if (input.just('KeyI')) ui.toggleInventory(player);
     if (input.just('KeyK')) ui.toggleSkills(player);
     if (input.just('KeyJ')) ui.toggleQuestLog(player);
+    if (input.just('KeyC')) ui.toggleCharSheet(player);
     if (input.just('KeyQ')) quickHeal();
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
@@ -181,6 +182,14 @@ function animate() {
     // is open, but projectiles/loot/FX keep simulating.
     player.update(dt, input, followCam);
     for (const e of enemies) e.update(dt, player, t);
+    // Boss phase reactions: announce enrage and spawn minion adds.
+    const newMinions = [];
+    for (const e of enemies) {
+      if (!e.boss) continue;
+      if (e._newPhase) { ui.floater('ENRAGED!', 'crit', e.pos); ui.log(`${e.bossName} enters phase ${e._newPhase}!`, 'death'); e._newPhase = 0; }
+      if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
+    }
+    if (newMinions.length) enemies.push(...newMinions);
     combat.suppressInput = menuOpen;
     combat.update(dt, input);
     network.update(dt);
@@ -213,8 +222,9 @@ function animate() {
 
     // Interactions, by priority: vendor → quest giver → camp chest → bonfire.
     if (restCooldown > 0) restCooldown -= dt;
-    const nearVendor = world.vendor && player.alive && world.vendor.pos.distanceTo(player.pos) < 4.5;
+    const nearVendor = player.alive ? world.nearestVendor(player.pos, 4.5) : null;
     const giver = player.alive ? world.questGivers.find((g) => g.pos.distanceTo(player.pos) < 4.5) : null;
+    const giverQuest = giver ? Quests.giverActiveQuest(player, giver.giver) : null;
     const camp = player.alive ? world.nearestCamp(player.pos, 5) : null;
     const bonfire = world.nearestBonfire(player.pos, 4.5);
     if (menuOpen) {
@@ -222,8 +232,8 @@ function animate() {
     } else if (nearVendor) {
       ui.showPrompt('Press <b>E</b> to trade with the merchant');
       if (input.just('KeyE')) ui.openVendor(player);
-    } else if (giver) {
-      const st = Quests.statusOf(player, giver.questId);
+    } else if (giver && giverQuest) {
+      const st = Quests.statusOf(player, giverQuest);
       const verb = st === 'available' ? 'speak with' : st === 'complete' ? 'turn in quest with' : 'talk to';
       ui.showPrompt(`Press <b>E</b> to ${verb} <b>${giver.name}</b>`);
       if (input.just('KeyE')) ui.openQuestDialog(player, giver);

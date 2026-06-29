@@ -333,8 +333,9 @@ export class Combat {
       const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1));
       this.player.gold += gold;
       this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
-      // Quest progress for kills.
+      // Quest progress for kills (and boss-slaying).
       Quests.onKill(this.player, enemy.typeId);
+      if (enemy.boss) Quests.onBossKill(this.player, enemy.bossName);
       if (this.onKillEvent) this.onKillEvent(enemy);
       if (levels > 0 && this.onLevelUp) this.onLevelUp();
       this._dropLoot(enemy);

@@ -383,6 +383,19 @@ html, body {
 .tip-stat { color: #9be29e; }
 .tip-req { margin-top: 4px; font-size: 11px; }
 .tip-flavor { margin-top: 5px; font-style: italic; opacity: 0.65; font-size: 11px; }
+.tip-set { margin-top: 6px; padding-top: 5px; border-top: 1px dashed rgba(255,255,255,0.18); font-size: 11.5px; }
+.tip-set-line { opacity: 0.85; }
+
+/* ---------------- Character sheet ---------------- */
+.cs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }
+.cs-col { min-width: 0; }
+.cs-h { font-size: 16px; font-weight: bold; color: var(--gold); margin-bottom: 6px; }
+.cs-sub { font-size: 12px; opacity: 0.6; margin: 10px 0 4px; letter-spacing: 1px; text-transform: uppercase; }
+.cs-row { display: flex; align-items: baseline; gap: 8px; font-size: 13px; padding: 1.5px 0; }
+.cs-row span:first-child { flex: 1; opacity: 0.8; }
+.cs-row b { color: #fff; }
+.cs-base { opacity: 0.45; font-size: 11px; }
+.cs-set { font-size: 12.5px; padding: 1px 0; }
 .tip-cmp { margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(255,255,255,0.18); }
 .tip-cmp-h { font-size: 10.5px; opacity: 0.7; margin-bottom: 3px; }
 

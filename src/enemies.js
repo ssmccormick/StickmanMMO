@@ -55,7 +55,12 @@ export class Enemy {
     scene.add(this.mesh);
 
     if (this.boss) {
-      // Telegraphed shockwave ring (lives in world space, not scaled by the body).
+      // Phases, enrage, telegraphed shockwave.
+      this.phase = 1;
+      this._shockInterval = 6;
+      this.bossSpeedMult = 1;
+      this.wantsMinions = 0;   // consumed by main to spawn adds
+      this._newPhase = 0;      // consumed by main to announce a phase change
       this.specialCd = 4;
       this._shock = null;
       this._shockRing = new THREE.Mesh(
@@ -196,7 +201,7 @@ export class Enemy {
       }
     }
 
-    const speed = this.type.speed * speedMult;
+    const speed = this.type.speed * speedMult * (this.bossSpeedMult || 1);
     if (move.lengthSq() > 0.0001) {
       this.pos.x += move.x * speed * dt;
       this.pos.z += move.z * speed * dt;
@@ -241,9 +246,25 @@ export class Enemy {
     this._hitFlash = 0.18;
     // aggro on hit
     if (this.state === 'idle' || this.state === 'return') this.state = 'chase';
+    // Boss phase transitions at 66% and 33% HP → enrage + summon adds.
+    if (this.boss && this.hp > 0) {
+      const frac = this.hp / this.maxHp;
+      if (this.phase === 1 && frac <= 0.66) this._enterPhase(2);
+      else if (this.phase === 2 && frac <= 0.33) this._enterPhase(3);
+    }
     this._drawPlate();
     if (this.hp <= 0) { this.hp = 0; this._die(); return { dealt: amount, killed: true, crit, xp: this.xp }; }
     return { dealt: amount, killed: false, crit };
+  }
+
+  _enterPhase(n) {
+    this.phase = n;
+    this.dmg *= 1.3;
+    this._shockInterval = Math.max(2.5, this._shockInterval * 0.7);
+    this.bossSpeedMult *= 1.18;
+    this.wantsMinions = 2;   // main spawns adds
+    this._newPhase = n;      // main announces
+    this.specialCd = Math.min(this.specialCd, 0.5); // slam soon after enraging
   }
 
   // Boss-only telegraphed ground slam: a ring expands, then everything within
@@ -269,7 +290,7 @@ export class Enemy {
       this.specialCd -= dt;
       if (this.specialCd <= 0 && player.alive && dist < 14 && (this.state === 'chase' || this.state === 'attack')) {
         this._shock = { t: 0, applied: false };
-        this.specialCd = 6;
+        this.specialCd = this._shockInterval;
       }
     }
   }
@@ -310,6 +331,20 @@ export function spawnEnemies(scene, world) {
     }
   }
   return enemies;
+}
+
+// Spawn a handful of minions around a boss when it enrages.
+export function spawnMinions(scene, world, boss, n) {
+  const out = [];
+  const pool = boss.level >= 16 ? ['knight', 'wolf'] : ['wolf', 'grunt'];
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const home = new THREE.Vector3(boss.pos.x + Math.cos(a) * 4, 0, boss.pos.z + Math.sin(a) * 4);
+    const e = new Enemy(scene, world, pool[i % pool.length], Math.max(1, boss.level - 4), home);
+    e.state = 'chase';
+    out.push(e);
+  }
+  return out;
 }
 
 // World bosses — one powerful named boss deep in each biome.

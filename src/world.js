@@ -25,36 +25,10 @@ function smoothNoise(x, z) {
   return THREE.MathUtils.lerp(THREE.MathUtils.lerp(a, b, u), THREE.MathUtils.lerp(c, d, u), v);
 }
 
-// The single source of truth for ground elevation. Town (near origin)
-// is kept flat so combat and the starting area feel grounded.
-export function heightAt(x, z) {
-  const distTown = Math.hypot(x, z);
-  let h = 0;
-  h += smoothNoise(x * 0.012, z * 0.012) * 14;
-  h += smoothNoise(x * 0.04, z * 0.04) * 4;
-  h += smoothNoise(x * 0.11, z * 0.11) * 1.2;
-  h -= 6;
-  // Flatten the town to a gentle plateau.
-  const townFlat = THREE.MathUtils.clamp((distTown - 14) / 22, 0, 1);
-  h *= townFlat;
-  return h;
-}
-
-// Biomes are chosen by map quadrant; the town sits in a neutral meadow at
-// the center. Each biome has its own ground palette, rock tint, and prop type.
-export const BIOMES = {
-  meadow: { name: 'Greenmeadow', ground: 0x6fae54, ground2: 0x9aa05a, rock: 0x8c8576, prop: 'tree' },
-  forest: { name: 'The Greenwood', ground: 0x4d8a3a, ground2: 0x66993a, rock: 0x6f6a5e, prop: 'tree' },
-  snow: { name: 'Frostpeaks', ground: 0xe2ebf2, ground2: 0xc2d4e2, rock: 0x9aa6b2, prop: 'pine' },
-  swamp: { name: 'The Mire', ground: 0x49583a, ground2: 0x3a4a32, rock: 0x55564a, prop: 'dead' },
-  desert: { name: 'The Dunes', ground: 0xd9c486, ground2: 0xc7a866, rock: 0xbaa06e, prop: 'cactus' },
-};
-
 function smoothstep(a, b, x) { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
 
-// Smooth, noise-distorted membership weights for each biome at a point.
-// The noise makes the borders wander instead of running along straight
-// quadrant lines, and the weights let us blend colors across transitions.
+// Smooth, noise-distorted biome membership weights at a point. Defined before
+// heightAt so terrain elevation can vary by biome.
 export function biomeWeights(x, z) {
   const nx = x + (smoothNoise(x * 0.018 + 1.3, z * 0.018 + 2.7) - 0.5) * 52;
   const nz = z + (smoothNoise(x * 0.018 + 9.1, z * 0.018 + 4.2) - 0.5) * 52;
@@ -70,6 +44,68 @@ export function biomeWeights(x, z) {
     meadow: town,
   };
 }
+
+// Town centers (flattened so settlements sit on level ground). Populated by
+// the TOWNS list below; declared here for heightAt.
+export const TOWNS = [
+  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 26, nexus: true },
+  { name: 'Thornhollow', x: 76, z: 34, biome: 'forest', radius: 17 },
+  { name: 'Frostgard', x: -76, z: 40, biome: 'snow', radius: 17 },
+  { name: 'Dustmarket', x: 82, z: -36, biome: 'desert', radius: 17 },
+  { name: 'Gloomfen', x: -78, z: -40, biome: 'swamp', radius: 17 },
+];
+
+// The single source of truth for ground elevation. Base rolling noise plus
+// per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
+// plateaus), all flattened to level ground around every town.
+export function heightAt(x, z) {
+  let h = 0;
+  h += smoothNoise(x * 0.012, z * 0.012) * 14;
+  h += smoothNoise(x * 0.04, z * 0.04) * 4;
+  h += smoothNoise(x * 0.11, z * 0.11) * 1.2;
+  h -= 6;
+
+  // Per-biome elevation, blended by weight.
+  const w = biomeWeights(x, z);
+  if (w.snow > 0.001)   h += w.snow * (smoothNoise(x * 0.022 + 30, z * 0.022 + 30) * 38 - 4); // tall peaks
+  if (w.desert > 0.001) h += w.desert * (Math.sin(x * 0.05) * Math.cos(z * 0.045) * 6);        // rolling dunes
+  if (w.swamp > 0.001)  h += w.swamp * (-7 + smoothNoise(x * 0.05, z * 0.05) * 2);              // sunken lowlands
+  if (w.forest > 0.001) {
+    // Forest plateaus: quantize into broad steps.
+    const plat = Math.round((smoothNoise(x * 0.02 + 60, z * 0.02 + 60) * 22) / 6) * 6;
+    h += w.forest * (plat - 6);
+  }
+
+  // Flatten the nearest town to a level plateau.
+  let flat = 1;
+  for (const t of TOWNS) {
+    const d = Math.hypot(x - t.x, z - t.z);
+    flat = Math.min(flat, THREE.MathUtils.clamp((d - t.radius * 0.5) / 20, 0, 1));
+  }
+  h *= flat;
+  // Lift terrain so flattened towns sit at a consistent, walkable height.
+  h += (1 - flat) * townBaseHeight(x, z);
+  return h;
+}
+
+// A gentle base height for a town plateau (keeps each town roughly level
+// without snapping every town to y=0).
+function townBaseHeight(x, z) {
+  let nearest = TOWNS[0], best = Infinity;
+  for (const t of TOWNS) { const d = Math.hypot(x - t.x, z - t.z); if (d < best) { best = d; nearest = t; } }
+  // raw base noise at the town center → a stable plateau height
+  return smoothNoise(nearest.x * 0.012, nearest.z * 0.012) * 8;
+}
+
+// Biomes are chosen by map quadrant; the town sits in a neutral meadow at
+// the center. Each biome has its own ground palette, rock tint, and prop type.
+export const BIOMES = {
+  meadow: { name: 'Greenmeadow', ground: 0x6fae54, ground2: 0x9aa05a, rock: 0x8c8576, prop: 'tree' },
+  forest: { name: 'The Greenwood', ground: 0x4d8a3a, ground2: 0x66993a, rock: 0x6f6a5e, prop: 'tree' },
+  snow: { name: 'Frostpeaks', ground: 0xe2ebf2, ground2: 0xc2d4e2, rock: 0x9aa6b2, prop: 'pine' },
+  swamp: { name: 'The Mire', ground: 0x49583a, ground2: 0x3a4a32, rock: 0x55564a, prop: 'dead' },
+  desert: { name: 'The Dunes', ground: 0xd9c486, ground2: 0xc7a866, rock: 0xbaa06e, prop: 'cactus' },
+};
 
 // Discrete biome (for prop choice / camps) — the dominant weight, distorted
 // so prop regions interleave at borders to match the blended terrain.
@@ -109,17 +145,18 @@ export class World {
     this.bonfires = [];    // { pos:Vec3, mesh, light }
     this.spawnZones = [];  // { center:Vec3, radius, level }
     this.camps = [];       // elite war-camps with loot chests
-    this.questGivers = []; // { name, questId, pos, marker }
+    this.questGivers = []; // { name, giver, pos, marker, npc }
+    this.vendors = [];     // { name, pos }
     this._build();
   }
 
   _build() {
     this._sky();
     this._terrain();
-    this._town();
-    this._questGivers();
+    this._towns();
     this._scatter();
     this._groundDetail();
+    this._ruins();
     this._cliffs();
     this._camps();
     this._bonfires();
@@ -206,53 +243,77 @@ export class World {
     this.colliders.push({ min: box.min, max: box.max, climbable });
   }
 
-  _town() {
-    // Larger flat stone plaza for the expanded town.
-    const plaza = new THREE.Mesh(
-      new THREE.CylinderGeometry(24, 24, 0.4, 40),
-      new THREE.MeshLambertMaterial({ color: 0xb9b2a0 })
-    );
-    plaza.position.set(0, heightAt(0, 0), 0);
-    plaza.receiveShadow = true;
+  // Per-biome architecture palettes for towns.
+  _townPalette(biome) {
+    return {
+      meadow: { wall: 0xc9c0a8, wall2: 0xb8a98a, roofs: [0x9a4a3a, 0x7a5a3a, 0x6a7a8a, 0x8a6a4a], plaza: 0xb9b2a0 },
+      forest: { wall: 0x8a7a52, wall2: 0x9a8a5a, roofs: [0x3f6a3a, 0x4f7a3a, 0x5a6f2f], plaza: 0x8a8a66 },
+      snow: { wall: 0xcdd6e0, wall2: 0xbcc6d2, roofs: [0x6a7a8a, 0x7a8aa0, 0xeaf2ff], plaza: 0xc2cdd8 },
+      desert: { wall: 0xd8c79a, wall2: 0xc8b486, roofs: [0xc08a4a, 0xb07a3a, 0x9a6a3a], plaza: 0xcdbb88 },
+      swamp: { wall: 0x6a6a55, wall2: 0x5a5a48, roofs: [0x4a5a3a, 0x3a4a30, 0x55603a], plaza: 0x6a6a52 },
+    }[biome] || { wall: 0xc9c0a8, wall2: 0xb8a98a, roofs: [0x9a4a3a], plaza: 0xb9b2a0 };
+  }
+
+  _towns() {
+    const byTown = {};
+    for (const gv of GIVERS) (byTown[gv.town] ||= []).push(gv);
+    for (const t of TOWNS) this._buildTown(t, byTown[t.name] || []);
+  }
+
+  _buildTown(t, givers) {
+    const pal = this._townPalette(t.biome);
+    const cx = t.x, cz = t.z, baseY = heightAt(cx, cz);
+    const R = t.radius;
+    const big = !!t.nexus;
+
+    // Plaza.
+    const plaza = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.4, 40), new THREE.MeshLambertMaterial({ color: pal.plaza }));
+    plaza.position.set(cx, baseY, cz); plaza.receiveShadow = true;
     this.group.add(plaza);
 
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xc9c0a8 });
-    const wallMat2 = new THREE.MeshLambertMaterial({ color: 0xb8a98a });
-    const roofMats = [0x9a4a3a, 0x7a5a3a, 0x6a7a8a, 0x8a6a4a].map((c) => new THREE.MeshLambertMaterial({ color: c }));
-    // A bigger ring of houses of varied sizes.
-    const housePositions = [
-      [14, 8, 4.5], [-14, 9, 4.5], [11, -13, 5.5], [-10, -14, 4], [18, -3, 4],
-      [-18, -2, 5], [16, 15, 4.5], [-16, 15, 4], [20, 7, 5], [-20, 8, 4.5],
-      [8, 18, 4], [-7, 19, 4.5], [21, -12, 5],
-    ];
-    housePositions.forEach(([hx, hz, sz], idx) => {
+    // Houses ringed around the plaza.
+    const houseCount = big ? 12 : 6;
+    const wallMats = [new THREE.MeshLambertMaterial({ color: pal.wall }), new THREE.MeshLambertMaterial({ color: pal.wall2 })];
+    const roofMats = pal.roofs.map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    for (let i = 0; i < houseCount; i++) {
+      const ang = (i / houseCount) * Math.PI * 2 + (big ? 0 : 0.4);
+      const hr = R * 0.7 + (hash2(i + cx, cz) - 0.5) * 3;
+      const hx = cx + Math.cos(ang) * hr, hz = cz + Math.sin(ang) * hr;
+      const sz = 4 + hash2(i, cx) * 2;
       const g = new THREE.Group();
-      const baseY = heightAt(hx, hz);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(sz, 3.2, sz), idx % 2 ? wallMat2 : wallMat);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(sz, 3.2, sz), wallMats[i % 2]);
       body.position.y = 1.6;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(sz * 0.8, 2.2, 4), roofMats[idx % roofMats.length]);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(sz * 0.82, 2.2, 4), roofMats[i % roofMats.length]);
       roof.position.y = 4.3; roof.rotation.y = Math.PI / 4;
       g.add(body, roof);
-      g.position.set(hx, baseY, hz);
+      g.position.set(hx, heightAt(hx, hz), hz);
+      g.rotation.y = -ang;
       g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       this.group.add(g);
       this._addBox(body, false);
-    });
+    }
 
-    // Central fountain: basin + statue.
-    const baseY0 = heightAt(0, 0);
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.7, 20), new THREE.MeshLambertMaterial({ color: 0xa9a290 }));
-    basin.position.set(0, baseY0 + 0.35, 0); basin.receiveShadow = true;
-    this.group.add(basin);
-    const statue = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 4, 8), new THREE.MeshLambertMaterial({ color: 0x8d99a6 }));
-    statue.position.set(0, baseY0 + 2.4, 0); statue.castShadow = true;
-    this.group.add(statue);
-    this._addBox(statue, false);
+    // Landmark: the Nexus gets a glowing portal-obelisk; others a biome totem.
+    if (big) {
+      const obelisk = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 7, 6), new THREE.MeshLambertMaterial({ color: 0x6a5a8a }));
+      obelisk.position.set(cx, baseY + 3.5, cz); obelisk.castShadow = true;
+      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 0), new THREE.MeshBasicMaterial({ color: 0x9fd0ff }));
+      orb.position.set(cx, baseY + 8, cz);
+      const glow = new THREE.PointLight(0x9fd0ff, 2.4, 24); glow.position.set(cx, baseY + 8, cz);
+      this.group.add(obelisk, orb, glow);
+      this._nexusOrb = orb;
+      this._addBox(obelisk, false);
+    } else {
+      const totem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 3.4, 6), new THREE.MeshLambertMaterial({ color: roofMats[0].color }));
+      totem.position.set(cx, baseY + 1.7, cz); totem.castShadow = true;
+      this.group.add(totem); this._addBox(totem, false);
+    }
 
-    // Lamp posts around the plaza (with glowing tops).
-    for (let a = 0; a < 8; a++) {
-      const ang = (a / 8) * Math.PI * 2;
-      const lx = Math.cos(ang) * 21, lz = Math.sin(ang) * 21;
+    // Lamp posts.
+    const lamps = big ? 8 : 5;
+    for (let a = 0; a < lamps; a++) {
+      const ang = (a / lamps) * Math.PI * 2;
+      const lx = cx + Math.cos(ang) * (R - 3), lz = cz + Math.sin(ang) * (R - 3);
       const ly = heightAt(lx, lz);
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3, 6), new THREE.MeshLambertMaterial({ color: 0x3a3a3a }));
       post.position.set(lx, ly + 1.5, lz); post.castShadow = true;
@@ -261,35 +322,97 @@ export class World {
       this.group.add(post, lamp);
     }
 
-    // A few market crates/barrels for flavor.
-    const crateMat = new THREE.MeshLambertMaterial({ color: 0x8a6a40 });
-    for (let i = 0; i < 8; i++) {
-      const cx = (hash2(i, 71) - 0.5) * 30, cz = (hash2(i, 73) - 0.5) * 30;
-      if (Math.hypot(cx, cz) < 6) continue;
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), crateMat);
-      crate.position.set(cx, heightAt(cx, cz) + 0.45, cz); crate.castShadow = true;
-      this.group.add(crate);
+    // A watchtower and a well (new structures).
+    this._tower(cx + R * 0.62, cz - R * 0.62, pal);
+    this._well(cx - R * 0.6, cz + R * 0.4);
+
+    // Merchant stall + vendor record.
+    this._merchant(cx - R * 0.45, cz - R * 0.5, t.name);
+
+    // Ambient villagers (flavor; no AI).
+    const villagerCols = [0xb08a6a, 0x8a8a9a, 0xa06a6a, 0x6a8a7a];
+    for (let i = 0; i < (big ? 5 : 3); i++) {
+      const ang = hash2(i + 3, cx) * Math.PI * 2, rr = 4 + hash2(i, cz) * (R - 8);
+      const nx = cx + Math.cos(ang) * rr, nz = cz + Math.sin(ang) * rr;
+      const npc = createStickman({ color: villagerCols[i % villagerCols.length], accent: 0x554433, scale: 0.95 });
+      npc.position.set(nx, heightAt(nx, nz), nz);
+      npc.rotation.y = hash2(i, 9) * Math.PI * 2;
+      this.group.add(npc);
     }
 
-    this._vendor();
-  }
-
-  _questGivers() {
-    // Place quest-giver NPCs around the plaza with a floating marker.
-    const slots = [[7, 7], [-7, 7], [7, -6]];
-    GIVERS.forEach((gv, i) => {
-      const [gx, gz] = slots[i] || [i * 4 - 6, 12];
-      const gy = heightAt(gx, gz);
+    // Quest givers for this town.
+    for (const gv of givers) {
+      const gx = cx + gv.dx, gz = cz + gv.dz, gy = heightAt(cx + gv.dx, cz + gv.dz);
       const npc = createStickman({ color: gv.color, accent: gv.accent });
       npc.position.set(gx, gy, gz);
-      npc.rotation.y = Math.atan2(-gx, -gz);
+      npc.rotation.y = Math.atan2(cx - gx, cz - gz);
       this.group.add(npc);
-      // Floating "!" marker.
       const marker = this._marker('!', '#ffd24a');
       marker.position.set(gx, gy + 3, gz);
       this.group.add(marker);
-      this.questGivers.push({ name: gv.name, questId: gv.questId, pos: new THREE.Vector3(gx, gy, gz), marker, npc });
-    });
+      this.questGivers.push({ name: gv.name, giver: gv, pos: new THREE.Vector3(gx, gy, gz), marker, npc });
+    }
+  }
+
+  _tower(x, z, pal) {
+    const y = heightAt(x, z);
+    const g = new THREE.Group();
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.7, 8, 10), new THREE.MeshLambertMaterial({ color: pal.wall2 }));
+    shaft.position.y = 4;
+    const batt = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 1, 10), new THREE.MeshLambertMaterial({ color: pal.wall }));
+    batt.position.y = 8.2;
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2, 2.2, 10), new THREE.MeshLambertMaterial({ color: pal.roofs[0] }));
+    roof.position.y = 9.8;
+    g.add(shaft, batt, roof);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this._addBox(shaft, false);
+  }
+
+  _well(x, z) {
+    const y = heightAt(x, z);
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1, 1, 12), new THREE.MeshLambertMaterial({ color: 0x8a8276 }));
+    ring.position.y = 0.5;
+    for (const sx of [-0.8, 0.8]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }));
+      post.position.set(sx, 1.5, 0); g.add(post);
+    }
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.8, 4), new THREE.MeshLambertMaterial({ color: 0x6a4a2a }));
+    roof.position.y = 2.8; roof.rotation.y = Math.PI / 4;
+    g.add(ring, roof);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this._addBox(ring, false);
+  }
+
+  _merchant(x, z, townName) {
+    const y = heightAt(x, z);
+    const g = new THREE.Group();
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.2), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    counter.position.y = 0.5;
+    const postMat = new THREE.MeshLambertMaterial({ color: 0x5a3a22 });
+    for (const sx of [-1.4, 1.4]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), postMat);
+      post.position.set(sx, 1.3, -0.5); g.add(post);
+    }
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: 0xc23b3b }));
+    awning.position.set(0, 2.5, -0.4); awning.rotation.x = -0.25; g.add(awning);
+    const sign = new THREE.Mesh(new THREE.CircleGeometry(0.35, 16), new THREE.MeshBasicMaterial({ color: 0xffcf3a, side: THREE.DoubleSide }));
+    sign.position.set(0, 2.9, 0.4); g.add(sign);
+    g.add(counter);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this._addBox(counter, false);
+
+    const keeper = createStickman({ color: 0xcaa46a, accent: 0x6a4a2a });
+    keeper.position.set(x, y, z - 1.1); keeper.rotation.y = Math.PI;
+    this.group.add(keeper);
+
+    this.vendors.push({ name: townName, pos: new THREE.Vector3(x, y, z) });
   }
 
   _marker(text, color) {
@@ -304,9 +427,8 @@ export class World {
     return spr;
   }
 
-  // Update a quest giver's marker glyph (! available, ? turn-in, hidden when done).
-  setGiverMarker(questId, glyph, color) {
-    const gv = this.questGivers.find((g) => g.questId === questId);
+  // Set a quest-giver's floating marker (gv is a world.questGivers entry).
+  updateGiverMarker(gv, glyph, color) {
     if (!gv) return;
     if (!glyph) { gv.marker.visible = false; return; }
     gv.marker.visible = true;
@@ -319,38 +441,32 @@ export class World {
     gv.marker.material.map.needsUpdate = true;
   }
 
-  _vendor() {
-    // A merchant stall with a shopkeeper stickman. Press E nearby to trade.
-    const vx = 0, vz = -10, vy = heightAt(0, -10);
-    const g = new THREE.Group();
-    // Counter
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.2), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
-    counter.position.y = 0.5;
-    // Posts + striped awning
-    const postMat = new THREE.MeshLambertMaterial({ color: 0x5a3a22 });
-    for (const sx of [-1.4, 1.4]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), postMat);
-      post.position.set(sx, 1.3, -0.5); g.add(post);
+  nearestVendor(pos, maxDist = 4.5) {
+    for (const v of this.vendors) if (v.pos.distanceTo(pos) < maxDist) return v;
+    return null;
+  }
+
+  // Scattered ruins (broken pillars) out in the wild, per biome.
+  _ruins() {
+    const pillarMat = new THREE.MeshLambertMaterial({ color: 0x9a948a });
+    for (let i = 0; i < 40; i++) {
+      const ang = hash2(i, 201) * Math.PI * 2;
+      const rad = 50 + hash2(i, 203) * (WORLD_SIZE - 70);
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      const y = heightAt(x, z);
+      if (y < -3) continue;
+      const cluster = 2 + Math.floor(hash2(i, 205) * 3);
+      for (let k = 0; k < cluster; k++) {
+        const h = 1.5 + hash2(i, 207 + k) * 3;
+        const px = x + (hash2(i, k) - 0.5) * 4, pz = z + (hash2(k, i) - 0.5) * 4;
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.45, h, 8), pillarMat);
+        pillar.position.set(px, heightAt(px, pz) + h / 2, pz);
+        pillar.rotation.z = (hash2(i, k) - 0.5) * 0.3;
+        pillar.castShadow = true;
+        this.group.add(pillar);
+        this._addBox(pillar, false);
+      }
     }
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: 0xc23b3b }));
-    awning.position.set(0, 2.5, -0.4); awning.rotation.x = -0.25; g.add(awning);
-    // A coin sign
-    const sign = new THREE.Mesh(new THREE.CircleGeometry(0.35, 16), new THREE.MeshBasicMaterial({ color: 0xffcf3a, side: THREE.DoubleSide }));
-    sign.position.set(0, 2.9, 0.4); g.add(sign);
-    g.add(counter);
-    g.position.set(vx, vy, vz);
-    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    this.group.add(g);
-    this._addBox(counter, false);
-
-    // Shopkeeper behind the counter.
-    const keeper = createStickman({ color: 0xcaa46a, accent: 0x6a4a2a });
-    keeper.position.set(vx, vy, vz - 1.1);
-    keeper.rotation.y = Math.PI;
-    this.group.add(keeper);
-    this.vendorKeeper = keeper;
-
-    this.vendor = { pos: new THREE.Vector3(vx, vy, vz) };
   }
 
   _scatter() {
@@ -606,6 +722,7 @@ export class World {
       b.light.intensity = 1.8 + f * 0.6;
     }
     if (this.water) this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.15;
+    if (this._nexusOrb) { this._nexusOrb.rotation.y += dt; this._nexusOrb.rotation.x += dt * 0.5; }
 
     // Camp chests: glow once unlocked; swing the lid open when looted.
     for (const c of this.camps) {

@@ -836,6 +836,69 @@ export class UI {
     el.addEventListener('mouseleave', () => tipEl.classList.add('hidden'));
   }
 
+  // ---- Character sheet ----
+  _ensureCharSheet() {
+    if (this.csOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel skills-panel"><div class="inv-header"><span>🧍 Character</span><button class="inv-close">✕</button></div><div class="skills-body cs-sheet"></div></div>`;
+    document.body.appendChild(ov);
+    this.csOverlay = ov;
+    this.csBody = ov.querySelector('.cs-sheet');
+    ov.querySelector('.inv-close').onclick = () => this.closeCharSheet();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeCharSheet(); });
+  }
+  toggleCharSheet(player) {
+    this._ensureCharSheet();
+    if (this.charSheetOpen) this.closeCharSheet();
+    else { this.charSheetOpen = true; this.csOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this.renderCharSheet(player); }
+  }
+  closeCharSheet() { this.charSheetOpen = false; if (this.csOverlay) this.csOverlay.classList.add('hidden'); }
+  renderCharSheet(player) {
+    const s = player.stats; const c = CLASSES[player.classId];
+    const armor = player.gearArmor;
+    const mit = armor > 0 ? Math.round(Math.min(0.75, armor / (armor + 60 + s.level * 8)) * 100) : 0;
+    const attr = (label, eff, base) => `<div class="cs-row"><span>${label}</span><b>${eff}</b><span class="cs-base">(${base} base${eff - base ? ` +${eff - base}` : ''})</span></div>`;
+    const der = (label, val) => `<div class="cs-row"><span>${label}</span><b>${val}</b></div>`;
+    const sets = (player.activeSets || []).filter((x) => x.tiers.length);
+    const setHtml = sets.length
+      ? sets.map((x) => `<div class="cs-set" style="color:${x.color}">${x.name} — ${x.count} pieces (${x.tiers.map((t) => t + 'pc').join(', ')} active)</div>`).join('')
+      : '<div class="cs-base">No set bonuses active</div>';
+    const equip = SLOTS.map((sl) => {
+      const it = player.gear[sl];
+      const col = it ? (it.setId ? '#9be0ff' : RARITY[it.rarity].color) : '#777';
+      return `<div class="cs-row"><span>${SLOT_LABEL[sl]}</span><b style="color:${col}">${it ? it.glyph + ' ' + it.name : '—'}</b></div>`;
+    }).join('');
+
+    this.csBody.innerHTML = `
+      <div class="cs-grid">
+        <div class="cs-col">
+          <div class="cs-h">${player.name} · ${c.name} · Lv ${s.level}</div>
+          <div class="cs-sub">Attributes</div>
+          ${attr('STR', player.effStr, s.str)}
+          ${attr('DEX', player.effDex, s.dex)}
+          ${attr('INT', player.effInt, s.int)}
+          <div class="cs-sub">Vitals</div>
+          ${der('Max HP', Math.round(player.effMaxHp))}
+          ${der('Max MP', Math.round(player.effMaxMp))}
+          ${der('Max SP', Math.round(player.effMaxSp))}
+        </div>
+        <div class="cs-col">
+          <div class="cs-sub">Combat</div>
+          ${der('Attack Power', Math.round(player.apower))}
+          ${der('Armor', `${armor} (${mit}% dmg reduced)`)}
+          ${der('Crit Chance', `${Math.round((0.05 + player.gearCrit) * 100)}%`)}
+          ${der('Lifesteal', `${Math.round(player.gearLifesteal * 100)}%`)}
+          ${der('Move Speed', `+${Math.round(player.gearSpeed * 100)}%`)}
+          ${der('💰 Gold', player.gold)}
+          <div class="cs-sub">Set Bonuses</div>
+          ${setHtml}
+        </div>
+      </div>
+      <div class="cs-sub">Equipment</div>
+      ${equip}`;
+  }
+
   // ---- Quests ----
   _rewardText(r) {
     return [r.xp ? `${r.xp} XP` : null, r.gold ? `${r.gold} gold` : null,
@@ -854,11 +917,22 @@ export class UI {
     ov.addEventListener('click', (e) => { if (e.target === ov) this.closeQuestDialog(); });
   }
 
-  openQuestDialog(player, giver) {
+  openQuestDialog(player, gv) {
     this._ensureQuestDialog();
     this.questDialogOpen = true;
     if (document.exitPointerLock) document.exitPointerLock();
-    const id = giver.questId; const q = Quests.QUESTS[id]; const st = Quests.statusOf(player, id);
+    const id = Quests.giverActiveQuest(player, gv.giver);
+    if (!id) {
+      this.qdEl.innerHTML = `
+        <div class="inv-header"><span>📜 ${gv.name}</span><button class="inv-close">✕</button></div>
+        <div class="qd-body"><div class="qd-desc">"Nothing for you right now, hero. Come back later."</div>
+        <button class="qd-btn">Close</button></div>`;
+      this.qdOverlay.classList.remove('hidden');
+      this.qdEl.querySelector('.inv-close').onclick = () => this.closeQuestDialog();
+      this.qdEl.querySelector('.qd-btn').onclick = () => this.closeQuestDialog();
+      return;
+    }
+    const giver = { name: gv.name }; const q = Quests.QUESTS[id]; const st = Quests.statusOf(player, id);
     const reward = this._rewardText(q.reward);
     let body, label, act;
     if (st === 'available') {
@@ -889,19 +963,23 @@ export class UI {
     this.qdEl.querySelector('.qd-btn').onclick = () => {
       act();
       this.closeQuestDialog();
-      this._updateGiverMarker(player, id);
+      this.refreshGiverMarkers(player);
     };
   }
   closeQuestDialog() { this.questDialogOpen = false; if (this.qdOverlay) this.qdOverlay.classList.add('hidden'); }
 
-  _updateGiverMarker(player, id) {
+  // Refresh every giver's floating marker based on its active quest.
+  refreshGiverMarkers(player) {
     if (!this._world) return;
-    const st = Quests.statusOf(player, id);
-    if (st === 'available') this._world.setGiverMarker(id, '!', '#ffd24a');
-    else if (st === 'complete') this._world.setGiverMarker(id, '?', '#7be38a');
-    else this._world.setGiverMarker(id, null);
+    for (const gv of this._world.questGivers) {
+      const id = Quests.giverActiveQuest(player, gv.giver);
+      if (!id) { this._world.updateGiverMarker(gv, null); continue; }
+      const st = Quests.statusOf(player, id);
+      if (st === 'available') this._world.updateGiverMarker(gv, '!', '#ffd24a');
+      else if (st === 'complete') this._world.updateGiverMarker(gv, '?', '#7be38a');
+      else this._world.updateGiverMarker(gv, null); // active → no marker
+    }
   }
-  refreshGiverMarkers(player) { for (const id in Quests.QUESTS) this._updateGiverMarker(player, id); }
 
   _ensureQuestLog() {
     if (this.qlOverlay) return;

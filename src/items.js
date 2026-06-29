@@ -18,6 +18,15 @@ export const RARITY = {
 };
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
+// Gear sets — wearing multiple pieces grants escalating bonuses.
+export const SETS = {
+  warden:    { name: "Warden's Vigil",   color: '#7be38a', bonuses: { 2: { armor: 25, maxHp: 60 }, 4: { armor: 60, maxHp: 170, lifesteal: 0.06 } } },
+  nightstalker: { name: 'Nightstalker',  color: '#9be0ff', bonuses: { 2: { crit: 0.06, speed: 0.06 }, 4: { crit: 0.15, dex: 16 } } },
+  archmage:  { name: 'Archmage Regalia', color: '#c07bff', bonuses: { 2: { int: 12, maxMp: 80 }, 4: { int: 32, damage: 34 } } },
+  bloodrage: { name: 'Bloodrage Plate',  color: '#ff7b6a', bonuses: { 2: { str: 12, damage: 18 }, 4: { str: 30, lifesteal: 0.08, speed: 0.05 } } },
+};
+const SET_KEYS = Object.keys(SETS);
+
 // Base templates. Weapons carry a `damage` budget + a stat affinity;
 // armor carries `armor`; accessories are pure stat lines.
 const BASES = {
@@ -127,11 +136,16 @@ export function generateItem({ slot, level = 1, rarityBoost = 0, forceRarity } =
   const lines = rar.lines + (slot === 'ring' || slot === 'amulet' ? 1 : 0);
   for (let i = 0; i < lines; i++) { const l = rollLine(ilvl, rar.mult); addStat(stats, l.k, l.v); }
 
-  // Name: rarity prefix + base, with a suffix from the dominant bonus stat.
+  // Chance (on uncommon+) for this to be a set piece.
+  let setId = null;
+  if (rarityId !== 'common' && Math.random() < 0.24) setId = pick(SET_KEYS);
+
+  // Name: set name, or rarity prefix + base with a suffix from the top stat.
   const dominant = Object.entries(stats).filter(([k]) => k !== 'damage' && k !== 'armor')
     .sort((a, b) => b[1] - a[1])[0];
   const suffix = dominant && SUFFIX[dominant[0]] ? ` of ${SUFFIX[dominant[0]]}` : '';
-  const name = `${pick(PREFIX[rarityId])} ${base.name}${rarityId === 'common' ? '' : suffix}`;
+  const name = setId ? `${SETS[setId].name} ${base.name}`
+    : `${pick(PREFIX[rarityId])} ${base.name}${rarityId === 'common' ? '' : suffix}`;
 
   return {
     // String uid with a random suffix so freshly-generated items never
@@ -140,7 +154,7 @@ export function generateItem({ slot, level = 1, rarityBoost = 0, forceRarity } =
     baseId: base.id, kind: base.kind || null,
     name, slot, glyph: base.glyph,
     rarity: rarityId, ilvl, reqLevel: Math.max(1, ilvl - 2),
-    stats,
+    stats, setId, setName: setId ? SETS[setId].name : null,
   };
 }
 
@@ -232,11 +246,23 @@ export function itemTooltip(item, playerLevel, equipped) {
     compare = `<div class="tip-cmp"><div class="tip-cmp-h">vs. equipped ${equipped.glyph} <span style="color:${RARITY[equipped.rarity].color}">${equipped.name}</span></div>${deltas || '<div class="tip-stat" style="opacity:.6">no stat change</div>'}</div>`;
   }
 
+  let setBlock = '';
+  if (item.setId && SETS[item.setId]) {
+    const set = SETS[item.setId];
+    const tiers = Object.keys(set.bonuses).map((n) => {
+      const b = set.bonuses[n];
+      const parts = Object.entries(b).map(([k, v]) => fmtStat(k, v) + ' ' + (STAT_LABEL[k] || k)).join(', ');
+      return `<div class="tip-set-line">(${n}) ${parts}</div>`;
+    }).join('');
+    setBlock = `<div class="tip-set" style="color:${set.color}"><div>${set.name} (set)</div>${tiers}</div>`;
+  }
+
   return `
-    <div class="tip-name" style="color:${rar.color}">${item.glyph} ${item.name}${item.unique ? ' ✦' : ''}</div>
+    <div class="tip-name" style="color:${item.setId ? SETS[item.setId].color : rar.color}">${item.glyph} ${item.name}${item.unique ? ' ✦' : ''}</div>
     <div class="tip-sub">${rar.name} ${SLOT_LABEL[item.slot]} · ilvl ${item.ilvl}</div>
     ${lines}
     ${flavor}
     <div class="tip-req" style="color:${reqBad ? '#ff6b6b' : '#9a9'}">Requires level ${item.reqLevel}</div>
+    ${setBlock}
     ${compare}`;
 }

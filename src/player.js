@@ -11,7 +11,7 @@ import {
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
 } from './classes.js';
 import { heightAt } from './world.js';
-import { sumStats, SLOTS, RARITY } from './items.js';
+import { sumStats, SLOTS, RARITY, SETS } from './items.js';
 
 function emptyGear() {
   const g = {};
@@ -72,7 +72,23 @@ export class Player {
 
   // ---- Equipment-derived effective stats ----
   recomputeGear() {
-    this.bonus = sumStats(Object.values(this.gear));
+    const items = Object.values(this.gear).filter(Boolean);
+    this.bonus = sumStats(items);
+    // Set bonuses: tally equipped pieces per set, add active tier bonuses.
+    const counts = {};
+    for (const it of items) if (it.setId) counts[it.setId] = (counts[it.setId] || 0) + 1;
+    this.activeSets = [];
+    for (const sid in counts) {
+      const set = SETS[sid]; if (!set) continue;
+      const c = counts[sid]; const tiers = [];
+      for (const tier of [2, 4]) {
+        if (c >= tier && set.bonuses[tier]) {
+          for (const k in set.bonuses[tier]) this.bonus[k] = (this.bonus[k] || 0) + set.bonuses[tier][k];
+          tiers.push(tier);
+        }
+      }
+      this.activeSets.push({ id: sid, name: set.name, color: set.color, count: c, tiers });
+    }
     // Re-clamp current pools to the new effective maxima.
     this.stats.hp = Math.min(this.stats.hp, this.effMaxHp);
     this.stats.mp = Math.min(this.stats.mp, this.effMaxMp);
