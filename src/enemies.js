@@ -4,8 +4,9 @@
 // Spawned per world zone so difficulty rises away from town.
 // ============================================================
 import * as THREE from 'three';
-import { createStickman, animateStickman } from './stickman.js';
-import { heightAt } from './world.js';
+import { animateStickman } from './stickman.js';
+import { createCreature } from './creatures.js';
+import { heightAt, BOSSES } from './world.js';
 
 const TYPES = {
   slime:    { name: 'Stick Slime',   color: 0x6fae54, accent: 0x3f7d3a, scale: 0.8, hp: 30,  dmg: 6,  speed: 2.6, range: 1.8, xp: 14, aggro: 12 },
@@ -47,11 +48,13 @@ export class Enemy {
     this.xp = Math.round(this.type.xp * (1 + (level - 1) * 0.4) * (this.boss ? 7 : this.elite ? 2.5 : 1));
     this.displayScale = this.type.scale * (this.boss ? 2.3 : this.elite ? 1.35 : 1);
 
-    this.mesh = createStickman({
+    this.mesh = createCreature(this.typeId, {
       color: this.boss ? 0x1f1320 : this.elite ? 0x2a2a2a : this.type.color,
       accent: this.boss ? 0xff3030 : this.elite ? 0xffcf3a : this.type.accent,
       scale: this.displayScale,
     });
+    // Each creature carries its own poser; fall back to the humanoid animator.
+    this._poser = this.mesh.userData.animate || animateStickman;
     scene.add(this.mesh);
 
     if (this.boss) {
@@ -131,7 +134,7 @@ export class Enemy {
   update(dt, player, t) {
     if (!this.alive) {
       // Death flop, then respawn after a timer.
-      animateStickman(this.mesh, dt, { dead: true });
+      this._poser(this.mesh, dt, { dead: true });
       this.respawnTimer -= dt;
       if (this.respawnTimer <= 0) this._respawn();
       return;
@@ -244,7 +247,7 @@ export class Enemy {
     while (diff > Math.PI) diff -= Math.PI * 2;
     while (diff < -Math.PI) diff += Math.PI * 2;
     this.mesh.rotation.y = cur + diff * Math.min(1, dt * 12);
-    animateStickman(this.mesh, dt, { speed01: this._speed01, attack: this.attackAnim });
+    this._poser(this.mesh, dt, { speed01: this._speed01, attack: this.attackAnim });
 
     // Hit flash fade.
     if (this._hitFlash > 0) {
@@ -353,7 +356,8 @@ export function spawnEnemies(scene, world) {
   for (const zone of world.spawnZones) {
     const pool = TYPE_BY_LEVEL(zone.level);
     for (let i = 0; i < zone.count; i++) {
-      const a = Math.random() * Math.PI * 2, d = Math.random() * zone.radius;
+      // sqrt(random) → uniform coverage over the whole disc (no center clumping).
+      const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * zone.radius;
       const home = new THREE.Vector3(zone.center.x + Math.cos(a) * d, 0, zone.center.z + Math.sin(a) * d);
       const typeId = pool[Math.floor(Math.random() * pool.length)];
       const lvl = zone.level + Math.floor(Math.random() * 2);
@@ -377,15 +381,10 @@ export function spawnMinions(scene, world, boss, n) {
   return out;
 }
 
-// World bosses — one powerful named boss deep in each biome.
+// World bosses — one powerful named boss deep in each biome's high-level area.
+// Positions derive from BIOME_LAYOUT (via the exported BOSSES table).
 export function spawnBosses(scene, world) {
-  const specs = [
-    { name: 'Gorath the Wildking', type: 'brute', x: 205, z: 158, level: 12 },
-    { name: 'Frosthelm the Fallen', type: 'knight', x: -205, z: 165, level: 16 },
-    { name: 'Sandmaw the Devourer', type: 'brute', x: 212, z: -158, level: 21 },
-    { name: 'The Mirelord', type: 'knight', x: -212, z: -162, level: 27 },
-  ];
-  return specs.map((sp) => {
+  return BOSSES.map((sp) => {
     const home = new THREE.Vector3(sp.x, 0, sp.z);
     return new Enemy(scene, world, sp.type, sp.level, home, { boss: true, bossName: sp.name });
   });

@@ -70,7 +70,7 @@ export function createStickman({ color = 0x9aa4b2, accent = 0xd8423c, scale = 1 
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
 
   // Bundle joint refs + per-instance animation phase on the group.
-  root.userData.joints = { hip, torso, head, armL, armR, legL, legR, weapon };
+  root.userData.joints = { hip, torso, head, crest, armL, armR, legL, legR, weapon };
   root.userData.anim = { phase: Math.random() * Math.PI * 2, attack: 0, climb: 0 };
   return root;
 }

@@ -28,47 +28,81 @@ function smoothNoise(x, z) {
 
 function smoothstep(a, b, x) { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
 
-// Smooth, noise-distorted biome membership weights at a point. Defined before
-// heightAt so terrain elevation can vary by biome.
+// Each biome fans out from the Nexus along its own heading — deliberately OFF
+// the 45° diagonals and unevenly spaced, at varied distances — so the world's
+// regions, towns, and areas scatter organically instead of in a neat X. Every
+// position derives from this one table and is deterministic across loads.
+const DEG = Math.PI / 180;
+function polar(deg, r) { return { x: Math.cos(deg * DEG) * r, z: Math.sin(deg * DEG) * r }; }
+
+const BIOME_LAYOUT = [
+  { biome: 'forest', heading: 14, dist: 185, town: 'Thornhollow', townDist: 178,
+    low: { name: 'Whisperwood Glade', level: 1, off: -14, dist: 105, r: 42, count: 9 },
+    high: { name: 'Tanglethorn Deep', level: 10, off: 18, dist: 255, r: 52, count: 12 },
+    camp: { id: 'camp_forest', level: 5, off: 9, dist: 215 },
+    boss: { name: 'Gorath the Wildking', type: 'brute', level: 12 } },
+  { biome: 'snow', heading: 98, dist: 185, town: 'Frostgard', townDist: 175,
+    low: { name: 'Frostfang Pass', level: 3, off: -16, dist: 108, r: 42, count: 9 },
+    high: { name: 'Glacial Reach', level: 13, off: 14, dist: 252, r: 52, count: 12 },
+    camp: { id: 'camp_snow', level: 7, off: 11, dist: 212 },
+    boss: { name: 'Frosthelm the Fallen', type: 'knight', level: 16 } },
+  { biome: 'desert', heading: 200, dist: 195, town: 'Dustmarket', townDist: 182,
+    low: { name: 'Sunscar Flats', level: 5, off: 14, dist: 110, r: 42, count: 9 },
+    high: { name: 'The Bonewaste', level: 17, off: -18, dist: 258, r: 54, count: 13 },
+    camp: { id: 'camp_desert', level: 10, off: -8, dist: 218 },
+    boss: { name: 'Sandmaw the Devourer', type: 'brute', level: 21 } },
+  { biome: 'swamp', heading: 288, dist: 180, town: 'Gloomfen', townDist: 170,
+    low: { name: 'Murkmire', level: 7, off: -12, dist: 102, r: 42, count: 9 },
+    high: { name: 'Rotheart Hollow', level: 22, off: 20, dist: 250, r: 54, count: 13 },
+    camp: { id: 'camp_swamp', level: 14, off: 7, dist: 210 },
+    boss: { name: 'The Mirelord', type: 'knight', level: 27 } },
+];
+
+// Biome region centers — used by biomeWeights as soft-Voronoi sites.
+export const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, ...polar(b.heading, b.dist) }));
+
+// Smooth, noise-distorted biome membership weights at a point: a soft Voronoi
+// over the biome region centers, with a meadow core around the Nexus. Defined
+// before heightAt so terrain elevation can vary by biome.
 export function biomeWeights(x, z) {
-  const nx = x + (smoothNoise(x * 0.018 + 1.3, z * 0.018 + 2.7) - 0.5) * 52;
-  const nz = z + (smoothNoise(x * 0.018 + 9.1, z * 0.018 + 4.2) - 0.5) * 52;
-  const ex = smoothstep(-30, 30, nx);   // 0 = west, 1 = east
-  const ez = smoothstep(-30, 30, nz);   // 0 = south, 1 = north
-  const town = 1 - smoothstep(16, 44, Math.hypot(x, z));
+  // Distort the sample point so biome borders wander instead of being clean circles.
+  const nx = x + (smoothNoise(x * 0.02 + 1.3, z * 0.02 + 2.7) - 0.5) * 70;
+  const nz = z + (smoothNoise(x * 0.02 + 9.1, z * 0.02 + 4.2) - 0.5) * 70;
+  const town = 1 - smoothstep(20, 60, Math.hypot(x, z)); // meadow core (true position)
   const outer = 1 - town;
-  return {
-    forest: ex * ez * outer,
-    snow: (1 - ex) * ez * outer,
-    swamp: (1 - ex) * (1 - ez) * outer,
-    desert: ex * (1 - ez) * outer,
-    meadow: town,
-  };
+  const w = { forest: 0, snow: 0, swamp: 0, desert: 0, meadow: town };
+  let sum = 0; const inf = [];
+  for (const r of BIOME_REGIONS) {
+    const d = Math.hypot(nx - r.x, nz - r.z);
+    const v = 1 / (1 + Math.pow(d / 95, 3)); // soft falloff to the region center
+    inf.push(v); sum += v;
+  }
+  for (let i = 0; i < BIOME_REGIONS.length; i++) w[BIOME_REGIONS[i].biome] = (inf[i] / sum) * outer;
+  return w;
 }
 
-// Town centers (flattened so settlements sit on level ground). Declared here
-// for heightAt. Spread far across the larger world.
+// Town centers (flattened so settlements sit on level ground). The Nexus anchors
+// the middle; each biome gets one outpost partway along its heading.
 export const TOWNS = [
   { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 28, nexus: true },
-  { name: 'Thornhollow', x: 150, z: 105, biome: 'forest', radius: 20 },
-  { name: 'Frostgard', x: -150, z: 110, biome: 'snow', radius: 20 },
-  { name: 'Dustmarket', x: 155, z: -108, biome: 'desert', radius: 20 },
-  { name: 'Gloomfen', x: -152, z: -112, biome: 'swamp', radius: 20 },
+  ...BIOME_LAYOUT.map((b) => ({ name: b.town, biome: b.biome, radius: 20, ...polar(b.heading, b.townDist) })),
 ];
 
 // Named adventuring areas within the biomes, each with a level and a spawn
-// budget. The player gets a zone banner on entering one.
+// budget. The player gets a zone banner on entering one. Low areas sit nearer
+// the Nexus, high areas farther out, each on a slightly jittered heading.
 export const AREAS = [
   { name: 'Greenmeadow', x: 0, z: 0, r: 40, level: 0, biome: 'meadow', safe: true },
-  { name: 'Whisperwood Glade', x: 90, z: 62, r: 42, level: 1, biome: 'forest', count: 9 },
-  { name: 'Tanglethorn Deep', x: 205, z: 158, r: 52, level: 10, biome: 'forest', count: 12 },
-  { name: 'Frostfang Pass', x: -92, z: 66, r: 42, level: 3, biome: 'snow', count: 9 },
-  { name: 'Glacial Reach', x: -205, z: 165, r: 52, level: 13, biome: 'snow', count: 12 },
-  { name: 'Sunscar Flats', x: 96, z: -62, r: 42, level: 5, biome: 'desert', count: 9 },
-  { name: 'The Bonewaste', x: 212, z: -158, r: 54, level: 17, biome: 'desert', count: 13 },
-  { name: 'Murkmire', x: -95, z: -64, r: 42, level: 7, biome: 'swamp', count: 9 },
-  { name: 'Rotheart Hollow', x: -212, z: -162, r: 54, level: 22, biome: 'swamp', count: 13 },
+  ...BIOME_LAYOUT.flatMap((b) => [
+    { name: b.low.name, level: b.low.level, biome: b.biome, r: b.low.r, count: b.low.count, ...polar(b.heading + b.low.off, b.low.dist) },
+    { name: b.high.name, level: b.high.level, biome: b.biome, r: b.high.r, count: b.high.count, ...polar(b.heading + b.high.off, b.high.dist) },
+  ]),
 ];
+
+// Elite war-camps and world bosses (one per biome) — camps sit between the town
+// and the high area; bosses lurk in the high area.
+export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + b.camp.off, b.camp.dist) }));
+export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + b.high.off, b.high.dist) }));
 
 // Find the named area a point is in (nearest area whose radius contains it).
 export function areaAt(x, z) {
@@ -107,20 +141,20 @@ const DUNGEON_SITES = DUNGEONS.map((d) => ({ x: d.sx, z: d.sz, radius: 44, floor
 // Mountains: big rocky peaks that act as landmarks/barriers. A couple of them
 // have a cave mouth at the base that leads down into an instanced cavern.
 export const MOUNTAINS = [
-  { x: -118, z: 152, r: 22, h: 62, cave: 'cave_echo' },  // snowy peak above Frostgard
-  { x: 178, z: 150, r: 20, h: 54, cave: 'cave_deep' },   // forest highland near Tanglethorn
-  { x: -188, z: 38, r: 18, h: 48 },
-  { x: 66, z: 182, r: 16, h: 42 },
-  { x: -44, z: -184, r: 18, h: 46 },
-  { x: 202, z: -44, r: 16, h: 44 },
+  { x: -150, z: 255, r: 28, h: 78, cave: 'cave_echo' },  // snowy peak, far north
+  { x: 255, z: 70, r: 26, h: 70, cave: 'cave_deep' },    // eastern forest highland
+  { x: -250, z: -80, r: 23, h: 60 },
+  { x: 120, z: -240, r: 21, h: 54 },
+  { x: -285, z: 70, r: 22, h: 58 },
+  { x: 190, z: 215, r: 19, h: 50 },
 ];
 
 // Caves: like dungeons, they teleport to an instanced room far off the map,
 // but these are deep, dark, crystal-lit caverns reached by descending through
 // a mountain-base entrance. A treasure cache waits at the bottom.
 export const CAVES = [
-  { id: 'cave_echo', name: 'Echohollow Cavern', ex: -118, ez: 152, sx: 0, sz: -720, floorY: -42, level: 4 },
-  { id: 'cave_deep', name: 'The Deepvein', ex: 178, ez: 150, sx: -720, sz: -720, floorY: -48, level: 9 },
+  { id: 'cave_echo', name: 'Echohollow Cavern', ex: -150, ez: 255, sx: 0, sz: -720, floorY: -42, level: 4 },
+  { id: 'cave_deep', name: 'The Deepvein', ex: 255, ez: 70, sx: -720, sz: -720, floorY: -48, level: 9 },
 ];
 const CAVE_SITES = CAVES.map((c) => ({ x: c.sx, z: c.sz, radius: 40, floorY: c.floorY }));
 
@@ -773,39 +807,32 @@ export class World {
     }
   }
 
-  // Big craggy mountains — stacked rock cones with a snow cap and a ring of
-  // foothill boulders. A central collider box (kept inside the silhouette)
-  // makes them solid barriers; mountains flagged with a cave get a dark mouth
-  // at the base that descends into an instanced cavern.
+  // Big mountains — each is one large rock cone topped with a white snow cap.
+  // A central collider box (kept inside the silhouette) makes them solid
+  // barriers; mountains flagged with a cave get a dark mouth at the base that
+  // descends into an instanced cavern.
   _mountains() {
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x6e6a63 });
-    const rockDark = new THREE.MeshLambertMaterial({ color: 0x565249 });
     const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
     for (const m of MOUNTAINS) {
       const baseY = heightAt(m.x, m.z);
       const g = new THREE.Group();
-      for (let k = 0; k < 3; k++) {
-        const rr = m.r * (1 - k * 0.26);
-        const hh = m.h * (0.52 - k * 0.12);
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(rr, hh, 7 + (k % 2)), k === 0 ? rockMat : rockDark);
-        cone.position.y = m.h * 0.5 * (k * 0.42) + hh / 2;
-        cone.rotation.y = hash2(m.x + k, m.z) * Math.PI;
-        g.add(cone);
-      }
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(m.r * 0.5, m.h * 0.34, 7), snowMat);
-      cap.position.y = m.h * 0.78; g.add(cap);
-      for (let k = 0; k < 7; k++) {
-        const a = (k / 7) * Math.PI * 2 + hash2(m.x, k);
-        const br = 1.6 + hash2(k, m.z) * 2.4;
-        const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(br, 0), rockMat);
-        boulder.position.set(Math.cos(a) * m.r * 0.92, br * 0.4, Math.sin(a) * m.r * 0.92);
-        boulder.rotation.set(hash2(k, 1) * 3, hash2(k, 2) * 3, hash2(k, 3) * 3);
-        g.add(boulder);
-      }
+      // One large cone for the whole peak.
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(m.r, m.h, 9), rockMat);
+      cone.position.y = m.h / 2;
+      g.add(cone);
+      // White snow cap: a smaller cone sitting on the upper third of the peak,
+      // sized so its base ring matches the mountain's slope (no gap/overhang).
+      const capFrac = 0.34;             // cap covers the top 34% of the height
+      const capH = m.h * capFrac;
+      const capR = m.r * capFrac;       // slope is linear, so radius scales with height
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(capR, capH, 9), snowMat);
+      cap.position.y = m.h - capH / 2;
+      g.add(cap);
       g.position.set(m.x, baseY, m.z);
       g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       this.group.add(g);
-      const fw = m.r * 1.05; // collider footprint (half-width), inside the cones
+      const fw = m.r * 0.78; // collider footprint (half-width), well inside the cone
       this.colliders.push({
         min: new THREE.Vector3(m.x - fw, baseY - 2, m.z - fw),
         max: new THREE.Vector3(m.x + fw, baseY + m.h, m.z + fw),
@@ -933,8 +960,9 @@ export class World {
 
   _spawnZones() {
     // Spawn zones are the named, level-gated areas (no enemies in safe areas).
+    // Use nearly the whole area radius so packs spread out rather than bunching.
     this.spawnZones = AREAS.filter((a) => !a.safe).map((a) => ({
-      center: new THREE.Vector3(a.x, 0, a.z), radius: a.r * 0.85, level: a.level, count: a.count || 9, name: a.name,
+      center: new THREE.Vector3(a.x, 0, a.z), radius: a.r * 0.95, level: a.level, count: a.count || 9, name: a.name,
     }));
   }
 
@@ -951,13 +979,9 @@ export class World {
 
   _camps() {
     // Elite war-camps: clusters of tough enemies guarding a loot chest.
-    // The chest stays locked until every camp member is slain.
-    const specs = [
-      { id: 'camp_forest', x: 130, z: 95, level: 5 },
-      { id: 'camp_snow', x: -128, z: 100, level: 7 },
-      { id: 'camp_desert', x: 135, z: -100, level: 10 },
-      { id: 'camp_swamp', x: -130, z: -102, level: 14 },
-    ];
+    // The chest stays locked until every camp member is slain. Positions derive
+    // from BIOME_LAYOUT (one per biome, between the town and the high area).
+    const specs = CAMPS;
     const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
     const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });
     for (const sp of specs) {
