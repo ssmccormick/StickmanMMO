@@ -101,6 +101,17 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   blend along noise-distorted borders. Scattered trees, rocks, bushes, flowers, water,
   drifting clouds, **ruins**, and big snow-capped **mountains** dress the land. Climbable
   cliffs, and **solid collision** on structures for both you and monsters.
+- **Mountain-walled regions & passes** — each biome is its own region, **walled off from
+  its neighbours by mountain ranges**. To travel between regions you funnel through a
+  **mountain pass** (a gap in the range, flanked by tall snow-capped marker peaks) — or
+  brave the high country. The **Nexus** is a large central **walled city** (two rings of
+  houses, a glowing portal-obelisk, four merchants, lamps and villagers) with a small
+  starter glen beside it — **The Waking Vale**, marked by an Ember-cairn, where the Ashbound
+  wakes and takes their first steps.
+- **Hidden treasure & shrines** — **30 treasure chests** are tucked off the roads across
+  the wild (loot scales with how far out they sit), and **buff shrines** in each region
+  grant a long blessing (30–60 min) — Might (+25% dmg), Swiftness (+20% speed), Titan (+14
+  all attributes), or Fury — so wandering off the path pays off.
 - **A big, spread-out world** with **winding dirt roads** that bend like natural trails
   linking the Nexus to every town, **named areas** within each biome (Whisperwood Glade,
   The Bonewaste, The Shardspire, Bonechew Canyon…) each with a recommended level and a

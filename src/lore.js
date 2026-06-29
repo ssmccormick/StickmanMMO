@@ -25,9 +25,10 @@ export const CODEX = [
   {
     id: 'world', title: 'The World', icon: '🌍', entries: [
       { title: 'Aethelgard', body: 'A broken world of green meadows, deep wood, frozen peaks, burning dunes and drowned mire — all of it spun out from one central refuge, the Nexus. The roads still remember when it was whole.' },
-      { title: 'The Nexus', body: 'The first and last refuge: a meadow town at the center of every road, raised by the First Heroes around the Emberheart itself. No Blight may enter while the flame burns, which is why every town remains a haven.' },
+      { title: 'The Nexus', body: 'The first and last refuge: a great walled city at the heart of the world, raised by the First Heroes around the Emberheart itself. Its winding roads run out to every reach, and the small Waking Vale beside it is where the newly-Ashbound first open their eyes. No Blight may enter while the flame burns — which is why every town remains a haven.' },
       { title: 'The Emberheart & the Embers', body: 'The great flame at the Nexus is the Emberheart. Every bonfire in the wilds is one of its scattered Embers. Rest at an Ember and it learns your name; fall in battle, and it calls you back. This is why the Ashbound do not stay dead — and why the guttering of the Embers threatens all of Aethelgard.' },
-      { title: 'The Roads', body: 'The First Heroes laid stone roads from the Nexus out to the four reaches. Travellers keep to them after dark — the Blight runs thickest where the roads run out.' },
+      { title: 'The Reaches & Their Passes', body: 'When the world sundered, great mountain ranges rose between the reaches, walling each region off from its neighbours. To cross from one reach to the next you must find the mountain pass that pierces the range — or brave the deadly heights of the high country between.' },
+      { title: 'Shrines & Lost Caches', body: 'The old world left its marks across the wild: rune-lit shrines that bless the worthy traveller for a time, and treasure caches hidden far from the roads. Stray off the beaten path and you may be rewarded.' },
     ],
   },
   {

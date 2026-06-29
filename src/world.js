@@ -80,8 +80,11 @@ const BIOME_LAYOUT = [
     boss: { name: 'Skarn the Bonelord', type: 'knight', level: 44 } },
 ];
 
+// Per-biome region size (falloff multiplier) so regions vary in extent/shape.
+const BIOME_SIZE = { forest: 1.18, snow: 1.0, desert: 1.12, swamp: 0.9, ash: 1.06, jungle: 1.22, crystal: 0.88, badlands: 1.1 };
+
 // Biome region centers — used by biomeWeights as soft-Voronoi sites.
-export const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, ...polar(b.heading, b.dist) }));
+export const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, size: BIOME_SIZE[b.biome] || 1, ...polar(b.heading, b.dist) }));
 
 // Smooth, noise-distorted biome membership weights at a point: a soft Voronoi
 // over the biome region centers, with a meadow core around the Nexus. Defined
@@ -96,7 +99,7 @@ export function biomeWeights(x, z) {
   let sum = 0; const inf = [];
   for (const r of BIOME_REGIONS) {
     const d = Math.hypot(nx - r.x, nz - r.z);
-    const v = 1 / (1 + Math.pow(d / 95, 3)); // soft falloff to the region center
+    const v = 1 / (1 + Math.pow(d / (95 * (r.size || 1)), 3)); // soft falloff, scaled by region size
     inf.push(v); sum += v;
   }
   for (let i = 0; i < BIOME_REGIONS.length; i++) w[BIOME_REGIONS[i].biome] = (inf[i] / sum) * outer;
@@ -106,25 +109,30 @@ export function biomeWeights(x, z) {
 // Town centers (flattened so settlements sit on level ground). The Nexus anchors
 // the middle; each biome gets one outpost partway along its heading.
 export const TOWNS = [
-  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 28, nexus: true },
+  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 40, nexus: true },
   ...BIOME_LAYOUT.map((b) => ({ name: b.town, biome: b.biome, radius: 20, ...polar(b.heading, b.townDist) })),
 ];
 
 // Named adventuring areas within the biomes, each with a level and a spawn
 // budget. The player gets a zone banner on entering one. Low areas sit nearer
 // the Nexus, high areas farther out, each on a slightly jittered heading.
+// Keep areas/camps/bosses off the region borders (which carry mountain ranges)
+// by clamping their angular offset toward the center of the wedge.
+const capOff = (o) => Math.max(-9, Math.min(9, o));
 export const AREAS = [
   { name: 'Greenmeadow', x: 0, z: 0, r: 40, level: 0, biome: 'meadow', safe: true },
+  // A small starter glen just outside the Nexus where the Ashbound wakes.
+  { name: 'The Waking Vale', ...polar(14, 74), r: 24, level: 1, count: 7, biome: 'meadow' },
   ...BIOME_LAYOUT.flatMap((b) => [
-    { name: b.low.name, level: b.low.level, biome: b.biome, r: b.low.r, count: b.low.count, ...polar(b.heading + b.low.off, b.low.dist) },
-    { name: b.high.name, level: b.high.level, biome: b.biome, r: b.high.r, count: b.high.count, ...polar(b.heading + b.high.off, b.high.dist) },
+    { name: b.low.name, level: b.low.level, biome: b.biome, r: b.low.r, count: b.low.count, ...polar(b.heading + capOff(b.low.off), b.low.dist) },
+    { name: b.high.name, level: b.high.level, biome: b.biome, r: b.high.r, count: b.high.count, ...polar(b.heading + capOff(b.high.off), b.high.dist) },
   ]),
 ];
 
 // Elite war-camps and world bosses (one per biome) — camps sit between the town
 // and the high area; bosses lurk in the high area.
-export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + b.camp.off, b.camp.dist) }));
-export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + b.high.off, b.high.dist) }));
+export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + capOff(b.camp.off), b.camp.dist) }));
+export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + capOff(b.high.off), b.high.dist) }));
 
 // Find the named area a point is in (nearest area whose radius contains it).
 export function areaAt(x, z) {
@@ -338,11 +346,13 @@ export class World {
     this._ruins();
     this._cliffs();
     this._mountains();
+    this._ranges();
     this._camps();
     this._dungeons();
     this._caves();
     this._bonfires();
     this._spawnZones();
+    this._wakingVale();
     this._swordInStone();
     this._shrines();
     this._treasures();
@@ -481,8 +491,8 @@ export class World {
     plaza.position.set(cx, baseY, cz); plaza.receiveShadow = true;
     this.group.add(plaza);
 
-    // Houses ringed around the plaza.
-    const houseCount = big ? 12 : 6;
+    // Houses ringed around the plaza (two rings for the bigger Nexus city).
+    const houseCount = big ? 16 : 6;
     const wallMats = [new THREE.MeshLambertMaterial({ color: pal.wall }), new THREE.MeshLambertMaterial({ color: pal.wall2 })];
     const roofMats = pal.roofs.map((c) => new THREE.MeshLambertMaterial({ color: c }));
     for (let i = 0; i < houseCount; i++) {
@@ -502,6 +512,26 @@ export class World {
       this.group.add(g);
       this._addBox(body, false);
     }
+    // The Nexus gets a second, inner ring of houses — a proper city.
+    if (big) {
+      const inner = 9;
+      for (let i = 0; i < inner; i++) {
+        const ang = (i / inner) * Math.PI * 2 + 0.35;
+        const hr = R * 0.42 + (hash2(i + cx + 99, cz) - 0.5) * 3;
+        const hx = cx + Math.cos(ang) * hr, hz = cz + Math.sin(ang) * hr;
+        const sz = 4 + hash2(i + 5, cx) * 2.5;
+        const g = new THREE.Group();
+        const body = new THREE.Mesh(new THREE.BoxGeometry(sz, 3.6, sz), wallMats[i % 2]);
+        body.position.y = 1.8;
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(sz * 0.82, 2.4, 4), roofMats[i % roofMats.length]);
+        roof.position.y = 4.9; roof.rotation.y = Math.PI / 4;
+        g.add(body, roof);
+        g.position.set(hx, heightAt(hx, hz), hz); g.rotation.y = -ang;
+        g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        this.group.add(g);
+        this._addBox(body, false);
+      }
+    }
 
     // Landmark: the Nexus gets a glowing portal-obelisk; others a biome totem.
     if (big) {
@@ -520,7 +550,7 @@ export class World {
     }
 
     // Lamp posts.
-    const lamps = big ? 8 : 5;
+    const lamps = big ? 14 : 5;
     for (let a = 0; a < lamps; a++) {
       const ang = (a / lamps) * Math.PI * 2;
       const lx = cx + Math.cos(ang) * (R - 3), lz = cz + Math.sin(ang) * (R - 3);
@@ -546,7 +576,7 @@ export class World {
 
     // Ambient villagers (flavor; interactable for lore).
     const villagerCols = [0xb08a6a, 0x8a8a9a, 0xa06a6a, 0x6a8a7a];
-    for (let i = 0; i < (big ? 6 : 4); i++) {
+    for (let i = 0; i < (big ? 10 : 4); i++) {
       const ang = hash2(i + 3, cx) * Math.PI * 2, rr = 5 + hash2(i, cz) * (R - 10);
       const nx = cx + Math.cos(ang) * rr, nz = cz + Math.sin(ang) * rr;
       const npc = createStickman({ color: villagerCols[i % villagerCols.length], accent: 0x554433, scale: 0.95 });
@@ -968,6 +998,59 @@ export class World {
     }
   }
 
+  // Mountain ranges along the borders between adjacent regions, so each biome
+  // reads as its own walled-off region. A pass is carved through each range
+  // (and gaps are left where areas, towns and roads sit) so you funnel between
+  // regions through the passes. Peaks are solid (non-climbable) colliders.
+  _ranges() {
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x6e6a63 });
+    const rockDark = new THREE.MeshLambertMaterial({ color: 0x595550 });
+    const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+    const borders = [35, 77, 120, 171, 222, 266, 310, 353]; // bisectors of the 8 region headings
+    this.passes = [];
+    const RIN = 72, ROUT = WORLD_SIZE - 12;
+    const addPeak = (px, pz, rad, hgt, mat) => {
+      const baseY = heightAt(px, pz);
+      if (baseY < -3) return;
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(rad, hgt, 8), mat);
+      cone.position.set(px, baseY + hgt / 2 - 1, pz);
+      cone.castShadow = true; cone.receiveShadow = true;
+      this.group.add(cone);
+      if (hgt > 46) {
+        const capH = hgt * 0.3;
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.3, capH, 8), snowMat);
+        cap.position.set(px, baseY + hgt - 1 - capH / 2, pz);
+        this.group.add(cap);
+      }
+      const fw = rad * 0.92;
+      this.colliders.push({ min: new THREE.Vector3(px - fw, baseY - 2, pz - fw), max: new THREE.Vector3(px + fw, baseY + hgt, pz + fw), climbable: false });
+    };
+    for (let bi = 0; bi < borders.length; bi++) {
+      const ang = borders[bi] * DEG, ux = Math.cos(ang), uz = Math.sin(ang);
+      const passR = 172 + (hash2(bi, 71) - 0.5) * 30; // vary where each pass sits
+      const passHalf = 16;
+      for (let r = RIN; r <= ROUT; r += 8) {
+        if (Math.abs(r - passR) < passHalf) continue; // leave the pass open
+        // Two staggered rows (slight lateral offset) make a thicker, solid wall.
+        for (const row of [-3.5, 3.5]) {
+          const lat = row + (hash2(bi * 9 + Math.round(r), 13) - 0.5) * 5;
+          const px = ux * r - uz * lat, pz = uz * r + ux * lat;
+          if (this.inSafeZone(px, pz) || roadDistance(px, pz) < 9) continue;
+          let inArea = false;
+          for (const a of AREAS) if (!a.safe && Math.hypot(px - a.x, pz - a.z) < a.r + 2) { inArea = true; break; }
+          if (inArea) continue;
+          addPeak(px, pz, 11 + hash2(Math.round(r) + (row > 0 ? 1 : 0), bi) * 5, 34 + hash2(bi, Math.round(r) + (row > 0 ? 7 : 0)) * 32, (Math.round(r) % 21 < 10) ? rockMat : rockDark);
+        }
+      }
+      // Flank the pass with two tall snow-capped marker peaks so it's findable.
+      const ppx = ux * passR, ppz = uz * passR;
+      this.passes.push({ pos: new THREE.Vector3(ppx, heightAt(ppx, ppz), ppz), heading: borders[bi] });
+      for (const side of [-1, 1]) {
+        addPeak(ux * passR - uz * side * (passHalf + 11), uz * passR + ux * side * (passHalf + 11), 13, 58, rockMat);
+      }
+    }
+  }
+
   // Instanced caverns reached via a mountain mouth: a deep, dark, crystal-lit
   // room far off the overworld (flat floor at a low Y so it reads as "down").
   _caves() {
@@ -1216,6 +1299,27 @@ export class World {
   nearestCaveChest(pos, maxDist = 4) {
     for (const c of this.caves) if (c.chestPos.distanceTo(pos) < maxDist) return c;
     return null;
+  }
+
+  // The Waking Vale: a small starter glen just outside the Nexus, marked by an
+  // Ember-cairn — the spot where the Ashbound wakes from the ash. Pure flavor.
+  _wakingVale() {
+    const p = polar(14, 74), x = p.x, z = p.z, y = heightAt(x, z);
+    const g = new THREE.Group();
+    const cols = [0x6a6a60, 0x5e5e55, 0x72706a];
+    let yy = 0;
+    for (let i = 0; i < 4; i++) {
+      const rr = 0.95 - i * 0.16;
+      const s = new THREE.Mesh(new THREE.DodecahedronGeometry(rr, 0), new THREE.MeshLambertMaterial({ color: cols[i % 3] }));
+      s.position.y = yy + rr * 0.7; s.rotation.set(i, i * 2, i); g.add(s); yy += rr * 1.2;
+    }
+    const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), new THREE.MeshBasicMaterial({ color: 0xff7a2a }));
+    ember.position.y = yy + 0.35; g.add(ember);
+    const glow = new THREE.PointLight(0xff7a2a, 1.5, 13); glow.position.y = yy + 0.35; g.add(glow);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this._wakeEmber = ember;
   }
 
   // The blade in the stone — hidden far from the roads. Drawing it out requires
