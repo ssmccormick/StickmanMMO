@@ -58,9 +58,28 @@ const UNIQUES = [
   { slot: 'chest',  name: 'Aegis of the Colossus', glyph: '🛡️', bonus: { armor: 45, maxHp: 90 },        flavor: 'Unbroken for a thousand years.' },
 ];
 
+// Consumables — potions & elixirs. Heal items restore HP; buff items apply a
+// timed effect (speed/damage multiplier or flat attributes).
+export const CONSUMABLES = [
+  { id: 'hp_minor', name: 'Minor Health Potion', glyph: '🧪', kind: 'heal', heal: 0.35, value: 25, desc: 'Instantly restore 35% of your health.' },
+  { id: 'hp_major', name: 'Major Health Potion', glyph: '🍷', kind: 'heal', heal: 0.70, value: 70, desc: 'Instantly restore 70% of your health.' },
+  { id: 'buff_swift', name: 'Potion of Swiftness', glyph: '🪽', kind: 'buff', buff: { speedMult: 1.30, dur: 30 }, value: 55, desc: '+30% move speed for 30s.' },
+  { id: 'buff_power', name: 'Potion of Power', glyph: '⚗️', kind: 'buff', buff: { dmgMult: 1.40, dur: 30 }, value: 90, desc: '+40% damage for 30s.' },
+  { id: 'buff_might', name: 'Elixir of Might', glyph: '💪', kind: 'buff', buff: { str: 8, dex: 8, int: 8, dur: 45 }, value: 80, desc: '+8 to all attributes for 45s.' },
+];
+
 let UID = 1;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+export function makeConsumable(id) {
+  const c = CONSUMABLES.find((x) => x.id === id) || CONSUMABLES[0];
+  return {
+    uid: 'c' + (UID++) + '_' + Math.random().toString(36).slice(2, 7),
+    baseId: c.id, name: c.name, glyph: c.glyph, slot: 'consumable', type: 'consumable',
+    rarity: 'uncommon', kind: c.kind, heal: c.heal, buff: c.buff, desc: c.desc, value: c.value,
+  };
+}
 
 function rollRarity(boost = 0) {
   // boost shifts the weighted roll toward higher tiers.
@@ -160,9 +179,10 @@ export function rollDrop(enemyLevel, enemyTypeId) {
 
 // Gold/value of an item — used for vendor buy & sell prices.
 export function itemValue(item) {
+  if (item.type === 'consumable') return item.value || 20;
   return Math.max(1, Math.round(item.ilvl * RARITY[item.rarity].mult * 9));
 }
-export function buyPrice(item) { return itemValue(item) * 2; }
+export function buyPrice(item) { return item.type === 'consumable' ? itemValue(item) : itemValue(item) * 2; }
 export function sellPrice(item) { return Math.max(1, Math.floor(itemValue(item) * 0.35)); }
 
 // Gold dropped by a slain enemy.
@@ -187,6 +207,13 @@ const fmtStat = (k, v) => (PCT_STATS.has(k) ? `${v > 0 ? '+' : ''}${Math.round(v
 // block with per-stat deltas vs. what's currently worn in that slot.
 export function itemTooltip(item, playerLevel, equipped) {
   const rar = RARITY[item.rarity];
+  if (item.type === 'consumable') {
+    return `
+      <div class="tip-name" style="color:${rar.color}">${item.glyph} ${item.name}</div>
+      <div class="tip-sub">Consumable</div>
+      <div class="tip-stat" style="color:#cfe0ff">${item.desc}</div>
+      <div class="tip-req" style="color:#9a9">Click to use</div>`;
+  }
   const lines = STAT_ORDER.filter((k) => item.stats[k]).map((k) =>
     `<div class="tip-stat">${fmtStat(k, item.stats[k])} ${STAT_LABEL[k]}</div>`).join('');
   const reqBad = playerLevel != null && playerLevel < item.reqLevel;

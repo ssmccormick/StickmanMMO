@@ -46,6 +46,9 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Tab** | Cycle target |
 | **E** | Interact / rest at a bonfire |
 | **I** | Inventory & equipment |
+| **K** | Skills (details & damage) |
+| **J** | Quest log |
+| **Q** | Quaff a health potion |
 | **Enter** | Chat |
 | **H** | Toggle the controls hint |
 
@@ -82,11 +85,24 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 
 ## 🌍 Game systems
 
-- **Open world** — a procedural rolling heightfield with a starter town, scattered
-  trees, rocks, bushes & flowers, water, drifting clouds, climbable cliffs, and bonfire
-  checkpoints. The terrain is generated from a deterministic seed, so it's identical
-  every load and across clients. (Cliffs are axis-aligned so their climb collision matches
-  exactly what you see — no invisible walls.)
+- **Open world & biomes** — a procedural rolling heightfield split into distinct biomes —
+  the central **Greenmeadow** town, the **Greenwood** (leafy forest), the snowy
+  **Frostpeaks** (snow-capped pines), the **Mire** (dead trees & murky ground), and the
+  **Dunes** (sand & cacti) — each with its own palette, props, and rock tint. Scattered
+  trees, rocks, bushes, flowers, water, and drifting clouds dress the land. Deterministic
+  seed → identical every load. (Cliffs are axis-aligned so climb collision matches what you
+  see — no invisible walls.)
+- **Expanded town** — a larger plaza with a fountain, many houses, lamp posts, market
+  crates, a merchant, and quest-giver NPCs.
+- **Quests** — quest-giver NPCs (look for the ❗ marker) offer objectives — slay N of a
+  monster type, clear a camp chest, etc. Track them on the HUD and in the **quest log (`J`)**;
+  turn them in for **XP, gold, gear, and potions**. Quest progress is saved with your character.
+- **Elite war-camps** — scattered through the biomes are camps of **elite** monsters
+  (bigger, golden-named, much tougher) guarding a **treasure chest**. Clear the whole camp
+  to unlock the chest, then open it for a burst of **high-rarity loot** (often uniques).
+- **Consumables** — **health potions** and **elixirs** (temporary buffs to move speed,
+  damage, or all attributes). Buy them from the merchant, use them from your bag, or hit
+  **`Q`** to quaff a health potion in a pinch. Active buffs show on the HUD with a timer.
 - **Movement state machine** — grounded / airborne / climbing, with gravity, jumping,
   sprinting, and wall-climbing, all gated by a **stamina** meter.
 - **Combat** — auto-attacks, cone/AoE/projectile abilities, crits, floating combat
@@ -95,7 +111,9 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   an idle→chase→attack FSM, telegraphed attacks, level-scaled stats, and respawns.
 - **Progression** — XP, leveling with stat growth, six escalating-difficulty zones.
 - **Bonfires (Dark Souls)** — rest to heal, refill, set your respawn point, and
-  respawn the world's monsters. Death shows **YOU DIED** and returns you to the bonfire.
+  respawn the world's monsters. They're deliberately **few and far between** — one in town
+  and one deep in each biome — so dying is a real setback. Death shows **YOU DIED** and
+  returns you to the last bonfire.
 - **Saved characters** — pick a class & name to create a hero; the start screen shows a
   **roster** of your saved characters to continue or delete. **Resting at a bonfire saves
   your progress** (level, XP, attributes, learned/ranked skills, and respawn point),

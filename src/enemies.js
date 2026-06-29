@@ -26,21 +26,29 @@ const TYPE_BY_LEVEL = (lvl) => {
 let NEXT_ID = 1;
 
 export class Enemy {
-  constructor(scene, world, typeId, level, home) {
+  constructor(scene, world, typeId, level, home, opts = {}) {
     this.id = NEXT_ID++;
     this.world = world;
     this.type = TYPES[typeId];
     this.typeId = typeId;
     this.level = level;
     this.home = home.clone();
+    this.elite = !!opts.elite;
+    this.campId = opts.campId || null;
 
     const lvlScale = 1 + (level - 1) * 0.32;
-    this.maxHp = Math.round(this.type.hp * lvlScale);
+    const em = this.elite ? 2.4 : 1;       // elite stat multiplier
+    this.maxHp = Math.round(this.type.hp * lvlScale * em);
     this.hp = this.maxHp;
-    this.dmg = this.type.dmg * (1 + (level - 1) * 0.22);
-    this.xp = Math.round(this.type.xp * (1 + (level - 1) * 0.4));
+    this.dmg = this.type.dmg * (1 + (level - 1) * 0.22) * (this.elite ? 1.5 : 1);
+    this.xp = Math.round(this.type.xp * (1 + (level - 1) * 0.4) * (this.elite ? 2.5 : 1));
+    this.displayScale = this.type.scale * (this.elite ? 1.35 : 1);
 
-    this.mesh = createStickman({ color: this.type.color, accent: this.type.accent, scale: this.type.scale });
+    this.mesh = createStickman({
+      color: this.elite ? 0x2a2a2a : this.type.color,
+      accent: this.elite ? 0xffcf3a : this.type.accent,
+      scale: this.displayScale,
+    });
     scene.add(this.mesh);
 
     this.pos = home.clone();
@@ -72,7 +80,7 @@ export class Enemy {
     this._plateTex = tex;
     const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
     spr.scale.set(3.2, 0.8, 1);
-    spr.position.y = 2.5 * this.type.scale + 0.6;
+    spr.position.y = 2.5 * this.displayScale + 0.6;
     this._drawPlate();
     return spr;
   }
@@ -81,10 +89,11 @@ export class Enemy {
     ctx.clearRect(0, 0, 256, 64);
     ctx.font = 'bold 22px Trebuchet MS, sans-serif';
     ctx.textAlign = 'center';
+    const label = `${this.elite ? '★ Elite ' : ''}${this.type.name}  Lv${this.level}`;
     ctx.fillStyle = '#000';
-    ctx.fillText(`${this.type.name}  Lv${this.level}`, 129, 23);
-    ctx.fillStyle = this.hp < this.maxHp ? '#ff6b6b' : '#ffd24a';
-    ctx.fillText(`${this.type.name}  Lv${this.level}`, 128, 22);
+    ctx.fillText(label, 129, 23);
+    ctx.fillStyle = this.elite ? '#ffae42' : (this.hp < this.maxHp ? '#ff6b6b' : '#ffd24a');
+    ctx.fillText(label, 128, 22);
     // hp bar
     ctx.fillStyle = '#000'; ctx.fillRect(40, 34, 176, 12);
     ctx.fillStyle = '#5a1a1a'; ctx.fillRect(42, 36, 172, 8);
@@ -201,8 +210,8 @@ export class Enemy {
     if (this._hitFlash > 0) {
       this._hitFlash -= dt;
       const s = 1 + this._hitFlash * 0.3;
-      this.mesh.scale.setScalar(this.type.scale * s);
-      if (this._hitFlash <= 0) this.mesh.scale.setScalar(this.type.scale);
+      this.mesh.scale.setScalar(this.displayScale * s);
+      if (this._hitFlash <= 0) this.mesh.scale.setScalar(this.displayScale);
     }
   }
 
@@ -233,7 +242,7 @@ export class Enemy {
     this.pos.copy(this._randomNear(this.home, 5));
     this.pos.y = heightAt(this.pos.x, this.pos.z);
     this.mesh.rotation.x = 0;
-    this.mesh.scale.setScalar(this.type.scale);
+    this.mesh.scale.setScalar(this.displayScale);
     this.state = 'idle';
     this.nameplate.visible = true;
     this._drawPlate();
@@ -251,6 +260,24 @@ export function spawnEnemies(scene, world) {
       const typeId = pool[Math.floor(Math.random() * pool.length)];
       const lvl = zone.level + Math.floor(Math.random() * 2);
       enemies.push(new Enemy(scene, world, typeId, lvl, home));
+    }
+  }
+  return enemies;
+}
+
+// Populate each elite war-camp with a pack of elites guarding its chest.
+export function spawnCamps(scene, world) {
+  const enemies = [];
+  for (const camp of world.camps) {
+    const pool = TYPE_BY_LEVEL(camp.level + 2); // tougher pool than a normal zone
+    const count = 4;
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      const home = new THREE.Vector3(camp.pos.x + Math.cos(a) * 5, 0, camp.pos.z + Math.sin(a) * 5);
+      const typeId = pool[Math.floor(Math.random() * pool.length)];
+      const e = new Enemy(scene, world, typeId, camp.level + 2, home, { elite: true, campId: camp.id });
+      camp.members.push(e);
+      enemies.push(e);
     }
   }
   return enemies;

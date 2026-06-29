@@ -8,7 +8,8 @@
 import * as THREE from 'three';
 import { CLASSES } from './classes.js';
 import { createStickman } from './stickman.js';
-import { rollDrop, goldDrop, RARITY } from './items.js';
+import { rollDrop, goldDrop, generateItem, makeUnique, RARITY } from './items.js';
+import * as Quests from './quests.js';
 
 export class Combat {
   constructor({ scene, player, enemies, ui, camera, audio }) {
@@ -326,10 +327,13 @@ export class Combat {
       this.ui.floater(`+${res.xp} XP`, 'xp', enemy.pos);
       this.ui.log(`Slain ${enemy.type.name} (+${res.xp} XP)`, 'xp');
       if (this.audio) this.audio.play('kill');
-      // Gold drop.
-      const gold = goldDrop(enemy.level, enemy.typeId);
+      // Gold drop (elites pay out far more).
+      const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.elite ? 4 : 1));
       this.player.gold += gold;
       this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
+      // Quest progress for kills.
+      Quests.onKill(this.player, enemy.typeId);
+      if (this.onKillEvent) this.onKillEvent(enemy);
       if (levels > 0 && this.onLevelUp) this.onLevelUp();
       this._dropLoot(enemy);
       if (this.target === enemy) this.target = null;
@@ -339,8 +343,30 @@ export class Combat {
 
   // ---- Loot drops ----
   _dropLoot(enemy) {
+    if (enemy.elite) {
+      // Elites always drop something good.
+      let item = generateItem({ level: enemy.level, rarityBoost: 1.2 });
+      if (item.rarity === 'legendary' && Math.random() < 0.6) item = makeUnique(item.ilvl);
+      this._spawnDrop(item, enemy.pos);
+      return;
+    }
     const item = rollDrop(enemy.level, enemy.typeId);
     if (item) this._spawnDrop(item, enemy.pos);
+  }
+
+  // Open a cleared camp's chest: spawn a burst of high-rarity loot + gold.
+  openChest(camp) {
+    const lvl = camp.level + 2;
+    for (let i = 0; i < 3; i++) {
+      let item = generateItem({ level: lvl, rarityBoost: 1.8 });
+      if (item.rarity === 'legendary' && Math.random() < 0.7) item = makeUnique(item.ilvl);
+      const off = new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
+      this._spawnDrop(item, camp.pos.clone().add(off));
+    }
+    const gold = 50 + camp.level * 18;
+    this.player.gold += gold;
+    this.ui.floater(`+${gold}g`, 'gold', camp.pos);
+    if (this.audio) this.audio.play('level');
   }
   _spawnDrop(item, pos) {
     const color = RARITY[item.rarity].hex;

@@ -46,6 +46,8 @@ export class Player {
     this.maxInventory = 24;
     this.bonus = {};        // cached summed gear stats
     this.gold = 0;
+    this.timed = [];        // active consumable buffs: {until, label, color, str?, dmgMult?, speedMult?...}
+    this.questLog = {};     // id -> { accepted, progress, turnedIn }
 
     this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
     scene.add(this.mesh);
@@ -76,22 +78,45 @@ export class Player {
     this.stats.sp = Math.min(this.stats.sp, this.effMaxSp);
     this._updateWeaponVisual();
   }
+  // Sum / product of an active timed-buff field.
+  _t(key) { let s = 0; for (const b of this.timed) if (b[key]) s += b[key]; return s; }
+  _tm(key) { let m = 1; for (const b of this.timed) if (b[key]) m *= b[key]; return m; }
+
   get effMaxHp() { return this.stats.maxHp + (this.bonus.maxHp || 0); }
   get effMaxMp() { return this.stats.maxMp + (this.bonus.maxMp || 0); }
   get effMaxSp() { return this.stats.maxSp + (this.bonus.maxSp || 0); }
-  get effStr() { return this.stats.str + (this.bonus.str || 0); }
-  get effDex() { return this.stats.dex + (this.bonus.dex || 0); }
-  get effInt() { return this.stats.int + (this.bonus.int || 0); }
+  get effStr() { return this.stats.str + (this.bonus.str || 0) + this._t('str'); }
+  get effDex() { return this.stats.dex + (this.bonus.dex || 0) + this._t('dex'); }
+  get effInt() { return this.stats.int + (this.bonus.int || 0) + this._t('int'); }
   get gearCrit() { return this.bonus.crit || 0; }
   get gearArmor() { return this.bonus.armor || 0; }
-  get gearSpeed() { return this.bonus.speed || 0; }
+  get gearSpeed() { return (this.bonus.speed || 0) + (this._tm('speedMult') - 1); }
   get gearLifesteal() { return this.bonus.lifesteal || 0; }
 
   get apower() {
     const effStats = { ...this.stats, str: this.effStr, dex: this.effDex, int: this.effInt };
     let p = attackPower(this.classId, effStats) + (this.bonus.damage || 0);
     if (this.buffs.until > this._clock) p *= this.buffs.dmg;
+    p *= this._tm('dmgMult'); // potion damage buffs
     return p;
+  }
+
+  // Use a consumable from the bag: heal or apply a timed buff.
+  useConsumable(uid) {
+    const item = this.inventory.find((x) => x.uid === uid);
+    if (!item || item.type !== 'consumable') return { error: 'invalid' };
+    this._removeUid(uid);
+    if (item.kind === 'heal') {
+      const amt = this.heal(this.effMaxHp * item.heal);
+      return { used: item, heal: amt };
+    }
+    if (item.kind === 'buff') {
+      const colors = { speedMult: 0x6fc8ff, dmgMult: 0xff6a2a };
+      const color = item.buff.speedMult ? '#6fc8ff' : item.buff.dmgMult ? '#ff6a2a' : '#9be29e';
+      this.timed.push({ ...item.buff, until: this._clock + item.buff.dur, label: item.name, glyph: item.glyph, color });
+      return { used: item, buff: item.buff };
+    }
+    return { error: 'invalid' };
   }
 
   // ---- Inventory / equipment management ----
@@ -266,6 +291,8 @@ export class Player {
 
   _regen(dt, sprinting) {
     const s = this.stats;
+    // Expire finished consumable buffs.
+    if (this.timed.length) this.timed = this.timed.filter((b) => b.until > this._clock);
     if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + 16 * dt);
     s.mp = Math.min(this.effMaxMp, s.mp + (1.5 + this.effInt * 0.05) * dt);
     if (this.state === 'ground' && this._speed01 < 0.1) s.hp = Math.min(this.effMaxHp, s.hp + 2.0 * dt);
@@ -320,6 +347,7 @@ export class Player {
       gear: this.gear,             // plain item objects, JSON-serializable
       inventory: this.inventory,
       gold: this.gold,
+      questLog: this.questLog,
     };
   }
 
@@ -343,6 +371,7 @@ export class Player {
     if (save.gear) this.gear = Object.assign(emptyGear(), save.gear);
     if (Array.isArray(save.inventory)) this.inventory = save.inventory;
     if (typeof save.gold === 'number') this.gold = save.gold;
+    if (save.questLog && typeof save.questLog === 'object') this.questLog = save.questLog;
     this.recomputeGear();
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;

@@ -423,5 +423,36 @@ html, body {
 .sk-stat span { opacity: 0.7; }
 .sk-stat b { color: #ffd980; }
 
+/* ---------------- Buff bar + quest tracker (HUD) ---------------- */
+.buffbar { position: absolute; top: 132px; left: 14px; display: flex; gap: 6px; }
+.buff {
+  display: flex; align-items: center; gap: 3px; font-size: 16px;
+  background: rgba(0,0,0,0.5); border: 1px solid #888; border-radius: 6px; padding: 2px 6px;
+}
+.buff b { font-size: 11px; color: #fff; }
+
+.quest-tracker { position: absolute; top: 186px; right: 14px; width: 200px; text-align: right; }
+.qt {
+  font-size: 12.5px; margin-bottom: 4px; text-shadow: 0 1px 2px #000;
+  background: rgba(0,0,0,0.35); border-radius: 6px; padding: 3px 8px; display: inline-block;
+}
+.qt b { color: var(--gold); }
+.qt.done { color: #9be29e; }
+.qt.done b { color: #9be29e; }
+
+/* ---------------- Quest dialog ---------------- */
+.quest-dialog { width: min(460px, 92vw); }
+.qd-body { padding: 16px 20px 20px; }
+.qd-title { font-size: 18px; font-weight: bold; color: var(--gold); margin-bottom: 8px; }
+.qd-desc { font-size: 14px; line-height: 1.55; opacity: 0.92; }
+.qd-reward { margin-top: 12px; font-size: 13px; opacity: 0.85; }
+.qd-reward b { color: #ffd980; }
+.qd-btn {
+  margin-top: 16px; width: 100%; padding: 11px; font-size: 15px; letter-spacing: 2px;
+  font-weight: bold; cursor: pointer; border: none; border-radius: 9px;
+  background: linear-gradient(180deg, #d8b24a, #a8821f); color: #1a1405; box-shadow: 0 4px 0 #6f5512;
+}
+.qd-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #6f5512; }
+
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }

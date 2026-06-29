@@ -7,13 +7,14 @@ import { World } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { spawnEnemies } from './enemies.js';
+import { spawnEnemies, spawnCamps } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
 import { starterWeapon } from './items.js';
+import * as Quests from './quests.js';
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -86,10 +87,15 @@ function beginGame(classId, name, server, save) {
 
   lastHp = player.stats.hp;
   enemies = spawnEnemies(scene, world);
+  enemies.push(...spawnCamps(scene, world)); // elite camp packs
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
-  // Keep the inventory panel live as loot is picked up.
+  // Keep panels live as loot is picked up; refresh quest markers on kills.
   combat.onLoot = () => { if (ui.inventoryOpen) ui.renderInventory(); };
+  combat.onKillEvent = () => ui.refreshGiverMarkers(player);
+
+  ui.setWorld(world);
+  ui.refreshGiverMarkers(player);
 
   ui.enterWorld(player);
   ui.log(save
@@ -108,6 +114,16 @@ ui.setupStart({
   onCreate: ({ name, classId, server }) => beginGame(classId, name, server, null),
   onContinue: (save, server) => beginGame(save.classId, save.name, server, save),
 });
+
+// Quaff the first health potion in the bag (hotkey Q).
+function quickHeal() {
+  if (!player || !player.alive) return;
+  const pot = player.inventory.find((it) => it.type === 'consumable' && it.kind === 'heal');
+  if (!pot) { ui.log('No health potion in your bag.', 'sys'); return; }
+  const r = player.useConsumable(pot.uid);
+  if (r.heal != null) { ui.log(`Used ${pot.name} (+${r.heal} HP).`, 'heal'); ui.floater(`+${r.heal}`, 'heal', player.pos); }
+  if (ui.inventoryOpen) ui.renderInventory();
+}
 
 // ---- Main loop ----
 function animate() {
@@ -140,7 +156,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen;
 
     // Crosshair shows while mouse-look is active (aiming), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
@@ -151,9 +167,11 @@ function animate() {
       if (w) followCam.handleZoom(w);
     }
 
-    // Toggle inventory (I), skills (K), chat (Enter), hint (H).
+    // Toggle panels & quick-use.
     if (input.just('KeyI')) ui.toggleInventory(player);
     if (input.just('KeyK')) ui.toggleSkills(player);
+    if (input.just('KeyJ')) ui.toggleQuestLog(player);
+    if (input.just('KeyQ')) quickHeal();
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
 
@@ -191,15 +209,37 @@ function animate() {
       }, 2600);
     }
 
-    // Interactions: vendor takes priority near the stall, else bonfire.
+    // Interactions, by priority: vendor → quest giver → camp chest → bonfire.
     if (restCooldown > 0) restCooldown -= dt;
     const nearVendor = world.vendor && player.alive && world.vendor.pos.distanceTo(player.pos) < 4.5;
+    const giver = player.alive ? world.questGivers.find((g) => g.pos.distanceTo(player.pos) < 4.5) : null;
+    const camp = player.alive ? world.nearestCamp(player.pos, 5) : null;
     const bonfire = world.nearestBonfire(player.pos, 4.5);
     if (menuOpen) {
       ui.hidePrompt();
     } else if (nearVendor) {
       ui.showPrompt('Press <b>E</b> to trade with the merchant');
       if (input.just('KeyE')) ui.openVendor(player);
+    } else if (giver) {
+      const st = Quests.statusOf(player, giver.questId);
+      const verb = st === 'available' ? 'speak with' : st === 'complete' ? 'turn in quest with' : 'talk to';
+      ui.showPrompt(`Press <b>E</b> to ${verb} <b>${giver.name}</b>`);
+      if (input.just('KeyE')) ui.openQuestDialog(player, giver);
+    } else if (camp) {
+      if (camp.opened) {
+        ui.hidePrompt();
+      } else if (world.campCleared(camp)) {
+        ui.showPrompt('Press <b>E</b> to open the treasure chest');
+        if (input.just('KeyE')) {
+          camp.opened = true;
+          combat.openChest(camp);
+          Quests.onChestOpened(player);
+          ui.refreshGiverMarkers(player);
+          ui.log('You crack open the war-camp chest!', 'xp');
+        }
+      } else {
+        ui.showPrompt('Defeat the <b>elite camp</b> to unlock the chest');
+      }
     } else if (bonfire && player.alive) {
       ui.showPrompt('Press <b>E</b> to rest at the bonfire');
       if (input.just('KeyE') && restCooldown <= 0) {

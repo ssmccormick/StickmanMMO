@@ -5,7 +5,8 @@
 // ============================================================
 import { CLASSES, CLASS_ORDER } from './classes.js';
 import { Saves } from './save.js';
-import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice } from './items.js';
+import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
+import * as Quests from './quests.js';
 
 export class UI {
   constructor() {
@@ -52,7 +53,17 @@ export class UI {
     this.project = null; // set by main: (Vector3) => {x,y,visible}
     this._buildClassGrid();
     this._chatActive = false;
+
+    // Dynamically-added HUD pieces: active-buff bar + quest tracker.
+    this.buffBar = document.createElement('div');
+    this.buffBar.className = 'buffbar';
+    this.el.hud.appendChild(this.buffBar);
+    this.questTracker = document.createElement('div');
+    this.questTracker.className = 'quest-tracker';
+    this.el.hud.appendChild(this.questTracker);
   }
+
+  setWorld(world) { this._world = world; }
 
   _buildClassGrid() {
     this.el.classGrid.innerHTML = '';
@@ -219,6 +230,20 @@ export class UI {
     this.el.xpText.textContent = `XP ${Math.floor(s.xp)} / ${s.xpNext}`;
     this.el.gold.textContent = player.gold;
     this.el.playerCount.textContent = playerCount;
+
+    // Active consumable buffs with countdown.
+    this.buffBar.innerHTML = player.timed.map((b) => {
+      const rem = Math.max(0, Math.ceil(b.until - player.clock));
+      return `<div class="buff" style="border-color:${b.color}">${b.glyph || '✨'}<b>${rem}s</b></div>`;
+    }).join('');
+
+    // Quest tracker (active/complete quests).
+    const active = Object.keys(player.questLog)
+      .filter((id) => { const st = Quests.statusOf(player, id); return st === 'active' || st === 'complete'; });
+    this.questTracker.innerHTML = active.slice(0, 4).map((id) => {
+      const q = Quests.QUESTS[id]; const pr = Quests.progressOf(player, id); const done = pr >= q.count;
+      return `<div class="qt ${done ? 'done' : ''}">📜 ${q.title} <b>${pr}/${q.count}</b>${done ? ' ✓ turn in' : ''}</div>`;
+    }).join('');
 
     // hotbar cooldowns
     if (this.slots) {
@@ -500,10 +525,17 @@ export class UI {
       if (item) {
         cell.innerHTML = `<div class="slot-glyph">${item.glyph}</div>`;
         // Compare against whatever is equipped in that slot.
-        this._tipFor(cell, item, p.stats.level, p.gear[item.slot]);
+        this._tipFor(cell, item, p.stats.level, item.type === 'consumable' ? null : p.gear[item.slot]);
         cell.onclick = () => {
-          const r = p.equipFromInventory(item.uid);
-          if (r.error === 'level') this.log(`Requires level ${item.reqLevel}.`, 'sys');
+          if (item.type === 'consumable') {
+            const r = p.useConsumable(item.uid);
+            if (r.heal != null) this.log(`Used ${item.name} (+${r.heal} HP).`, 'heal');
+            else if (r.buff) this.log(`Used ${item.name}.`, 'xp');
+            this._hideTip();
+          } else {
+            const r = p.equipFromInventory(item.uid);
+            if (r.error === 'level') this.log(`Requires level ${item.reqLevel}.`, 'sys');
+          }
           this.renderInventory();
         };
         // Right-click to drop/destroy.
@@ -704,10 +736,10 @@ export class UI {
   openVendor(player) {
     this._ensureVendor();
     this._vendorPlayer = player;
-    // Generate a fresh stock scaled to the player's level.
+    // Stock: potions/elixirs always available, plus fresh level-scaled gear.
     const lvl = player.stats.level;
-    this._vendorStock = [];
-    for (let i = 0; i < 8; i++) {
+    this._vendorStock = ['hp_minor', 'hp_major', 'buff_swift', 'buff_power', 'buff_might'].map((id) => makeConsumable(id));
+    for (let i = 0; i < 7; i++) {
       this._vendorStock.push(generateItem({ level: Math.max(1, lvl + (i % 3) - 1), rarityBoost: 0.4 }));
     }
     this.vendorOpen = true;
@@ -764,11 +796,12 @@ export class UI {
     const rar = RARITY[item.rarity];
     const row = document.createElement('div');
     row.className = `vendor-row r-${item.rarity}`;
+    const meta = item.type === 'consumable' ? 'Consumable' : `${rar.name} ${SLOT_LABEL[item.slot]} · ilvl ${item.ilvl}`;
     row.innerHTML = `
       <div class="vr-glyph">${item.glyph}</div>
       <div class="vr-info">
         <div class="vr-name" style="color:${rar.color}">${item.name}</div>
-        <div class="vr-meta">${rar.name} ${SLOT_LABEL[item.slot]} · ilvl ${item.ilvl}</div>
+        <div class="vr-meta">${meta}</div>
       </div>
       <div class="vr-price">💰 ${price}<span class="vr-act">${action}</span></div>`;
     return row;
@@ -786,6 +819,107 @@ export class UI {
       tipEl.style.top = Math.min(e.clientY + 16, window.innerHeight - 200) + 'px';
     });
     el.addEventListener('mouseleave', () => tipEl.classList.add('hidden'));
+  }
+
+  // ---- Quests ----
+  _rewardText(r) {
+    return [r.xp ? `${r.xp} XP` : null, r.gold ? `${r.gold} gold` : null,
+      r.item ? 'a piece of gear' : null, r.potion ? `${r.potionCount || 1}× ${r.potion.startsWith('hp') ? 'potion' : 'elixir'}` : null]
+      .filter(Boolean).join(' · ');
+  }
+
+  _ensureQuestDialog() {
+    if (this.qdOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel quest-dialog"></div>`;
+    document.body.appendChild(ov);
+    this.qdOverlay = ov;
+    this.qdEl = ov.querySelector('.quest-dialog');
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeQuestDialog(); });
+  }
+
+  openQuestDialog(player, giver) {
+    this._ensureQuestDialog();
+    this.questDialogOpen = true;
+    if (document.exitPointerLock) document.exitPointerLock();
+    const id = giver.questId; const q = Quests.QUESTS[id]; const st = Quests.statusOf(player, id);
+    const reward = this._rewardText(q.reward);
+    let body, label, act;
+    if (st === 'available') {
+      body = q.desc; label = 'Accept Quest';
+      act = () => { Quests.accept(player, id); this.log(`Quest accepted: ${q.title}`, 'xp'); };
+    } else if (st === 'active') {
+      body = `${q.desc}<br><br>Progress: <b>${Quests.progressOf(player, id)} / ${q.count}</b>`;
+      label = 'Close'; act = () => {};
+    } else if (st === 'complete') {
+      body = `${q.desc}<br><br><b style="color:#7be38a">Objective complete!</b>`;
+      label = 'Turn In'; act = () => {
+        const out = Quests.turnIn(player, id);
+        this.log(`Quest complete: ${q.title}! Reward: ${this._rewardText(q.reward)}`, 'xp');
+        out.items.forEach((it) => this.log(`Received ${it.name}.`, 'xp'));
+      };
+    } else { body = 'You have already completed this quest. Thank you, hero.'; label = 'Close'; act = () => {}; }
+
+    this.qdEl.innerHTML = `
+      <div class="inv-header"><span>📜 ${giver.name}</span><button class="inv-close">✕</button></div>
+      <div class="qd-body">
+        <div class="qd-title">${q.title}</div>
+        <div class="qd-desc">${body}</div>
+        <div class="qd-reward">Reward: <b>${reward}</b></div>
+        <button class="qd-btn">${label}</button>
+      </div>`;
+    this.qdOverlay.classList.remove('hidden');
+    this.qdEl.querySelector('.inv-close').onclick = () => this.closeQuestDialog();
+    this.qdEl.querySelector('.qd-btn').onclick = () => {
+      act();
+      this.closeQuestDialog();
+      this._updateGiverMarker(player, id);
+    };
+  }
+  closeQuestDialog() { this.questDialogOpen = false; if (this.qdOverlay) this.qdOverlay.classList.add('hidden'); }
+
+  _updateGiverMarker(player, id) {
+    if (!this._world) return;
+    const st = Quests.statusOf(player, id);
+    if (st === 'available') this._world.setGiverMarker(id, '!', '#ffd24a');
+    else if (st === 'complete') this._world.setGiverMarker(id, '?', '#7be38a');
+    else this._world.setGiverMarker(id, null);
+  }
+  refreshGiverMarkers(player) { for (const id in Quests.QUESTS) this._updateGiverMarker(player, id); }
+
+  _ensureQuestLog() {
+    if (this.qlOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel skills-panel"><div class="inv-header"><span>📜 Quest Log</span><button class="inv-close">✕</button></div><div class="skills-body ql-body"></div></div>`;
+    document.body.appendChild(ov);
+    this.qlOverlay = ov;
+    this.qlBody = ov.querySelector('.ql-body');
+    ov.querySelector('.inv-close').onclick = () => this.closeQuestLog();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeQuestLog(); });
+  }
+  toggleQuestLog(player) {
+    this._ensureQuestLog();
+    this._qlPlayer = player;
+    if (this.questLogOpen) this.closeQuestLog();
+    else { this.questLogOpen = true; this.qlOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this.renderQuestLog(player); }
+  }
+  closeQuestLog() { this.questLogOpen = false; if (this.qlOverlay) this.qlOverlay.classList.add('hidden'); }
+  renderQuestLog(player) {
+    const ids = Object.keys(player.questLog);
+    if (!ids.length) { this.qlBody.innerHTML = '<div class="roster-empty">No quests yet. Look for villagers with a ❗ above them in town.</div>'; return; }
+    this.qlBody.innerHTML = ids.map((id) => {
+      const q = Quests.QUESTS[id]; if (!q) return '';
+      const pr = Quests.progressOf(player, id); const st = Quests.statusOf(player, id);
+      const tag = st === 'done' ? '<span style="color:#7be38a">✓ Completed</span>'
+        : st === 'complete' ? '<span style="color:#ffd24a">Ready to turn in</span>'
+        : `In progress — ${pr}/${q.count}`;
+      return `<div class="sk-card">
+        <div class="sk-name">${q.title} <span class="sk-meta">· ${q.giver}</span></div>
+        <div class="sk-desc">${q.desc}</div>
+        <div class="sk-meta">${tag} · Reward: ${this._rewardText(q.reward)}</div></div>`;
+    }).join('');
   }
 
   // ---- Chat ----

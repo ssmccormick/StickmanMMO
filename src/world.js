@@ -6,6 +6,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { createStickman } from './stickman.js';
+import { GIVERS } from './quests.js';
 
 export const WORLD_SIZE = 220; // half-extent; world spans -220..220
 
@@ -39,6 +40,24 @@ export function heightAt(x, z) {
   return h;
 }
 
+// Biomes are chosen by map quadrant; the town sits in a neutral meadow at
+// the center. Each biome has its own ground palette, rock tint, and prop type.
+export const BIOMES = {
+  meadow: { name: 'Greenmeadow', ground: 0x6fae54, ground2: 0x9aa05a, rock: 0x8c8576, prop: 'tree' },
+  forest: { name: 'The Greenwood', ground: 0x4d8a3a, ground2: 0x66993a, rock: 0x6f6a5e, prop: 'tree' },
+  snow: { name: 'Frostpeaks', ground: 0xe2ebf2, ground2: 0xc2d4e2, rock: 0x9aa6b2, prop: 'pine' },
+  swamp: { name: 'The Mire', ground: 0x49583a, ground2: 0x3a4a32, rock: 0x55564a, prop: 'dead' },
+  desert: { name: 'The Dunes', ground: 0xd9c486, ground2: 0xc7a866, rock: 0xbaa06e, prop: 'cactus' },
+};
+
+export function biomeAt(x, z) {
+  if (Math.hypot(x, z) < 26) return BIOMES.meadow;   // town & surrounds
+  if (x >= 0 && z >= 0) return BIOMES.forest;
+  if (x < 0 && z >= 0) return BIOMES.snow;
+  if (x < 0 && z < 0) return BIOMES.swamp;
+  return BIOMES.desert;
+}
+
 export class World {
   constructor(scene) {
     this.scene = scene;
@@ -47,6 +66,8 @@ export class World {
     this.colliders = [];   // { min:Vec3, max:Vec3, climbable:bool }
     this.bonfires = [];    // { pos:Vec3, mesh, light }
     this.spawnZones = [];  // { center:Vec3, radius, level }
+    this.camps = [];       // elite war-camps with loot chests
+    this.questGivers = []; // { name, questId, pos, marker }
     this._build();
   }
 
@@ -54,9 +75,11 @@ export class World {
     this._sky();
     this._terrain();
     this._town();
+    this._questGivers();
     this._scatter();
     this._groundDetail();
     this._cliffs();
+    this._camps();
     this._bonfires();
     this._spawnZones();
   }
@@ -103,16 +126,19 @@ export class World {
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = [];
-    const lush = new THREE.Color(0x6fae54);
-    const dry = new THREE.Color(0x9aa05a);
-    const rock = new THREE.Color(0x8c8576);
+    const c1 = new THREE.Color(), c2 = new THREE.Color(), cr = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const y = heightAt(x, z);
       pos.setY(i, y);
-      // Color by elevation for a painted look.
+      // Color by biome + elevation for a painted, region-distinct look.
+      const b = biomeAt(x, z);
+      c1.setHex(b.ground); c2.setHex(b.ground2); cr.setHex(b.rock);
       const t = THREE.MathUtils.clamp((y + 6) / 20, 0, 1);
-      const col = y > 9 ? rock.clone().lerp(dry, 0.3) : lush.clone().lerp(dry, t * 0.6);
+      const col = y > 9 ? cr.clone().lerp(c2, 0.3) : c1.clone().lerp(c2, t * 0.6);
+      // tiny per-vertex noise so flats aren't a single flat color
+      const n = (smoothNoise(x * 0.3, z * 0.3) - 0.5) * 0.06;
+      col.offsetHSL(0, 0, n);
       colors.push(col.r, col.g, col.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -142,42 +168,116 @@ export class World {
   }
 
   _town() {
-    // Flat stone plaza
+    // Larger flat stone plaza for the expanded town.
     const plaza = new THREE.Mesh(
-      new THREE.CylinderGeometry(16, 16, 0.4, 32),
+      new THREE.CylinderGeometry(24, 24, 0.4, 40),
       new THREE.MeshLambertMaterial({ color: 0xb9b2a0 })
     );
-    plaza.position.set(0, heightAt(0, 0) + 0.0, 0);
+    plaza.position.set(0, heightAt(0, 0), 0);
     plaza.receiveShadow = true;
     this.group.add(plaza);
 
     const wallMat = new THREE.MeshLambertMaterial({ color: 0xc9c0a8 });
-    const roofMat = new THREE.MeshLambertMaterial({ color: 0x9a4a3a });
+    const wallMat2 = new THREE.MeshLambertMaterial({ color: 0xb8a98a });
+    const roofMats = [0x9a4a3a, 0x7a5a3a, 0x6a7a8a, 0x8a6a4a].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    // A bigger ring of houses of varied sizes.
     const housePositions = [
-      [11, 6], [-11, 7], [9, -10], [-8, -11], [14, -2], [-14, -1],
+      [14, 8, 4.5], [-14, 9, 4.5], [11, -13, 5.5], [-10, -14, 4], [18, -3, 4],
+      [-18, -2, 5], [16, 15, 4.5], [-16, 15, 4], [20, 7, 5], [-20, 8, 4.5],
+      [8, 18, 4], [-7, 19, 4.5], [21, -12, 5],
     ];
-    for (const [hx, hz] of housePositions) {
+    housePositions.forEach(([hx, hz, sz], idx) => {
       const g = new THREE.Group();
       const baseY = heightAt(hx, hz);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(4.5, 3.2, 4.5), wallMat);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(sz, 3.2, sz), idx % 2 ? wallMat2 : wallMat);
       body.position.y = 1.6;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(3.6, 2.2, 4), roofMat);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(sz * 0.8, 2.2, 4), roofMats[idx % roofMats.length]);
       roof.position.y = 4.3; roof.rotation.y = Math.PI / 4;
       g.add(body, roof);
       g.position.set(hx, baseY, hz);
       g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       this.group.add(g);
       this._addBox(body, false);
-    }
+    });
 
-    // A central fountain / statue landmark.
-    const statue = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.0, 4, 8), new THREE.MeshLambertMaterial({ color: 0x8d99a6 }));
-    statue.position.set(0, heightAt(0, 0) + 2, 0);
-    statue.castShadow = true;
+    // Central fountain: basin + statue.
+    const baseY0 = heightAt(0, 0);
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.7, 20), new THREE.MeshLambertMaterial({ color: 0xa9a290 }));
+    basin.position.set(0, baseY0 + 0.35, 0); basin.receiveShadow = true;
+    this.group.add(basin);
+    const statue = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 4, 8), new THREE.MeshLambertMaterial({ color: 0x8d99a6 }));
+    statue.position.set(0, baseY0 + 2.4, 0); statue.castShadow = true;
     this.group.add(statue);
     this._addBox(statue, false);
 
+    // Lamp posts around the plaza (with glowing tops).
+    for (let a = 0; a < 8; a++) {
+      const ang = (a / 8) * Math.PI * 2;
+      const lx = Math.cos(ang) * 21, lz = Math.sin(ang) * 21;
+      const ly = heightAt(lx, lz);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3, 6), new THREE.MeshLambertMaterial({ color: 0x3a3a3a }));
+      post.position.set(lx, ly + 1.5, lz); post.castShadow = true;
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffe8a0 }));
+      lamp.position.set(lx, ly + 3.1, lz);
+      this.group.add(post, lamp);
+    }
+
+    // A few market crates/barrels for flavor.
+    const crateMat = new THREE.MeshLambertMaterial({ color: 0x8a6a40 });
+    for (let i = 0; i < 8; i++) {
+      const cx = (hash2(i, 71) - 0.5) * 30, cz = (hash2(i, 73) - 0.5) * 30;
+      if (Math.hypot(cx, cz) < 6) continue;
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), crateMat);
+      crate.position.set(cx, heightAt(cx, cz) + 0.45, cz); crate.castShadow = true;
+      this.group.add(crate);
+    }
+
     this._vendor();
+  }
+
+  _questGivers() {
+    // Place quest-giver NPCs around the plaza with a floating marker.
+    const slots = [[7, 7], [-7, 7], [7, -6]];
+    GIVERS.forEach((gv, i) => {
+      const [gx, gz] = slots[i] || [i * 4 - 6, 12];
+      const gy = heightAt(gx, gz);
+      const npc = createStickman({ color: gv.color, accent: gv.accent });
+      npc.position.set(gx, gy, gz);
+      npc.rotation.y = Math.atan2(-gx, -gz);
+      this.group.add(npc);
+      // Floating "!" marker.
+      const marker = this._marker('!', '#ffd24a');
+      marker.position.set(gx, gy + 3, gz);
+      this.group.add(marker);
+      this.questGivers.push({ name: gv.name, questId: gv.questId, pos: new THREE.Vector3(gx, gy, gz), marker, npc });
+    });
+  }
+
+  _marker(text, color) {
+    const cvs = document.createElement('canvas'); cvs.width = 64; cvs.height = 64;
+    const ctx = cvs.getContext('2d');
+    ctx.font = 'bold 52px Trebuchet MS, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000'; ctx.fillText(text, 34, 36);
+    ctx.fillStyle = color; ctx.fillText(text, 32, 34);
+    const tex = new THREE.CanvasTexture(cvs);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    spr.scale.set(1.3, 1.3, 1);
+    return spr;
+  }
+
+  // Update a quest giver's marker glyph (! available, ? turn-in, hidden when done).
+  setGiverMarker(questId, glyph, color) {
+    const gv = this.questGivers.find((g) => g.questId === questId);
+    if (!gv) return;
+    if (!glyph) { gv.marker.visible = false; return; }
+    gv.marker.visible = true;
+    const cvs = gv.marker.material.map.image;
+    const ctx = cvs.getContext('2d');
+    ctx.clearRect(0, 0, 64, 64);
+    ctx.font = 'bold 52px Trebuchet MS, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000'; ctx.fillText(glyph, 34, 36);
+    ctx.fillStyle = color; ctx.fillText(glyph, 32, 34);
+    gv.marker.material.map.needsUpdate = true;
   }
 
   _vendor() {
@@ -216,33 +316,74 @@ export class World {
 
   _scatter() {
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
+    const deadMat = new THREE.MeshLambertMaterial({ color: 0x4a3a2a });
+    const cactusMat = new THREE.MeshLambertMaterial({ color: 0x4f8a4a });
     const leafMats = [0x3f7d3a, 0x4f8f3f, 0x5a6f2f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x7d7a72 });
+    const pineMats = [0x2f6f4a, 0x357a52].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const snowCapMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
 
-    for (let i = 0; i < 320; i++) {
+    for (let i = 0; i < 460; i++) {
       const ang = hash2(i, 11) * Math.PI * 2;
       const rad = 24 + hash2(i, 13) * (WORLD_SIZE - 30);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       const y = heightAt(x, z);
       if (y < -3.5) continue; // skip water
-      if (hash2(i, 17) < 0.72) {
-        // Tree
+      const biome = biomeAt(x, z);
+
+      if (hash2(i, 17) < 0.7) {
         const g = new THREE.Group();
-        const th = 2 + hash2(i, 19) * 2.5;
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, th, 6), trunkMat);
-        trunk.position.y = th / 2;
-        const leaf = new THREE.Mesh(new THREE.ConeGeometry(1.4 + hash2(i, 23), 2.6 + hash2(i, 29) * 1.5, 7),
-          leafMats[i % leafMats.length]);
-        leaf.position.y = th + 1;
-        g.add(trunk, leaf);
+        if (biome.prop === 'cactus') {
+          // Saguaro-style cactus.
+          const h = 1.8 + hash2(i, 19) * 1.8;
+          const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, h, 7), cactusMat);
+          body.position.y = h / 2;
+          g.add(body);
+          if (hash2(i, 21) > 0.4) {
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, h * 0.5, 6), cactusMat);
+            arm.position.set(0.35, h * 0.6, 0); arm.rotation.z = -0.6; g.add(arm);
+          }
+          this._addBox(body, false);
+        } else if (biome.prop === 'pine') {
+          // Snowy pine: stacked cones with white caps.
+          const th = 2.4 + hash2(i, 19) * 2;
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.24, th * 0.5, 6), trunkMat);
+          trunk.position.y = th * 0.25; g.add(trunk);
+          for (let k = 0; k < 3; k++) {
+            const cone = new THREE.Mesh(new THREE.ConeGeometry(1.4 - k * 0.3, 1.4, 7), pineMats[i % pineMats.length]);
+            cone.position.y = th * 0.5 + k * 0.9; g.add(cone);
+          }
+          const cap = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.7, 7), snowCapMat);
+          cap.position.y = th * 0.5 + 2.5; g.add(cap);
+          this._addBox(trunk, false);
+        } else if (biome.prop === 'dead') {
+          // Bare, gnarled dead tree.
+          const th = 2.2 + hash2(i, 19) * 2;
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.26, th, 6), deadMat);
+          trunk.position.y = th / 2; g.add(trunk);
+          for (let k = 0; k < 3; k++) {
+            const br = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 1.1, 4), deadMat);
+            br.position.y = th * (0.6 + k * 0.12);
+            br.rotation.z = (hash2(i, k) - 0.5) * 2; g.add(br);
+          }
+          this._addBox(trunk, false);
+        } else {
+          // Leafy tree.
+          const th = 2 + hash2(i, 19) * 2.5;
+          const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, th, 6), trunkMat);
+          trunk.position.y = th / 2;
+          const leaf = new THREE.Mesh(new THREE.ConeGeometry(1.4 + hash2(i, 23), 2.6 + hash2(i, 29) * 1.5, 7),
+            leafMats[i % leafMats.length]);
+          leaf.position.y = th + 1;
+          g.add(trunk, leaf);
+          this._addBox(trunk, false);
+        }
         g.position.set(x, y, z);
         g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         this.group.add(g);
-        this._addBox(trunk, false);
       } else {
-        // Rock
+        // Rock (tinted by biome).
         const r = 0.6 + hash2(i, 31) * 1.6;
-        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), rockMat);
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), new THREE.MeshLambertMaterial({ color: biome.rock }));
         rock.position.set(x, y + r * 0.4, z);
         rock.rotation.set(hash2(i, 1) * 3, hash2(i, 2) * 3, hash2(i, 3) * 3);
         rock.castShadow = true; rock.receiveShadow = true;
@@ -327,9 +468,10 @@ export class World {
   }
 
   _bonfires() {
-    // Checkpoints: rest to heal, set respawn, and refill. Placed at the
-    // town and near each cliff cluster.
-    const spots = [[0, 8], [44, 28], [-48, -24], [22, -52], [-34, 48], [66, -38]];
+    // Checkpoints: rest to heal, set respawn, and refill. Deliberately FEW and
+    // FAR between — one in town, then one deep in each biome. Dying means a
+    // real trek back, Dark Souls style.
+    const spots = [[0, 9], [78, 64], [-72, 70], [-78, -66], [82, -72]];
     for (const [x, z] of spots) {
       const y = heightAt(x, z);
       const g = new THREE.Group();
@@ -355,15 +497,60 @@ export class World {
   }
 
   _spawnZones() {
-    // Enemy spawn zones, harder the further from town.
+    // Enemy spawn zones spread across the biomes, harder the further out.
     this.spawnZones = [
-      { center: new THREE.Vector3(30, 0, 20), radius: 26, level: 1, count: 8 },
-      { center: new THREE.Vector3(-40, 0, -15), radius: 28, level: 3, count: 9 },
-      { center: new THREE.Vector3(25, 0, -45), radius: 26, level: 5, count: 9 },
-      { center: new THREE.Vector3(-30, 0, 45), radius: 26, level: 7, count: 9 },
-      { center: new THREE.Vector3(70, 0, -40), radius: 30, level: 10, count: 10 },
-      { center: new THREE.Vector3(-70, 0, 70), radius: 34, level: 14, count: 12 },
+      { center: new THREE.Vector3(34, 0, 26), radius: 28, level: 1, count: 8 },   // forest near
+      { center: new THREE.Vector3(-34, 0, 30), radius: 28, level: 3, count: 9 },  // snow near
+      { center: new THREE.Vector3(34, 0, -30), radius: 28, level: 5, count: 9 },  // desert near
+      { center: new THREE.Vector3(-34, 0, -30), radius: 28, level: 7, count: 9 }, // swamp near
+      { center: new THREE.Vector3(90, 0, 80), radius: 36, level: 10, count: 11 }, // forest deep
+      { center: new THREE.Vector3(-90, 0, 85), radius: 36, level: 13, count: 11 },// snow deep
+      { center: new THREE.Vector3(95, 0, -85), radius: 36, level: 16, count: 12 },// desert deep
+      { center: new THREE.Vector3(-95, 0, -90), radius: 38, level: 20, count: 12 },// swamp deep
     ];
+  }
+
+  _camps() {
+    // Elite war-camps: clusters of tough enemies guarding a loot chest.
+    // The chest stays locked until every camp member is slain.
+    const specs = [
+      { id: 'camp_forest', x: 58, z: 46, level: 4 },
+      { id: 'camp_snow', x: -56, z: 52, level: 6 },
+      { id: 'camp_desert', x: 62, z: -56, level: 9 },
+      { id: 'camp_swamp', x: -60, z: -52, level: 13 },
+    ];
+    const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
+    const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });
+    for (const sp of specs) {
+      const y = heightAt(sp.x, sp.z);
+      // Fire-ring decor marking the camp.
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.25, 6, 18),
+        new THREE.MeshLambertMaterial({ color: 0x3a2a1a }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(sp.x, y + 0.12, sp.z);
+      this.group.add(ring);
+      // Treasure chest with an openable lid.
+      const chest = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), chestMat); base.position.y = 0.45;
+      const lid = new THREE.Group();
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), lidMat); lidMesh.position.set(0, 0.25, 0);
+      lid.position.set(0, 0.9, -0.6); lid.add(lidMesh);
+      const lockGlow = new THREE.PointLight(0xffcf3a, 0, 8); lockGlow.position.y = 1.4;
+      chest.add(base, lid, lockGlow);
+      chest.position.set(sp.x, y, sp.z);
+      chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(chest);
+      this.camps.push({
+        id: sp.id, level: sp.level,
+        pos: new THREE.Vector3(sp.x, y, sp.z),
+        chest, lid, glow: lockGlow, opened: false, members: [],
+      });
+    }
+  }
+
+  campCleared(camp) { return camp.members.length > 0 && camp.members.every((m) => !m.alive); }
+  nearestCamp(pos, maxDist = 4.5) {
+    for (const c of this.camps) { if (c.pos.distanceTo(pos) < maxDist) return c; }
+    return null;
   }
 
   // Animate flickering bonfires + drifting clouds.
@@ -380,6 +567,16 @@ export class World {
       b.light.intensity = 1.8 + f * 0.6;
     }
     if (this.water) this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.15;
+
+    // Camp chests: glow once unlocked; swing the lid open when looted.
+    for (const c of this.camps) {
+      if (c.opened) {
+        c.lid.rotation.x = THREE.MathUtils.lerp(c.lid.rotation.x, -2.2, Math.min(1, dt * 6));
+        c.glow.intensity = 0;
+      } else if (this.campCleared(c)) {
+        c.glow.intensity = 1.4 + Math.sin(t * 5) * 0.5; // ready-to-open shimmer
+      }
+    }
   }
 
   nearestBonfire(pos, maxDist = 4) {
