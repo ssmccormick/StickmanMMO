@@ -542,6 +542,23 @@ html, body {
 }
 .qd-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #6f5512; }
 
+/* ---------------- Emotes ---------------- */
+.emote-panel { width: min(420px, 92vw); }
+.emote-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 16px 18px 20px; }
+.emote-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--panel-edge); border-radius: 10px;
+  color: var(--ink); font-size: 12px; cursor: pointer; }
+.emote-btn:hover { border-color: var(--gold); background: rgba(255,255,255,0.08); transform: translateY(-2px); }
+.emote-glyph { font-size: 26px; }
+.emote-bubble {
+  position: absolute; transform: translate(-50%, -100%); z-index: 18; pointer-events: none;
+  font-size: 30px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.6));
+  background: rgba(10,12,18,0.6); border: 1px solid var(--panel-edge); border-radius: 50%;
+  width: 46px; height: 46px; display: flex; align-items: center; justify-content: center;
+  animation: emote-pop 0.25s ease;
+}
+@keyframes emote-pop { from { transform: translate(-50%, -100%) scale(0.4); } to { transform: translate(-50%, -100%) scale(1); } }
+
 /* ---------------- Codex / lore board ---------------- */
 .codex-panel { width: min(860px, 96vw); height: 82vh; }
 .codex-body { display: grid; grid-template-columns: 200px 1fr; gap: 0; flex: 1; min-height: 0; }

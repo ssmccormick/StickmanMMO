@@ -20,6 +20,18 @@ function emptyGear() {
   return g;
 }
 
+// Emotes: a bit of body language + a floating bubble. Shared with the UI.
+export const EMOTES = [
+  { id: 'wave', name: 'Wave', glyph: '👋' },
+  { id: 'dance', name: 'Dance', glyph: '🕺' },
+  { id: 'cheer', name: 'Cheer', glyph: '🎉' },
+  { id: 'flex', name: 'Flex', glyph: '💪' },
+  { id: 'laugh', name: 'Laugh', glyph: '😂' },
+  { id: 'bow', name: 'Bow', glyph: '🙇' },
+  { id: 'cry', name: 'Cry', glyph: '😢' },
+  { id: 'sit', name: 'Sit', glyph: '🪑' },
+];
+
 const GRAVITY = 26;
 const JUMP_VEL = 9.5;
 const WALK_SPEED = 7.0;
@@ -152,6 +164,13 @@ export class Player {
   applyTimedBuff(buff, dur, { label, glyph, color }) {
     this.timed = this.timed.filter((b) => b.label !== label);
     this.timed.push({ ...buff, until: this._clock + dur, label, glyph, color, dur });
+  }
+
+  // Play an emote: a few seconds of body language + a floating bubble.
+  doEmote(id) {
+    const e = EMOTES.find((x) => x.id === id) || EMOTES[0];
+    this.emote = { id: e.id, glyph: e.glyph, until: this._clock + 3.2 };
+    return e;
   }
 
   // ---- Inventory / equipment management ----
@@ -418,9 +437,11 @@ export class Player {
     this.mesh.rotation.y = cur + diff * Math.min(1, dt * 14);
 
     if (this.attackAnim > 0) this.attackAnim = Math.max(0, this.attackAnim - dt * 3.2);
+    // Emotes auto-expire and only play while standing still and not attacking.
+    const emote = (this.emote && this._clock < this.emote.until && this.state === 'ground' && this.attackAnim <= 0) ? this.emote.id : null;
     animateStickman(this.mesh, dt, {
       speed01: this._speed01, attack: this.attackAnim,
-      climbing: this.state === 'climb', airborne: this.state === 'air',
+      climbing: this.state === 'climb', airborne: this.state === 'air', emote,
     });
 
     // Mount: sit the rider higher and trot the steed beneath.

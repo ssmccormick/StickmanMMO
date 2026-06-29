@@ -227,7 +227,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen;
 
     // Crosshair shows while mouse-look is active (aiming), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
@@ -245,6 +245,7 @@ function animate() {
     if (input.just('KeyC')) ui.toggleCharSheet(player);
     if (input.just('KeyM')) ui.toggleWorldMap(player, enemies);
     if (input.just('KeyL')) ui.toggleCodex(player);
+    if (input.just('KeyT')) ui.toggleEmotes(player);
     if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
     if (input.just('KeyQ')) quickHeal();
 
@@ -482,6 +483,7 @@ function animate() {
     // HUD + minimap + party frames (live HP).
     ui.updateHud(player, network.count);
     ui.drawMinimap(player, enemies, world, network.others);
+    ui.updateEmoteBubble(player);
     if (network.party.length > 1) ui.updatePartyFrames(player, network);
   }
 

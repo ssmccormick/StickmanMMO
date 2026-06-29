@@ -9,6 +9,7 @@ import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPri
 import * as Quests from './quests.js';
 import { TOWNS, AREAS } from './world.js';
 import { CODEX, PROLOGUE, WORLD_NAME, ashboundEntry, TOWN_CHATTER } from './lore.js';
+import { EMOTES } from './player.js';
 
 const LORE_LINES = TOWN_CHATTER;
 
@@ -1187,6 +1188,49 @@ export class UI {
   }
   _loreToHtml(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+  }
+
+  // ---- Emotes (T) ----
+  _ensureEmotes() {
+    if (this.emOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel emote-panel"><div class="inv-header"><span>😀 Emotes</span><button class="inv-close">✕</button></div><div class="emote-grid"></div></div>`;
+    document.body.appendChild(ov);
+    this.emOverlay = ov;
+    this.emGrid = ov.querySelector('.emote-grid');
+    ov.querySelector('.inv-close').onclick = () => this.closeEmotes();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeEmotes(); });
+  }
+  toggleEmotes(player) {
+    this._ensureEmotes();
+    if (this.emotesOpen) { this.closeEmotes(); return; }
+    this.emotesOpen = true;
+    this.emOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.emGrid.innerHTML = EMOTES.map((e) => `<button class="emote-btn" data-id="${e.id}"><div class="emote-glyph">${e.glyph}</div><div>${e.name}</div></button>`).join('');
+    this.emGrid.querySelectorAll('.emote-btn').forEach((b) => { b.onclick = () => {
+      const e = player.doEmote(b.dataset.id);
+      if (this.onEmote) this.onEmote(e);
+      this.closeEmotes();
+    }; });
+  }
+  closeEmotes() { this.emotesOpen = false; if (this.emOverlay) this.emOverlay.classList.add('hidden'); }
+  updateEmoteBubble(player) {
+    if (!this.emBubble) {
+      const b = document.createElement('div'); b.className = 'emote-bubble hidden';
+      (document.getElementById('floaters') || document.body).appendChild(b);
+      this.emBubble = b;
+    }
+    const active = player && player.emote && player._clock < player.emote.until;
+    if (!active || !this.project) { this.emBubble.classList.add('hidden'); return; }
+    const head = player.pos.clone(); head.y += 1.4;
+    const sp = this.project(head);
+    if (!sp || !sp.visible) { this.emBubble.classList.add('hidden'); return; }
+    this.emBubble.textContent = player.emote.glyph;
+    this.emBubble.style.left = sp.x + 'px';
+    this.emBubble.style.top = sp.y + 'px';
+    this.emBubble.classList.remove('hidden');
   }
 
   // ---- Area banner ----

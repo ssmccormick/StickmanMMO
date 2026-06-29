@@ -78,7 +78,7 @@ export function createStickman({ color = 0x9aa4b2, accent = 0xd8423c, scale = 1 
 // Pose a stickman for this frame.
 //   speed01: 0..1 how fast it's moving (drives walk cycle)
 //   dt: seconds, state: { attack, climbing, dead, airborne }
-export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing = false, airborne = false, dead = false } = {}) {
+export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing = false, airborne = false, dead = false, emote = null } = {}) {
   const a = group.userData.anim;
   const j = group.userData.joints;
 
@@ -92,6 +92,12 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
   // Advance walk phase proportional to speed.
   a.phase += dt * (4 + speed01 * 10);
   const swing = Math.sin(a.phase) * (0.2 + speed01 * 0.7);
+
+  // Emotes override the pose with a brief, looping bit of body language.
+  if (emote && speed01 < 0.05) {
+    poseEmote(group, j, a, emote);
+    return;
+  }
 
   if (climbing) {
     // Reach up alternately while climbing.
@@ -120,5 +126,54 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     j.armR.rotation.z = Math.sin(t * Math.PI) * 0.6;
   } else {
     j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, 0, Math.min(1, dt * 10));
+  }
+}
+
+// Pose the figure for an emote (looping while held). `a.phase` advances each frame.
+function poseEmote(group, j, a, emote) {
+  const hip = group.children[0];
+  const p = a.phase;
+  // reset baseline
+  j.hip.rotation.x = 0; j.torso.rotation.x = 0; j.torso.rotation.z = 0;
+  j.legL.rotation.x = 0; j.legR.rotation.x = 0;
+  hip.position.y = 1.0; hip.rotation.z = 0;
+  const s = Math.sin(p * 6);
+  switch (emote) {
+    case 'wave':
+      j.armR.rotation.x = -2.5; j.armR.rotation.z = -0.4 + s * 0.5; // raised, waving
+      j.armL.rotation.x = 0.2;
+      break;
+    case 'dance':
+      hip.rotation.z = s * 0.18; j.torso.rotation.z = -s * 0.2;
+      j.armL.rotation.x = -1.4 - Math.sin(p * 6 + 1) * 0.6; j.armR.rotation.x = -1.4 + Math.sin(p * 6) * 0.6;
+      hip.position.y = 1.0 + Math.abs(Math.sin(p * 6)) * 0.12;
+      j.legL.rotation.x = Math.sin(p * 6) * 0.3; j.legR.rotation.x = -Math.sin(p * 6) * 0.3;
+      break;
+    case 'flex':
+      j.armL.rotation.x = -1.7; j.armL.rotation.z = 1.3;
+      j.armR.rotation.x = -1.7; j.armR.rotation.z = -1.3;
+      j.torso.rotation.x = -0.1 + Math.abs(s) * 0.05;
+      break;
+    case 'bow':
+      j.hip.rotation.x = 1.0 + Math.sin(p * 3) * 0.05; j.armL.rotation.x = 0.4; j.armR.rotation.x = 0.4;
+      break;
+    case 'cheer':
+      j.armL.rotation.x = -2.7; j.armR.rotation.x = -2.7;
+      hip.position.y = 1.0 + Math.max(0, Math.sin(p * 7)) * 0.3; // little jumps
+      break;
+    case 'laugh':
+      j.torso.rotation.x = 0.25 + Math.abs(Math.sin(p * 12)) * 0.12; // belly laugh
+      j.armL.rotation.x = -0.7; j.armR.rotation.x = -0.7;
+      break;
+    case 'cry':
+      j.torso.rotation.x = 0.3; j.armL.rotation.x = -2.3; j.armR.rotation.x = -2.3; // hands to face
+      hip.position.y = 1.0 - Math.abs(Math.sin(p * 4)) * 0.04;
+      break;
+    case 'sit':
+      j.hip.rotation.x = 0.1; hip.position.y = 0.5; // lowered
+      j.legL.rotation.x = 1.4; j.legR.rotation.x = 1.4; j.armL.rotation.x = 0.3; j.armR.rotation.x = 0.3;
+      break;
+    default:
+      j.armR.rotation.x = -2.4; // generic raised hand
   }
 }
