@@ -37,7 +37,7 @@ export const CLASSES = {
       { id: 'warcry', name: 'War Cry', kind: 'buff', glyph: '📣', cost: 20, costType: 'mp', cooldown: 16, reqLevel: 5, buff: { dmg: 1.5, dur: 8 }, color: 0xff8a2a, desc: '+50% damage for 8s.' },
       { id: 'sunder', name: 'Sunder', kind: 'dot', glyph: '🩸', cost: 16, costType: 'sp', cooldown: 9, reqLevel: 7, radius: 2.8, dotDps: 8, dotDur: 6, color: 0xcc3333, desc: 'Rend nearby foes, bleeding them over time.' },
       { id: 'whirl', name: 'Whirlwind', kind: 'melee', glyph: '🌀', cost: 22, costType: 'sp', cooldown: 6, reqLevel: 9, arc: 6.3, range: 3.2, mult: 1.6, color: 0xcfe8ff, desc: 'Spin, striking everything around you.' },
-      { id: 'execute', name: 'Execute', kind: 'melee', glyph: '💀', cost: 20, costType: 'sp', cooldown: 8, reqLevel: 12, arc: 1.0, range: 2.8, mult: 3.2, execute: true, color: 0xff3030, desc: 'Huge strike; bonus damage to wounded foes.' },
+      { id: 'execute', name: 'Execute', kind: 'melee', glyph: '💀', cost: 20, costType: 'sp', cooldown: 8, reqLevel: 12, arc: 0.55, range: 3.0, mult: 4.0, execute: true, color: 0xff3030, desc: 'Focused killing thrust in a narrow cone; massive bonus to wounded foes.' },
     ],
   },
 
@@ -68,12 +68,12 @@ export const CLASSES = {
     growth: { hp: 10, mp: 3, sp: 10 }, critBonus: 0.15,
     baseDamage: 13, attackSpeed: 0.32, range: 2.4,
     abilities: [
-      { id: 'backstab', name: 'Backstab', kind: 'melee', glyph: '🔪', cost: 12, costType: 'sp', cooldown: 5, reqLevel: 1, arc: 0.9, range: 2.6, mult: 3.0, crit: 0.5, color: 0x7ad88f, desc: 'Massive single hit, high crit.' },
+      { id: 'backstab', name: 'Backstab', kind: 'melee', glyph: '🔪', cost: 12, costType: 'sp', cooldown: 5, reqLevel: 1, arc: 0.5, range: 2.8, mult: 3.8, crit: 0.5, color: 0x7ad88f, desc: 'A thin, focused thrust straight ahead — massive single hit, high crit.' },
       { id: 'dash', name: 'Shadow Dash', kind: 'dash', glyph: '💨', cost: 15, costType: 'sp', cooldown: 6, reqLevel: 2, range: 8, arc: 1.4, mult: 1.4, color: 0x9aa4ef, desc: 'Blink through enemies, cutting them.' },
       { id: 'fan', name: 'Fan of Knives', kind: 'projectile', glyph: '🃏', cost: 16, costType: 'sp', cooldown: 7, reqLevel: 4, count: 5, spread: 0.9, speed: 26, mult: 0.8, color: 0xcfcfcf, shape: 'blade', desc: 'Throw a fan of 5 knives.' },
       { id: 'poison', name: 'Envenom', kind: 'dot', glyph: '🧪', cost: 14, costType: 'sp', cooldown: 8, reqLevel: 6, radius: 2.4, dotDps: 12, dotDur: 6, color: 0x6fae54, desc: 'Coat blades in venom — poisons foes.' },
       { id: 'roll', name: 'Evasive Roll', kind: 'dash', glyph: '🤸', cost: 12, costType: 'sp', cooldown: 4, reqLevel: 8, range: 6, arc: 0, mult: 0, iframes: 0.5, color: 0xffffff, desc: 'Dodge roll with brief invulnerability.' },
-      { id: 'assassinate', name: 'Assassinate', kind: 'melee', glyph: '☠️', cost: 22, costType: 'sp', cooldown: 10, reqLevel: 11, arc: 0.8, range: 3.0, mult: 4.5, crit: 0.7, color: 0xff3030, desc: 'Devastating killing blow.' },
+      { id: 'assassinate', name: 'Assassinate', kind: 'melee', glyph: '☠️', cost: 22, costType: 'sp', cooldown: 10, reqLevel: 11, arc: 0.45, range: 3.2, mult: 5.6, crit: 0.7, color: 0xff3030, desc: 'A razor cone straight ahead — devastating, near-guaranteed killing blow.' },
     ],
   },
 
@@ -181,7 +181,7 @@ export const CLASSES = {
       { id: 'palm', name: 'Wave Palm', kind: 'projectile', glyph: '🌊', cost: 14, costType: 'sp', cooldown: 4, reqLevel: 4, speed: 18, mult: 1.6, aoe: 2.5, color: 0x6fc8ff, shape: 'orb', desc: 'A blast of chi energy.' },
       { id: 'spinkick', name: 'Spinning Crane', kind: 'melee', glyph: '🌀', cost: 18, costType: 'sp', cooldown: 5, reqLevel: 6, arc: 6.3, range: 3.0, mult: 1.5, color: 0xcfe8ff, desc: 'Whirl, striking all around.' },
       { id: 'meditate', name: 'Meditate', kind: 'heal', glyph: '🧘', cost: 16, costType: 'mp', cooldown: 8, reqLevel: 8, amount: 0.28, color: 0x7bf08a, desc: 'Channel inner peace to heal.' },
-      { id: 'thousand', name: 'Thousand Fists', kind: 'melee', glyph: '✊', cost: 24, costType: 'sp', cooldown: 8, reqLevel: 11, arc: 1.6, range: 3.2, mult: 4.0, color: 0xffd24a, desc: 'A blinding flurry of blows.' },
+      { id: 'thousand', name: 'Thousand Fists', kind: 'melee', glyph: '✊', cost: 24, costType: 'sp', cooldown: 8, reqLevel: 11, arc: 0.7, range: 3.2, mult: 4.6, color: 0xffd24a, desc: 'A blinding focused flurry of blows straight ahead.' },
     ],
   },
 

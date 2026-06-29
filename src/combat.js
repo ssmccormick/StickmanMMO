@@ -161,7 +161,7 @@ export class Combat {
       this._strike(e, dmg, { crit: (ab.crit || 0) + (this.def.critBonus || 0) });
       if (ab.stun) e.applyStun(ab.stun);
     }
-    this._slashFx(origin, dir, ab.range, ab.color);
+    this._coneFx(origin, dir, ab.range, ab.arc, ab.color);
   }
 
   _kProjectile(ab) {
@@ -217,7 +217,7 @@ export class Combat {
       for (const e of this._inArc(this.player.pos, dir, ab.range, ab.arc)) {
         dealt += this._strike(e, this.player.apower * ab.mult, {});
       }
-      this._slashFx(this.player.pos, dir, ab.range, ab.color);
+      this._coneFx(this.player.pos, dir, ab.range, ab.arc, ab.color);
     }
     if (dealt > 0) {
       const healed = this.player.heal(dealt * ab.leech);
@@ -549,6 +549,38 @@ export class Combat {
     m.rotation.x = -Math.PI / 2; m.position.copy(origin); m.position.y += 0.6;
     m.rotation.z = -Math.atan2(dir.x, dir.z);
     this._tempMesh(m, 0.22);
+  }
+  // A filled ground cone/wedge that shows EXACTLY where a melee arc lands —
+  // apex at the player, spreading `arc` radians around `dir` out to `range`.
+  // Wide arcs read as a fan; thin high-damage arcs read as a forward spear,
+  // so the player can always see their reach. Matches `_inArc` precisely.
+  _coneFx(origin, dir, range, arc, color = 0xffffff) {
+    const heading = Math.atan2(dir.x, dir.z);
+    const half = Math.min(arc, Math.PI * 2) / 2;
+    const segs = Math.max(3, Math.round((half * 2) / 0.1));
+    const y = 0.14, fill = [], rim = [];
+    for (let i = 0; i <= segs; i++) {
+      const a = heading - half + (i / segs) * half * 2;
+      const px = Math.sin(a) * range, pz = Math.cos(a) * range;
+      rim.push(px, y, pz);
+      if (i < segs) {
+        const a2 = heading - half + ((i + 1) / segs) * half * 2;
+        fill.push(0, y, 0, px, y, pz, Math.sin(a2) * range, y, Math.cos(a2) * range);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(fill, 3));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    m.position.copy(origin); m.userData.baseOpacity = 0.55;
+    this._tempMesh(m, 0.3);
+    // A bright outline (apex → arc rim → apex) makes the wedge crisp and clear.
+    const edge = [0, y, 0, ...rim, 0, y, 0];
+    const lgeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
+    const line = new THREE.Line(lgeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
+    line.position.copy(origin); line.userData.baseOpacity = 0.95;
+    this._tempMesh(line, 0.3);
   }
   _healFx(pos, color = 0x7bf08a) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }));

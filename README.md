@@ -135,6 +135,10 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Combat** — auto-attacks, cone/AoE/projectile abilities, crits, floating combat
   text, target framing & nameplates, and class-scaled damage. Offensive skills aim at your
   target/crosshair; **movement skills (dashes, blinks, rolls) go where you're moving**.
+  Melee abilities draw a **visible ground cone** matching their exact hitbox — wide skills
+  (Cleave, Whirlwind) read as a fan, while focused burst skills (**Backstab**, **Assassinate**,
+  **Execute**, **Thousand Fists**) are **thin, high-damage cones** that spear straight ahead,
+  so you can always see where a hit lands.
 - **Enemies & AI** — stickman monsters (slimes, bandits, wolves, knights, ogres) with
   an idle→chase→attack FSM, telegraphed attacks, level-scaled stats, and respawns.
 - **Progression** — XP, leveling with stat growth, six escalating-difficulty zones.
