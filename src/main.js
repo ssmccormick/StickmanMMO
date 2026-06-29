@@ -7,7 +7,7 @@ import { World, areaAt } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -120,6 +120,7 @@ function beginGame(classId, name, server, save) {
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
   enemies.push(...spawnBosses(scene, world)); // world bosses
   enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
+  enemies.push(...spawnFlyers(scene, world));    // Sky Wraiths patrolling the air
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
   // Keep panels live as loot is picked up; refresh quest markers on kills.

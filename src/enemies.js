@@ -14,6 +14,7 @@ const TYPES = {
   wolf:     { name: 'Dire Stick',    color: 0x66707a, accent: 0xcfcfcf, scale: 0.9, hp: 45,  dmg: 9,  speed: 5.2, range: 2.0, xp: 22, aggro: 20 },
   brute:    { name: 'Ogre Brute',    color: 0x7a5a8a, accent: 0xb04a3a, scale: 1.5, hp: 140, dmg: 22, speed: 2.8, range: 2.8, xp: 60, aggro: 14 },
   knight:   { name: 'Fallen Knight', color: 0x3a3f4a, accent: 0x9aa4ef, scale: 1.1, hp: 95,  dmg: 16, speed: 3.8, range: 2.4, xp: 44, aggro: 18 },
+  wraith:   { name: 'Sky Wraith',    color: 0x5a3a6a, accent: 0xc07bff, scale: 1.0, hp: 52,  dmg: 13, speed: 6.0, range: 2.2, xp: 34, aggro: 24, fly: true },
 };
 const TYPE_BY_LEVEL = (lvl) => {
   if (lvl <= 1) return ['slime', 'slime', 'grunt'];
@@ -75,8 +76,10 @@ export class Enemy {
       scene.add(this._shockRing);
     }
 
+    this.flying = !!this.type.fly;          // hovers; swoops down to attack
+    this.flyHeight = this.flying ? 9 : 0;   // current altitude above the ground
     this.pos = home.clone();
-    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    this.pos.y = heightAt(this.pos.x, this.pos.z) + this.flyHeight;
     this.state = 'idle';
     this.alive = true;
     this.facing = Math.random() * Math.PI * 2;
@@ -145,7 +148,9 @@ export class Enemy {
     const speedMult = this.slow > 0 ? 0.45 : 1;
 
     const toPlayer = player.alive ? new THREE.Vector3().subVectors(player.pos, this.pos) : null;
-    const dist = toPlayer ? toPlayer.length() : Infinity;
+    // Flyers judge range by ground distance so their altitude never stops them
+    // from noticing you and diving in.
+    const dist = !toPlayer ? Infinity : (this.flying ? Math.hypot(toPlayer.x, toPlayer.z) : toPlayer.length());
 
     if (this.boss) this._bossShockwave(dt, player, dist);
 
@@ -215,11 +220,19 @@ export class Enemy {
       this._speed01 = 0;
     }
 
-    // collision + ground clamp
+    // collision + ground/altitude clamp
     const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
     this.pos.x = res.x; this.pos.z = res.z;
-    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    if (this.flying) {
+      // Cruise high when idle, glide lower while chasing, dive to strike.
+      const target = this.state === 'attack' ? 1.4 : this.state === 'chase' ? 4.5 : 9;
+      this.flyHeight = THREE.MathUtils.lerp(this.flyHeight, target, Math.min(1, dt * 3));
+      this.pos.y = heightAt(this.pos.x, this.pos.z) + this.flyHeight;
+    } else {
+      this.pos.y = heightAt(this.pos.x, this.pos.z);
+    }
     this._repelFromTowns();
+    if (this.flying) this.pos.y = heightAt(this.pos.x, this.pos.z) + this.flyHeight;
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
     this._finish(dt);
@@ -327,7 +340,8 @@ export class Enemy {
     this.alive = true;
     this.hp = this.maxHp;
     this.pos.copy(this._randomNear(this.home, 5));
-    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    if (this.flying) this.flyHeight = 9;
+    this.pos.y = heightAt(this.pos.x, this.pos.z) + (this.flying ? this.flyHeight : 0);
     this.mesh.rotation.x = 0;
     this.mesh.scale.setScalar(this.displayScale);
     this.state = 'idle';
@@ -365,6 +379,21 @@ export function spawnEnemies(scene, world) {
     }
   }
   return enemies;
+}
+
+// Sky Wraiths: a couple of flyers patrol the air above each spawn zone,
+// cruising high until you wander close, then diving to attack.
+export function spawnFlyers(scene, world) {
+  const out = [];
+  for (const zone of world.spawnZones) {
+    const n = zone.level >= 10 ? 3 : 2;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * zone.radius;
+      const home = new THREE.Vector3(zone.center.x + Math.cos(a) * d, 0, zone.center.z + Math.sin(a) * d);
+      out.push(new Enemy(scene, world, 'wraith', zone.level + Math.floor(Math.random() * 2), home));
+    }
+  }
+  return out;
 }
 
 // Spawn a handful of minions around a boss when it enrages.

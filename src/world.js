@@ -115,17 +115,36 @@ export function areaAt(x, z) {
   return best;
 }
 
-// Roads: straight dirt routes from the Nexus out to each town.
-const ROADS = TOWNS.filter((t) => !t.nexus).map((t) => ({ ax: 0, az: 0, bx: t.x, bz: t.z }));
+// Roads: winding dirt routes from the Nexus out to each town. Each road is a
+// polyline whose interior waypoints are pushed off the straight line (tapering
+// to zero at both ends) so paths curve and bend like natural trails rather than
+// laser-straight spokes.
+const ROADS = TOWNS.filter((t) => !t.nexus).map((t) => {
+  const bx = t.x, bz = t.z, len = Math.hypot(bx, bz) || 1;
+  const ux = bx / len, uz = bz / len;   // unit vector along the road
+  const px = -uz, pz = ux;              // perpendicular
+  const N = 7, pts = [];
+  for (let i = 0; i <= N; i++) {
+    const s = i / N;
+    const taper = Math.sin(s * Math.PI); // 0 at both towns, 1 in the middle
+    // Two offset bands (a broad swing + a finer wobble) for an organic curve.
+    const bend = taper * (Math.sin(s * Math.PI * 1.6 + t.x * 0.013) * 22 +
+      (smoothNoise(t.x * 0.05 + s * 5, t.z * 0.05) - 0.5) * 40);
+    pts.push({ x: bx * s + px * bend, z: bz * s + pz * bend });
+  }
+  return pts;
+});
 export function roadDistance(x, z) {
   let best = Infinity;
-  for (const r of ROADS) {
-    const dx = r.bx - r.ax, dz = r.bz - r.az;
-    const len2 = dx * dx + dz * dz || 1;
-    let t = ((x - r.ax) * dx + (z - r.az) * dz) / len2;
-    t = Math.max(0, Math.min(1, t));
-    const px = r.ax + dx * t, pz = r.az + dz * t;
-    best = Math.min(best, Math.hypot(x - px, z - pz));
+  for (const pts of ROADS) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const len2 = dx * dx + dz * dz || 1;
+      let s = ((x - a.x) * dx + (z - a.z) * dz) / len2;
+      s = Math.max(0, Math.min(1, s));
+      best = Math.min(best, Math.hypot(x - (a.x + dx * s), z - (a.z + dz * s)));
+    }
   }
   return best;
 }

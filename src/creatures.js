@@ -18,6 +18,7 @@ export function createCreature(typeId, opts = {}) {
     case 'grunt':  return makeBandit(opts);
     case 'knight': return makeKnight(opts);
     case 'brute':  return makeOgre(opts);
+    case 'wraith': return makeWraith(opts);
     default:       return createStickman(opts);
   }
 }
@@ -180,4 +181,45 @@ function animateSlime(group, dt, { speed01 = 0, attack = 0, dead = false } = {})
   p.blob.scale.set(1 / squash, 0.8 * squash, 1 / squash);
   p.body.position.y = Math.abs(Math.sin(a.phase)) * (0.05 + speed01 * 0.3);
   if (attack > 0) p.body.position.y += Math.sin((1 - attack) * Math.PI) * 0.4; // lunge-hop
+}
+
+// ---- Sky Wraith: a winged flyer that beats its wings and dives to attack ----
+
+function makeWraith({ color, accent, scale = 1 } = {}) {
+  const root = new THREE.Group();
+  const body = new THREE.Group(); root.add(body);
+  const skin = new THREE.MeshLambertMaterial({ color });
+  const wingMat = new THREE.MeshLambertMaterial({ color: accent, side: THREE.DoubleSide });
+  const torso = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 7), skin); torso.scale.set(0.8, 1.1, 0.8); body.add(torso);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), skin); head.position.set(0, 0.4, 0.05); body.add(head);
+  for (const s of [1, -1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 4), wingMat); horn.position.set(s * 0.1, 0.56, 0); body.add(horn);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 5, 4), new THREE.MeshBasicMaterial({ color: 0xff5a3c })); eye.position.set(s * 0.08, 0.42, 0.18); body.add(eye);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.03, 0.3, 4), skin); leg.position.set(s * 0.12, -0.35, 0); body.add(leg);
+  }
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.5, 4), skin); tail.position.set(0, -0.2, -0.3); tail.rotation.x = 1.2; body.add(tail);
+  const wings = [];
+  for (const s of [1, -1]) {
+    const wing = new THREE.Group(); wing.position.set(s * 0.2, 0.15, -0.05);
+    const mem = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.04, 0.7), wingMat); mem.position.set(s * 0.55, 0, -0.1); wing.add(mem);
+    const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.02, 1.0, 4), skin); bone.rotation.z = Math.PI / 2; bone.position.x = s * 0.5; wing.add(bone);
+    body.add(wing); wings.push(wing);
+  }
+  root.scale.setScalar(scale);
+  root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  root.userData.anim = { phase: Math.random() * Math.PI * 2 };
+  root.userData.parts = { body, wings };
+  root.userData.animate = animateWraith;
+  return root;
+}
+
+function animateWraith(group, dt, { speed01 = 0, attack = 0, dead = false } = {}) {
+  const p = group.userData.parts, a = group.userData.anim;
+  if (dead) { group.rotation.z = THREE.MathUtils.lerp(group.rotation.z, Math.PI / 2, Math.min(1, dt * 6)); return; }
+  group.rotation.z = THREE.MathUtils.lerp(group.rotation.z, 0, Math.min(1, dt * 8));
+  a.phase += dt * (6 + speed01 * 5);
+  const flap = Math.sin(a.phase * 2) * (0.5 + speed01 * 0.4) + 0.25;
+  p.wings[0].rotation.z = -flap; p.wings[1].rotation.z = flap;
+  p.body.position.y = Math.sin(a.phase) * 0.06;
+  p.body.rotation.x = attack > 0 ? Math.sin((1 - attack) * Math.PI) * 0.5 : THREE.MathUtils.lerp(p.body.rotation.x, 0, Math.min(1, dt * 8));
 }
