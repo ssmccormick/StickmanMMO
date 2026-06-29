@@ -22,6 +22,8 @@ export class Network {
     this.partyInvite = null;    // pending {fromId, fromName}
     this.onParty = null;        // () => void, fired on party change
     this.onPartyInvite = null;  // (fromName) => void
+    this.onPartyXp = null;      // (amount, fromName) => void, shared kill XP
+    this.onPartyLoot = null;    // (item, fromName) => void, notable partymate loot
     this._sendTimer = 0;
   }
 
@@ -83,6 +85,12 @@ export class Network {
         this.party = msg.members || [];
         if (this.onParty) this.onParty();
         break;
+      case 'party_xp':
+        if (this.onPartyXp) this.onPartyXp(msg.amount || 0, msg.fromName || 'A partymate');
+        break;
+      case 'party_loot':
+        if (this.onPartyLoot) this.onPartyLoot(msg.item || null, msg.fromName || 'A partymate');
+        break;
     }
   }
 
@@ -90,6 +98,12 @@ export class Network {
   acceptInvite() { if (this.partyInvite) { this._send({ type: 'party_accept', leaderId: this.partyInvite.fromId }); this.partyInvite = null; } }
   declineInvite() { this.partyInvite = null; }
   leaveParty() { this._send({ type: 'party_leave' }); this.party = []; if (this.onParty) this.onParty(); }
+
+  // True only when actually grouped (party includes self + at least one other).
+  inParty() { return this.connected && this.party.length > 1; }
+  // Relay a share of kill XP / a notable loot drop to the rest of the party.
+  sendPartyXp(amount) { if (this.inParty() && amount > 0) this._send({ type: 'party_xp', amount }); }
+  sendPartyLoot(item) { if (this.inParty() && item) this._send({ type: 'party_loot', item }); }
 
   _spawnOther(p) {
     if (this.others[p.id]) return;

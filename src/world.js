@@ -934,6 +934,11 @@ export class World {
     if (this.stars) this.stars.material.opacity = Math.max(0, 0.9 - day * 4);
     this.timeOfDay = day > 0.15 ? 'day' : (elev > 0 ? 'dawn' : dusk > 0.3 ? 'dusk' : 'night');
     this.isNight = day <= 0.05;
+    this.dayFactor = day;          // 0 (night) .. 1 (noon)
+    this.dayPhase = phase;
+    const tt = (phase * 24 + 6) % 24; // phase 0 = 06:00 (sunrise)
+    const hh = Math.floor(tt), mm = Math.floor((tt - hh) * 60);
+    this.clockText = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
   }
 
   nearestBonfire(pos, maxDist = 4) {

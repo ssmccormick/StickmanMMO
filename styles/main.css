@@ -169,7 +169,9 @@ html, body {
   background: rgba(10,14,10,0.7);
   border: 2px solid rgba(216,178,74,0.5); border-radius: 8px;
 }
-.players-online { margin-top: 6px; font-size: 12px; opacity: 0.85; text-shadow: 0 1px 2px #000; }
+.clock { margin-top: 6px; font-size: 13px; font-weight: bold; letter-spacing: 0.5px; text-shadow: 0 1px 2px #000; }
+.clock #clock-time { color: var(--gold); }
+.players-online { margin-top: 3px; font-size: 12px; opacity: 0.85; text-shadow: 0 1px 2px #000; }
 .players-online span { color: var(--gold); font-weight: bold; }
 
 .target-frame {

@@ -89,6 +89,15 @@ wss.on('connection', (ws) => {
         leaveParty(ws);
         break;
       }
+      // Relay shared kill XP / notable loot to the rest of the sender's party.
+      case 'party_xp': {
+        if (p.party) relayToParty(p.party, ws, { type: 'party_xp', amount: msg.amount || 0, fromName: p.name });
+        break;
+      }
+      case 'party_loot': {
+        if (p.party && msg.item) relayToParty(p.party, ws, { type: 'party_loot', item: msg.item, fromName: p.name });
+        break;
+      }
     }
   });
 
@@ -112,6 +121,10 @@ function broadcastParty(party) {
   const members = [...party].map((ws) => { const p = players.get(ws); return { id: p.id, name: p.name, classId: p.classId, level: p.level, hp: p.hp }; });
   const data = JSON.stringify({ type: 'party_update', members });
   for (const ws of party) if (ws.readyState === 1) ws.send(data);
+}
+function relayToParty(party, sender, data) {
+  const json = JSON.stringify(data);
+  for (const ws of party) if (ws !== sender && ws.readyState === 1) ws.send(json);
 }
 function leaveParty(ws) {
   const p = players.get(ws); if (!p || !p.party) return;

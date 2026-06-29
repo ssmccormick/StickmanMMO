@@ -27,7 +27,8 @@ export class Combat {
     this.drops = [];     // world loot pickups
     this._fx = [];
     this.target = null;
-    this.onLoot = null;  // (item) => void, set by main for logging
+    this.onLoot = null;     // (item) => void, set by main for logging
+    this.onPartyXp = null;  // (xp) => void, set by main to share kill XP with partymates
   }
 
   update(dt, input) {
@@ -337,6 +338,7 @@ export class Combat {
       Quests.onKill(this.player, enemy.typeId);
       if (enemy.boss) Quests.onBossKill(this.player, enemy.bossName);
       if (this.onKillEvent) this.onKillEvent(enemy);
+      if (this.onPartyXp) this.onPartyXp(res.xp);
       if (levels > 0 && this.onLevelUp) this.onLevelUp();
       this._dropLoot(enemy);
       if (this.target === enemy) this.target = null;

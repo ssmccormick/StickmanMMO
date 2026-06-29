@@ -331,6 +331,20 @@ export class Enemy {
     this.nameplate.visible = true;
     this._drawPlate();
   }
+
+  // Re-scale this enemy to a new level (used when a dungeon resets so repeat
+  // runs stay challenging relative to the player). Mirrors the constructor's
+  // level-dependent math; display scale (boss/elite size) is unchanged.
+  setLevel(level) {
+    this.level = Math.max(1, Math.round(level));
+    const lvlScale = 1 + (this.level - 1) * 0.32;
+    const em = this.boss ? 8 : this.elite ? 2.4 : 1;
+    this.maxHp = Math.round(this.type.hp * lvlScale * em);
+    this.hp = this.maxHp;
+    this.dmg = this.type.dmg * (1 + (this.level - 1) * 0.22) * (this.boss ? 1.9 : this.elite ? 1.5 : 1);
+    this.xp = Math.round(this.type.xp * (1 + (this.level - 1) * 0.4) * (this.boss ? 7 : this.elite ? 2.5 : 1));
+    this._drawPlate();
+  }
 }
 
 // Populate every spawn zone with level-appropriate monsters.

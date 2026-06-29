@@ -49,6 +49,8 @@ export class UI {
 
       hotbar: document.getElementById('hotbar'),
       minimap: document.getElementById('minimap'),
+      clockIcon: document.getElementById('clock-icon'),
+      clockTime: document.getElementById('clock-time'),
       playerCount: document.getElementById('player-count'),
       targetFrame: document.getElementById('target-frame'),
       targetName: document.getElementById('target-name'),
@@ -465,7 +467,15 @@ export class UI {
   drawMinimap(player, enemies, world, others) {
     const ctx = this.minimapCtx;
     const W = 160, scale = 0.32;
-    ctx.clearRect(0, 0, W, W);
+    // Tint the minimap by time of day, and update the clock readout.
+    const df = world.dayFactor != null ? world.dayFactor : 1;
+    const lerp = (a, b) => Math.round(a + (b - a) * df);
+    ctx.fillStyle = `rgb(${lerp(14, 46)},${lerp(18, 60)},${lerp(30, 44)})`;
+    ctx.fillRect(0, 0, W, W);
+    if (this.el.clockTime) {
+      this.el.clockTime.textContent = world.clockText || '';
+      this.el.clockIcon.textContent = world.isNight ? '🌙' : (df > 0.4 ? '☀️' : '🌅');
+    }
     const cx = W / 2, cy = W / 2;
     const tx = (x) => cx + (x - player.pos.x) * scale;
     const ty = (z) => cy + (z - player.pos.z) * scale;

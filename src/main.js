@@ -41,6 +41,7 @@ let deathHandled = false;
 let lastHp = 0;
 let restCooldown = 0;
 let currentArea = null;
+const DUNGEON_LOCKOUT = 300; // seconds a dungeon stays sealed after its chest is looted
 const clock = new THREE.Clock();
 
 // Project a world position to 2D screen coords for floating text.
@@ -76,6 +77,19 @@ ui.setupChat((text) => {
 // Party hooks (active only when connected to a server).
 network.onParty = () => { if (player) ui.updatePartyFrames(player, network); };
 network.onPartyInvite = (fromName) => ui.showPartyInvite(fromName, () => network.acceptInvite(), () => network.declineInvite());
+// Receive a share of a partymate's kill XP (may trigger a level-up).
+network.onPartyXp = (amount, fromName) => {
+  if (!player || !player.alive || amount <= 0) return;
+  const levels = player.gainXp(amount);
+  ui.floater(`+${amount} XP (party)`, 'xp', player.pos);
+  ui.log(`Shared ${amount} XP from ${fromName}'s kill.`, 'xp');
+  if (levels > 0 && combat) combat.onLevelUp && combat.onLevelUp();
+};
+// A partymate found something notable.
+network.onPartyLoot = (item, fromName) => {
+  if (!item) return;
+  ui.log(`${fromName} looted ${item.glyph || ''} ${item.name} (${item.rarity}).`, 'xp');
+};
 
 // ---- Start the game (shared by "new character" and "continue") ----
 function beginGame(classId, name, server, save) {
@@ -106,8 +120,14 @@ function beginGame(classId, name, server, save) {
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
   // Keep panels live as loot is picked up; refresh quest markers on kills.
-  combat.onLoot = () => { if (ui.inventoryOpen) ui.renderInventory(); };
+  combat.onLoot = (item) => {
+    if (ui.inventoryOpen) ui.renderInventory();
+    // Announce notable finds to partymates.
+    if (item && ['rare', 'epic', 'legendary'].includes(item.rarity)) network.sendPartyLoot({ name: item.name, glyph: item.glyph, rarity: item.rarity });
+  };
   combat.onKillEvent = () => ui.refreshGiverMarkers(player);
+  // Party-shared XP: relay half of every kill's XP to grouped members.
+  combat.onPartyXp = (xp) => network.sendPartyXp(Math.round(xp * 0.5));
 
   ui.setWorld(world);
   ui.refreshGiverMarkers(player);
@@ -159,6 +179,25 @@ function animate() {
   world.update(t, dt);
 
   if (started && player) {
+    // Dungeon resets: once a sealed dungeon's timer elapses, revive its pack,
+    // re-scale it toward the player's level (so repeat runs stay relevant), and
+    // re-lock the chest. Each member keeps its level offset from the dungeon.
+    for (const d of world.dungeons) {
+      if (d.lockoutUntil && t >= d.lockoutUntil) {
+        d.lockoutUntil = 0;
+        const target = Math.max(d.level, Math.min(player.stats.level + 1, d.level + 8));
+        for (const m of d.members) {
+          const off = m.level - d.level;
+          m.setLevel(target + off);
+          if (m.alive) m.hp = m.maxHp; else m.respawnTimer = 0.01;
+        }
+        d.level = target;
+        d.opened = false; d.cleared = false;
+        d.lid.rotation.x = 0; d.glow.intensity = 0;
+        ui.log(`${d.name} stirs back to life — now Lv ${d.level}.`, 'sys');
+      }
+    }
+
     // Queue up level-up choice modals (one per pending level). The modal
     // pauses the world until the player confirms their attribute + skill.
     if (player.pendingLevelUps > 0 && !ui.levelModalOpen) {
@@ -274,11 +313,15 @@ function animate() {
       if (input.just('KeyE')) ui.showDialogue('Villager', ui.randomLore());
     } else if (player.alive && world.nearestDungeonEntrance(player.pos)) {
       const d = world.nearestDungeonEntrance(player.pos);
-      ui.showPrompt(`Press <b>E</b> to enter <b>${d.name}</b> (Lv ${d.level})`);
-      if (input.just('KeyE')) {
-        player.dismount(); player.pos.copy(d.spawn); player.pos.y = d.spawn.y;
-        player.vel.set(0, 0, 0); player.state = 'ground'; lastHp = player.stats.hp;
-        ui.log(`You descend into ${d.name}.`, 'sys');
+      if (d.lockoutUntil && t < d.lockoutUntil) {
+        ui.showPrompt(`<b>${d.name}</b> is sealed — resets in <b>${Math.ceil(d.lockoutUntil - t)}s</b>`);
+      } else {
+        ui.showPrompt(`Press <b>E</b> to enter <b>${d.name}</b> (Lv ${d.level})`);
+        if (input.just('KeyE')) {
+          player.dismount(); player.pos.copy(d.spawn); player.pos.y = d.spawn.y;
+          player.vel.set(0, 0, 0); player.state = 'ground'; lastHp = player.stats.hp;
+          ui.log(`You descend into ${d.name}.`, 'sys');
+        }
       }
     } else if (player.alive && world.nearestDungeonExit(player.pos)) {
       const d = world.nearestDungeonExit(player.pos);
@@ -294,8 +337,9 @@ function animate() {
         ui.showPrompt('Press <b>E</b> to open the dungeon chest');
         if (input.just('KeyE')) {
           d.opened = true;
+          d.lockoutUntil = t + DUNGEON_LOCKOUT;
           combat.openChest({ level: d.level + 2, pos: d.chestPos });
-          ui.log(`You loot the ${d.name} chest!`, 'xp');
+          ui.log(`You loot the ${d.name} chest! It seals for ${Math.round(DUNGEON_LOCKOUT)}s.`, 'xp');
         }
       } else {
         ui.showPrompt('Clear the dungeon to unlock the chest');
