@@ -344,6 +344,33 @@ function animate() {
       } else {
         ui.showPrompt('Clear the dungeon to unlock the chest');
       }
+    } else if (player.alive && world.nearestCaveEntrance(player.pos)) {
+      const c = world.nearestCaveEntrance(player.pos);
+      ui.showPrompt(`Press <b>E</b> to descend into <b>${c.name}</b>`);
+      if (input.just('KeyE')) {
+        player.dismount(); player.pos.copy(c.spawn); player.pos.y = c.spawn.y;
+        player.vel.set(0, 0, 0); player.state = 'ground'; lastHp = player.stats.hp;
+        ui.log(`You descend into ${c.name}.`, 'sys');
+      }
+    } else if (player.alive && world.nearestCaveExit(player.pos)) {
+      const c = world.nearestCaveExit(player.pos);
+      ui.showPrompt('Press <b>E</b> to climb back to the surface');
+      if (input.just('KeyE')) {
+        player.pos.copy(c.entrance); player.pos.y = c.entrance.y;
+        player.vel.set(0, 0, 0); player.state = 'ground'; lastHp = player.stats.hp;
+        ui.log(`You leave ${c.name}.`, 'sys');
+      }
+    } else if (player.alive && world.nearestCaveChest(player.pos)) {
+      const c = world.nearestCaveChest(player.pos);
+      if (c.opened) ui.hidePrompt();
+      else {
+        ui.showPrompt('Press <b>E</b> to open the crystal cache');
+        if (input.just('KeyE')) {
+          c.opened = true;
+          combat.openChest({ level: (c.level || 3) + 2, pos: c.chestPos });
+          ui.log(`You loot the ${c.name} cache!`, 'xp');
+        }
+      }
     } else if (camp) {
       if (camp.opened) {
         ui.hidePrompt();

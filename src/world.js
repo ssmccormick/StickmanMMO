@@ -104,12 +104,33 @@ export const DUNGEONS = [
 ];
 const DUNGEON_SITES = DUNGEONS.map((d) => ({ x: d.sx, z: d.sz, radius: 44, floorY: 0 }));
 
+// Mountains: big rocky peaks that act as landmarks/barriers. A couple of them
+// have a cave mouth at the base that leads down into an instanced cavern.
+export const MOUNTAINS = [
+  { x: -118, z: 152, r: 22, h: 62, cave: 'cave_echo' },  // snowy peak above Frostgard
+  { x: 178, z: 150, r: 20, h: 54, cave: 'cave_deep' },   // forest highland near Tanglethorn
+  { x: -188, z: 38, r: 18, h: 48 },
+  { x: 66, z: 182, r: 16, h: 42 },
+  { x: -44, z: -184, r: 18, h: 46 },
+  { x: 202, z: -44, r: 16, h: 44 },
+];
+
+// Caves: like dungeons, they teleport to an instanced room far off the map,
+// but these are deep, dark, crystal-lit caverns reached by descending through
+// a mountain-base entrance. A treasure cache waits at the bottom.
+export const CAVES = [
+  { id: 'cave_echo', name: 'Echohollow Cavern', ex: -118, ez: 152, sx: 0, sz: -720, floorY: -42, level: 4 },
+  { id: 'cave_deep', name: 'The Deepvein', ex: 178, ez: 150, sx: -720, sz: -720, floorY: -48, level: 9 },
+];
+const CAVE_SITES = CAVES.map((c) => ({ x: c.sx, z: c.sz, radius: 40, floorY: c.floorY }));
+
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
 // plateaus), all flattened to level ground around every town.
 export function heightAt(x, z) {
-  // Dungeon rooms are flat platforms far off the overworld.
+  // Dungeon rooms and cave instances are flat platforms far off the overworld.
   for (const d of DUNGEON_SITES) if (Math.hypot(x - d.x, z - d.z) < d.radius) return d.floorY;
+  for (const c of CAVE_SITES) if (Math.hypot(x - c.x, z - c.z) < c.radius) return c.floorY;
   let h = 0;
   h += smoothNoise(x * 0.012, z * 0.012) * 14;
   h += smoothNoise(x * 0.04, z * 0.04) * 4;
@@ -200,6 +221,9 @@ export class World {
     this.vendors = [];     // { name, label, type, pos }
     this.villagers = [];   // { pos, town } — interactable for lore
     this.dungeons = [];    // { id, name, entrance, spawn, exit, level, cleared }
+    this.caves = [];       // { id, name, entrance, spawn, exit, chest, ... }
+    this.mountains = [];    // { pos, r, h }
+    this.critters = [];    // ambient wandering creatures
     this._build();
   }
 
@@ -208,13 +232,17 @@ export class World {
     this._terrain();
     this._towns();
     this._scatter();
+    this._forests();
     this._groundDetail();
     this._ruins();
     this._cliffs();
+    this._mountains();
     this._camps();
     this._dungeons();
+    this._caves();
     this._bonfires();
     this._spawnZones();
+    this._ambientLife();
   }
 
   _sky() {
@@ -635,6 +663,40 @@ export class World {
     }
   }
 
+  // Heavy, thick forests of tall trees densely packed into the forest areas,
+  // layered on top of the lighter world-wide scatter so the woods feel deep.
+  _forests() {
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3f28 });
+    const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const forestAreas = AREAS.filter((a) => a.biome === 'forest' && !a.safe);
+    for (const fa of forestAreas) {
+      for (let i = 0; i < 80; i++) {
+        const a = hash2(i, fa.x + 7) * Math.PI * 2;
+        const rad = Math.sqrt(hash2(i, fa.z + 3)) * fa.r * 0.96; // sqrt → even area fill
+        const x = fa.x + Math.cos(a) * rad, z = fa.z + Math.sin(a) * rad;
+        const y = heightAt(x, z);
+        if (y < -3) continue;
+        if (this.inSafeZone(x, z) || roadDistance(x, z) < 5) continue;
+        const g = new THREE.Group();
+        // A tall trunk — much taller than scatter trees — with stacked canopy.
+        const th = 6 + hash2(i, 19) * 8;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.55, th, 7), trunkMat);
+        trunk.position.y = th / 2; g.add(trunk);
+        const layers = 3 + Math.floor(hash2(i, 21) * 2);
+        for (let k = 0; k < layers; k++) {
+          const cr = (2.8 - k * 0.55) + hash2(i, k) * 0.4;
+          const cone = new THREE.Mesh(new THREE.ConeGeometry(cr, 2.6, 8), canopyMats[(i + k) % canopyMats.length]);
+          cone.position.y = th * 0.68 + k * 1.6; g.add(cone);
+        }
+        g.position.set(x, y, z);
+        g.rotation.y = hash2(i, 33) * Math.PI * 2;
+        g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        this.group.add(g);
+        this._addBox(trunk, false);
+      }
+    }
+  }
+
   _groundDetail() {
     // Bushes (small leafy clumps) and flower tufts to dress the ground.
     // Purely decorative — no colliders, so they never block movement.
@@ -708,6 +770,137 @@ export class World {
       chest.position.set(sp.x, baseY + sp.h - 0.6, sp.z);
       chest.castShadow = true;
       this.group.add(chest);
+    }
+  }
+
+  // Big craggy mountains — stacked rock cones with a snow cap and a ring of
+  // foothill boulders. A central collider box (kept inside the silhouette)
+  // makes them solid barriers; mountains flagged with a cave get a dark mouth
+  // at the base that descends into an instanced cavern.
+  _mountains() {
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x6e6a63 });
+    const rockDark = new THREE.MeshLambertMaterial({ color: 0x565249 });
+    const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+    for (const m of MOUNTAINS) {
+      const baseY = heightAt(m.x, m.z);
+      const g = new THREE.Group();
+      for (let k = 0; k < 3; k++) {
+        const rr = m.r * (1 - k * 0.26);
+        const hh = m.h * (0.52 - k * 0.12);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(rr, hh, 7 + (k % 2)), k === 0 ? rockMat : rockDark);
+        cone.position.y = m.h * 0.5 * (k * 0.42) + hh / 2;
+        cone.rotation.y = hash2(m.x + k, m.z) * Math.PI;
+        g.add(cone);
+      }
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(m.r * 0.5, m.h * 0.34, 7), snowMat);
+      cap.position.y = m.h * 0.78; g.add(cap);
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 7) * Math.PI * 2 + hash2(m.x, k);
+        const br = 1.6 + hash2(k, m.z) * 2.4;
+        const boulder = new THREE.Mesh(new THREE.DodecahedronGeometry(br, 0), rockMat);
+        boulder.position.set(Math.cos(a) * m.r * 0.92, br * 0.4, Math.sin(a) * m.r * 0.92);
+        boulder.rotation.set(hash2(k, 1) * 3, hash2(k, 2) * 3, hash2(k, 3) * 3);
+        g.add(boulder);
+      }
+      g.position.set(m.x, baseY, m.z);
+      g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      this.group.add(g);
+      const fw = m.r * 1.05; // collider footprint (half-width), inside the cones
+      this.colliders.push({
+        min: new THREE.Vector3(m.x - fw, baseY - 2, m.z - fw),
+        max: new THREE.Vector3(m.x + fw, baseY + m.h, m.z + fw),
+        climbable: false,
+      });
+      this.mountains.push({ pos: new THREE.Vector3(m.x, baseY, m.z), r: m.r, h: m.h });
+      // Cave mouth at the south base.
+      if (m.cave) {
+        const cave = CAVES.find((c) => c.id === m.cave);
+        const mx = m.x, mz = m.z + fw + 1.4, my = heightAt(mx, mz);
+        const arch = new THREE.Mesh(new THREE.TorusGeometry(2.0, 0.55, 8, 16, Math.PI),
+          new THREE.MeshLambertMaterial({ color: 0x4a463f }));
+        arch.position.set(mx, my + 0.2, mz);
+        const mouth = new THREE.Mesh(new THREE.CircleGeometry(2.0, 16, 0, Math.PI),
+          new THREE.MeshBasicMaterial({ color: 0x05060a }));
+        mouth.position.set(mx, my + 0.2, mz + 0.06);
+        arch.castShadow = true;
+        this.group.add(arch, mouth);
+        if (cave) cave._entrancePos = new THREE.Vector3(mx, my, mz + 2.2);
+      }
+    }
+  }
+
+  // Instanced caverns reached via a mountain mouth: a deep, dark, crystal-lit
+  // room far off the overworld (flat floor at a low Y so it reads as "down").
+  _caves() {
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x2e2a33 });
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x3a3640 });
+    const crystalCols = [0x6fd0ff, 0xb07bff, 0x7bffcf];
+    for (const c of CAVES) {
+      const sx = c.sx, sz = c.sz, fy = c.floorY, half = 36;
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), floorMat);
+      floor.position.set(sx, fy - 0.5, sz); floor.receiveShadow = true;
+      this.group.add(floor);
+      // Perimeter walls + an enclosing ceiling.
+      for (const [ox, oz, w, dp] of [[0, half, half * 2, 2], [0, -half, half * 2, 2], [half, 0, 2, half * 2], [-half, 0, 2, half * 2]]) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 11, dp), rockMat);
+        wall.position.set(sx + ox, fy + 5.5, sz + oz);
+        this.group.add(wall); this._addBox(wall, false);
+      }
+      const ceil = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), rockMat);
+      ceil.position.set(sx, fy + 10, sz); this.group.add(ceil);
+      // Stalagmites (up from floor) and stalactites (down from ceiling).
+      for (let i = 0; i < 28; i++) {
+        const a = hash2(i, 71) * Math.PI * 2, r = 4 + hash2(i, 73) * (half - 6);
+        const px = sx + Math.cos(a) * r, pz = sz + Math.sin(a) * r;
+        const hh = 1.2 + hash2(i, 77) * 3.2;
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.4 + hash2(i, 79) * 0.6, hh, 6), rockMat);
+        if (hash2(i, 75) > 0.45) cone.position.set(px, fy + hh / 2, pz);
+        else { cone.position.set(px, fy + 10 - hh / 2, pz); cone.rotation.x = Math.PI; }
+        cone.castShadow = true; this.group.add(cone);
+      }
+      // Glowing crystal clusters light the dark.
+      for (let i = 0; i < 8; i++) {
+        const a = hash2(i, 81) * Math.PI * 2, r = 6 + hash2(i, 83) * (half - 9);
+        const px = sx + Math.cos(a) * r, pz = sz + Math.sin(a) * r;
+        const col = crystalCols[i % crystalCols.length];
+        const cl = new THREE.Group();
+        for (let k = 0; k < 4; k++) {
+          const ch = 0.8 + hash2(i, k) * 1.6;
+          const cry = new THREE.Mesh(new THREE.ConeGeometry(0.18, ch, 5), new THREE.MeshBasicMaterial({ color: col }));
+          cry.position.set((hash2(i, k) - 0.5) * 1.2, ch / 2, (hash2(k, i) - 0.5) * 1.2);
+          cry.rotation.z = (hash2(i, k) - 0.5) * 0.5; cl.add(cry);
+        }
+        const lt = new THREE.PointLight(col, 1.6, 22); lt.position.y = 1.6; cl.add(lt);
+        cl.position.set(px, fy, pz); this.group.add(cl);
+      }
+      // A soft, cool fill so the cavern stays moody but navigable at any hour.
+      const fill = new THREE.PointLight(0x7088aa, 0.7, 150);
+      fill.position.set(sx, fy + 7, sz); this.group.add(fill);
+      // A descending entry ledge (the tunnel you arrive down), an exit portal
+      // beside the spawn, and a treasure cache at the deep end.
+      const ramp = new THREE.Mesh(new THREE.BoxGeometry(7, 1, 16), floorMat);
+      ramp.position.set(sx, fy + 2.4, sz + half - 8); ramp.rotation.x = 0.42;
+      this.group.add(ramp);
+      this._portal(sx, fy, sz + half - 7, 0x9fd0ff);
+      const spawn = new THREE.Vector3(sx, fy, sz + half - 18);
+      const chest = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), new THREE.MeshLambertMaterial({ color: 0xb8860b })); base.position.y = 0.45;
+      const lid = new THREE.Group();
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), new THREE.MeshLambertMaterial({ color: 0x8a6410 })); lidMesh.position.set(0, 0.25, 0);
+      lid.position.set(0, 0.9, -0.6); lid.add(lidMesh);
+      const glow = new THREE.PointLight(0xffcf3a, 0, 8); glow.position.y = 1.4;
+      chest.add(base, lid, glow); chest.position.set(sx, fy, sz - half + 7);
+      chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(chest);
+
+      const entrance = c._entrancePos ? c._entrancePos.clone() : new THREE.Vector3(c.ex, heightAt(c.ex, c.ez), c.ez);
+      this.caves.push({
+        id: c.id, name: c.name, level: c.level || 0, entrance, spawn,
+        exit: new THREE.Vector3(sx, fy, sz + half - 7),
+        center: new THREE.Vector3(sx, fy, sz),
+        chestPos: new THREE.Vector3(sx, fy, sz - half + 7),
+        chest, lid, glow, opened: false,
+      });
     }
   }
 
@@ -876,6 +1069,80 @@ export class World {
   }
   dungeonCleared(d) { return d.members.length > 0 && d.members.every((m) => !m.alive); }
 
+  nearestCaveEntrance(pos, maxDist = 4) {
+    for (const c of this.caves) if (c.entrance.distanceTo(pos) < maxDist) return c;
+    return null;
+  }
+  nearestCaveExit(pos, maxDist = 3.5) {
+    for (const c of this.caves) if (c.exit.distanceTo(pos) < maxDist) return c;
+    return null;
+  }
+  nearestCaveChest(pos, maxDist = 4) {
+    for (const c of this.caves) if (c.chestPos.distanceTo(pos) < maxDist) return c;
+    return null;
+  }
+
+  // Fireflies (glow at dusk/night near forests & swamp) plus small wandering
+  // critters — rabbits that hop, snakes that slither, little birds. Purely
+  // decorative: no colliders, no combat. They just make the world feel alive.
+  _ambientLife() {
+    const ffCount = 170;
+    const ffPos = new Float32Array(ffCount * 3);
+    this._ff = [];
+    const hosts = AREAS.filter((a) => a.biome === 'forest' || a.biome === 'swamp' || a.safe);
+    for (let i = 0; i < ffCount; i++) {
+      const h = hosts[i % hosts.length];
+      const a = hash2(i, 301) * Math.PI * 2, r = Math.sqrt(hash2(i, 303)) * h.r * 0.85;
+      const x = h.x + Math.cos(a) * r, z = h.z + Math.sin(a) * r;
+      const baseY = heightAt(x, z) + 1.1 + hash2(i, 305) * 2.4;
+      this._ff.push({ x, z, baseY, amp: 0.4 + hash2(i, 307) * 0.9, sp: 0.5 + hash2(i, 309) * 1.1, ph: hash2(i, 311) * 6.28 });
+      ffPos[i * 3] = x; ffPos[i * 3 + 1] = baseY; ffPos[i * 3 + 2] = z;
+    }
+    const ffGeo = new THREE.BufferGeometry();
+    ffGeo.setAttribute('position', new THREE.BufferAttribute(ffPos, 3));
+    this.fireflies = new THREE.Points(ffGeo, new THREE.PointsMaterial({
+      color: 0xffe98a, size: 0.55, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.group.add(this.fireflies);
+
+    const matRabbit = new THREE.MeshLambertMaterial({ color: 0xb9a98a });
+    const matSnake = new THREE.MeshLambertMaterial({ color: 0x4f8a3a });
+    const matBird = new THREE.MeshLambertMaterial({ color: 0x6a5a4a });
+    for (let i = 0; i < 48; i++) {
+      const ang = hash2(i, 401) * Math.PI * 2;
+      const rad = 30 + hash2(i, 403) * (WORLD_SIZE - 60);
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (heightAt(x, z) < -2) continue; // skip water
+      const roll = hash2(i, 405);
+      const kind = roll < 0.4 ? 'rabbit' : roll < 0.75 ? 'snake' : 'bird';
+      const g = new THREE.Group();
+      if (kind === 'rabbit') {
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.22, 7, 6), matRabbit); body.scale.z = 1.4; body.position.y = 0.22;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 5), matRabbit); head.position.set(0, 0.34, 0.24);
+        const ear1 = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.24, 4), matRabbit); ear1.position.set(-0.05, 0.52, 0.22);
+        const ear2 = ear1.clone(); ear2.position.x = 0.05;
+        g.add(body, head, ear1, ear2);
+      } else if (kind === 'snake') {
+        for (let k = 0; k < 5; k++) {
+          const seg = new THREE.Mesh(new THREE.SphereGeometry(0.16 - k * 0.02, 6, 5), matSnake);
+          seg.position.set(0, 0.13, -k * 0.22); g.add(seg);
+        }
+      } else {
+        const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 5), matBird); body.position.y = 0.2;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), matBird); head.position.set(0, 0.33, 0.12);
+        g.add(body, head);
+      }
+      g.position.set(x, heightAt(x, z), z);
+      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(g);
+      this.critters.push({
+        kind, mesh: g, home: new THREE.Vector3(x, 0, z), tx: x, tz: z,
+        t: hash2(i, 407) * 8, sp: kind === 'snake' ? 0.5 : kind === 'bird' ? 1.0 : 1.5, ph: hash2(i, 409) * 6.28,
+      });
+    }
+  }
+
   campCleared(camp) { return camp.members.length > 0 && camp.members.every((m) => !m.alive); }
   nearestCamp(pos, maxDist = 4.5) {
     for (const c of this.camps) { if (c.pos.distanceTo(pos) < maxDist) return c; }
@@ -912,6 +1179,53 @@ export class World {
     for (const d of this.dungeons) {
       if (d.opened) { d.lid.rotation.x = THREE.MathUtils.lerp(d.lid.rotation.x, -2.2, Math.min(1, dt * 6)); d.glow.intensity = 0; }
       else if (this.dungeonCleared(d)) d.glow.intensity = 1.4 + Math.sin(t * 5) * 0.5;
+    }
+    // Cave treasure caches glow until looted (caves have no required combat).
+    for (const c of this.caves) {
+      if (c.opened) { c.lid.rotation.x = THREE.MathUtils.lerp(c.lid.rotation.x, -2.2, Math.min(1, dt * 6)); c.glow.intensity = 0; }
+      else c.glow.intensity = 0.8 + Math.sin(t * 4) * 0.4;
+    }
+
+    // Fireflies: fade in from dusk through night and drift on the breeze.
+    if (this.fireflies) {
+      const night = 1 - (this.dayFactor != null ? this.dayFactor : 1);
+      this.fireflies.material.opacity = Math.max(0, night - 0.25) * 1.2;
+      if (this.fireflies.material.opacity > 0.01) {
+        const arr = this.fireflies.geometry.attributes.position.array;
+        for (let i = 0; i < this._ff.length; i++) {
+          const f = this._ff[i];
+          arr[i * 3] = f.x + Math.sin(t * f.sp + f.ph) * 1.5;
+          arr[i * 3 + 1] = f.baseY + Math.sin(t * f.sp * 1.7 + f.ph) * f.amp;
+          arr[i * 3 + 2] = f.z + Math.cos(t * f.sp * 0.8 + f.ph) * 1.5;
+        }
+        this.fireflies.geometry.attributes.position.needsUpdate = true;
+      }
+    }
+
+    // Critters wander toward roaming targets near their home patch.
+    for (const c of this.critters) {
+      c.t -= dt;
+      if (c.t <= 0) {
+        const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 7;
+        c.tx = c.home.x + Math.cos(a) * r; c.tz = c.home.z + Math.sin(a) * r;
+        c.t = 1.5 + Math.random() * 3;
+      }
+      const m = c.mesh;
+      const dx = c.tx - m.position.x, dz = c.tz - m.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.1) {
+        const step = Math.min(d, c.sp * dt);
+        m.position.x += (dx / d) * step; m.position.z += (dz / d) * step;
+        m.rotation.y = Math.atan2(dx, dz);
+      }
+      const gy = heightAt(m.position.x, m.position.z);
+      if (c.kind === 'snake') {
+        m.position.y = gy + 0.02;
+        for (let k = 0; k < m.children.length; k++) m.children[k].position.x = Math.sin(t * 4 + c.ph + k * 0.6) * 0.12;
+      } else {
+        // Hop bob (taller while moving).
+        m.position.y = gy + Math.abs(Math.sin(t * 8 + c.ph)) * (d > 0.15 ? 0.25 : 0.05);
+      }
     }
   }
 

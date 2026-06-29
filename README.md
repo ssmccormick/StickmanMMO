@@ -101,6 +101,18 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   Rotheart Hollow…) each with a recommended level and a **zone banner** on entry, plus
   **lakes you can swim in** — dive with Shift, surface with Space, and watch your **air
   bar** while submerged (run out and you drown).
+- **Mountains & caves** — big craggy **mountains** with snow caps rise as landmarks and
+  solid barriers across the world. A couple of them have a dark **cave mouth** at the base:
+  press **`E`** to **descend** into an instanced, crystal-lit **cavern** — stalactites and
+  stalagmites, glowing crystal clusters, and a **treasure cache** waiting at the bottom.
+  Step on the exit portal to climb back to the surface.
+- **Heavy, thick forests** — the forest areas (Whisperwood Glade, Tanglethorn Deep) are
+  densely packed with **tall, layered trees** that tower over the lighter world-wide
+  scatter, so the woods feel genuinely deep.
+- **A world that feels alive** — **fireflies** drift and glow over the forests and swamp at
+  dusk and through the night, and small **critters** wander everywhere: rabbits that hop,
+  little birds, and **snakes** that slither across the ground. Purely ambient — they just
+  make the world breathe.
 - **Towns are safe havens** — no monsters spawn near or wander into a town. Each has its
   own **campfire**. The central hub **The Nexus** (big plaza, glowing portal-obelisk,
   watchtower, well, and **four merchants** — Weaponsmith, Armorer, Alchemist, Trader) is
