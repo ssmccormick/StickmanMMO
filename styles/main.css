@@ -83,6 +83,19 @@ html, body {
 .class-card .glyph { font-size: 30px; line-height: 1; }
 .class-card .cname { margin-top: 6px; font-weight: bold; letter-spacing: 1px; }
 .class-card .ctag { font-size: 11px; opacity: 0.6; }
+.class-card.hero {
+  position: relative;
+  border-color: rgba(255,210,74,0.5);
+  background: linear-gradient(160deg, rgba(255,210,74,0.10), rgba(255,138,42,0.06));
+}
+.class-card.hero.selected { box-shadow: 0 0 14px 1px rgba(255,210,74,0.55) inset; }
+.class-card.hero .cname { color: #ffe24a; }
+.hero-flag {
+  position: absolute; top: 4px; right: 4px;
+  font-size: 8px; font-weight: 800; letter-spacing: 1px;
+  color: #1a1208; background: linear-gradient(90deg, #ffe24a, #ff8a2a);
+  padding: 1px 4px; border-radius: 4px;
+}
 
 /* Character roster */
 .roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
@@ -459,6 +472,29 @@ html, body {
 .air-bar { position: absolute; top: 132px; left: 14px; display: flex; align-items: center; gap: 6px; font-size: 14px; }
 .air-track { width: 150px; height: 12px; background: rgba(0,0,0,0.55); border: 1px solid rgba(0,0,0,0.6); border-radius: 5px; overflow: hidden; }
 .air-fill { height: 100%; width: 100%; background: #5ac8ff; transition: width 0.1s linear; }
+
+/* ---------------- Ki gauge (Super Saiyan) ---------------- */
+.ki-bar {
+  position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; pointer-events: none;
+  font-size: 13px; font-weight: 700; letter-spacing: 0.06em; color: #ffe24a;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+.ki-label { white-space: nowrap; }
+.ki-track {
+  width: 240px; height: 12px; background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,210,74,0.55); border-radius: 6px; overflow: hidden;
+}
+.ki-fill {
+  height: 100%; width: 0%; transition: width 0.12s linear;
+  background: linear-gradient(90deg, #b8860b, #ffe24a 70%, #fff6b0);
+}
+.ki-form { min-width: 90px; white-space: nowrap; }
+.ki-bar.ready .ki-track { border-color: #fff6b0; box-shadow: 0 0 12px 2px rgba(255,226,74,0.8); animation: ki-pulse 0.8s ease-in-out infinite; }
+.ki-bar.ready .ki-form { color: #fff6b0; }
+.ki-bar.ssj { color: #ffd24a; }
+.ki-bar.ssj .ki-fill { background: linear-gradient(90deg, #ff8a2a, #ffe24a 60%, #fff6b0); }
+@keyframes ki-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 
 /* ---------------- Area banner ---------------- */
 .area-banner {

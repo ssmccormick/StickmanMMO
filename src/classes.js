@@ -18,6 +18,9 @@ export const MAX_RANK = 3;
 //   buff       — temporary self buff (and/or a nova on cast)
 //   dash       — quick reposition, optional hit + i-frames
 //   summon     — spawn a temporary spirit/turret that attacks for you
+//   beam       — a long channelled line that hits everything in its path
+//   instantstep— teleport behind the target, face it, snap the camera
+//   transform  — spend a full Ki gauge to ascend a Super Saiyan tier
 //
 // Common fields: id, name, kind, glyph, cost, costType('mp'|'sp'),
 // cooldown, reqLevel, desc, color (FX tint). Plus kind-specific params.
@@ -202,9 +205,31 @@ export const CLASSES = {
       { id: 'hurricane', name: 'Hurricane', kind: 'groundaoe', glyph: '🌀', cost: 32, costType: 'mp', cooldown: 11, reqLevel: 12, range: 12, aoe: 5.5, mult: 3.0, delay: 0.8, color: 0x6fc8ff, desc: 'A roaring storm batters a point.' },
     ],
   },
+
+  // ---- Special hero class: Super Saiyan ----
+  // A ki warrior who builds energy in battle, then spends a full Ki gauge to
+  // ASCEND through Super Saiyan forms (SSJ1 → 2 → 3), each multiplying all
+  // attributes for 30s and growing golden hair. Ki-driven, not gear-driven.
+  saiyan: {
+    name: 'Super Saiyan', glyph: '⚡', tag: 'Ascending ki warrior', hero: true,
+    color: 0x2b3340, accent: 0xffd24a,
+    desc: 'A legendary warrior who channels ki — fast blasts, a roaring blue beam, and instant teleport-strikes. Build Ki in battle to ascend through Super Saiyan forms, each one doubling your power and lengthening your golden hair.',
+    primary: 'str',
+    base: { hp: 150, mp: 120, sp: 120, str: 16, dex: 14, int: 12 },
+    growth: { hp: 15, mp: 9, sp: 8 }, critBonus: 0.06,
+    baseDamage: 15, attackSpeed: 0.42, range: 2.6,
+    abilities: [
+      { id: 'kiblast', name: 'Ki Blast', kind: 'projectile', glyph: '🟡', cost: 10, costType: 'mp', cooldown: 1.2, reqLevel: 1, count: 1, speed: 34, mult: 2.2, aoe: 1.6, color: 0xffe24a, shape: 'orb', desc: 'A quick bolt of golden ki hurled at your foe.' },
+      { id: 'kamehameha', name: 'Kamehameha', kind: 'beam', glyph: '🌊', cost: 34, costType: 'mp', cooldown: 8, reqLevel: 2, range: 24, width: 2.4, mult: 5.6, stunOnHit: 0.6, color: 0x3aa0ff, desc: 'Channel a massive blue beam that scorches everything in a line ahead.' },
+      { id: 'instantstep', name: 'Instant Step', kind: 'instantstep', glyph: '💫', cost: 18, costType: 'mp', cooldown: 6, reqLevel: 3, range: 36, mult: 2.6, color: 0xfff2a0, desc: 'Vanish and reappear behind your target, facing them — the view snaps around with you.' },
+      { id: 'supersaiyan', name: 'Super Saiyan', kind: 'transform', glyph: '✨', cost: 0, costType: 'mp', cooldown: 1.5, reqLevel: 4, dur: 30, color: 0xffe24a, desc: 'Spend a FULL Ki gauge to ascend (SSJ1→2→3): +100% to all attributes per tier for 30s. Ascend again before it fades to climb higher.' },
+      { id: 'afterimage', name: 'After-Image', kind: 'dash', glyph: '💨', cost: 14, costType: 'sp', cooldown: 5, reqLevel: 6, range: 9, arc: 1.6, mult: 1.8, iframes: 0.45, color: 0xbff0ff, desc: 'Blur forward through foes, cutting them while you dodge.' },
+      { id: 'spiritbomb', name: 'Spirit Bomb', kind: 'groundaoe', glyph: '🔵', cost: 42, costType: 'mp', cooldown: 14, reqLevel: 9, range: 16, aoe: 6, mult: 4.8, delay: 1.2, color: 0x6fc8ff, desc: 'Gather energy into a colossal orb that crashes down on a point.' },
+    ],
+  },
 };
 
-export const CLASS_ORDER = ['fighter', 'barbarian', 'rogue', 'wizard', 'cleric', 'ranger', 'paladin', 'warlock', 'monk', 'druid'];
+export const CLASS_ORDER = ['fighter', 'barbarian', 'rogue', 'wizard', 'cleric', 'ranger', 'paladin', 'warlock', 'monk', 'druid', 'saiyan'];
 
 // XP needed to advance FROM the given level to the next.
 export function xpForLevel(level) {

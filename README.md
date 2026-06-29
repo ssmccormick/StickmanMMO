@@ -53,14 +53,17 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **M** | World map (click a discovered bonfire to fast-travel) |
 | **J** | Quest log |
 | **L** | Codex / lore-board |
+| **T** | Emote wheel (wave, dance, cheer, flex…) |
+| **E** (near water) | Cast a line and fish |
 | **Q** | Quaff a health potion |
 | **Enter** | Chat |
 | **H** | Toggle the controls hint |
 
 ## 🗡️ Classes (D&D-inspired)
 
-**Ten** classes, each with unique vitals, a scaling stat, an auto-attack style, and a
-**pool of six abilities you learn over time** (you start with just the first one).
+**Eleven** classes — ten D&D archetypes plus one **special hero class** — each with unique
+vitals, a scaling stat, an auto-attack style, and a **pool of six abilities you learn over
+time** (you start with just the first one).
 
 | Class | Style | Signature kit |
 |-------|-------|---------------|
@@ -74,6 +77,19 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Warlock** 😈 | Dark afflictor | Shadow Bolt, Drain Life, Corruption, Howl of Fear, Summon Imp, Doom |
 | **Monk** 👊 | Martial artist | Tiger Palm, Flying Kick, Wave Palm, Spinning Crane, Meditate, Thousand Fists |
 | **Druid** 🍃 | Naturalist | Moonfire, Thornfield, Rejuvenation, Cyclone, Summon Treant, Hurricane |
+| **Super Saiyan** ⚡ | *Hero* — ki warrior | Ki Blast, Kamehameha (blue beam), Instant Step (teleport-strike), **Super Saiyan** (ascend), After-Image, Spirit Bomb |
+
+### ⚡ Super Saiyan — the special hero class
+A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **Ki gauge**
+(shown above the hotbar). Signature kit:
+- **Ki Blast** — a fast golden bolt that bursts on impact.
+- **Kamehameha** — channel a massive **blue beam** that scorches everything in a line ahead.
+- **Instant Step** — vanish and reappear **behind your target, facing it**; the camera snaps
+  around to your new vantage for the follow-up strike.
+- **Super Saiyan** — spend a **full Ki gauge** to **ascend** (SSJ1 → SSJ2 → SSJ3). Each tier
+  grants **+100% to all attributes for 30 seconds** and **lengthens your glowing golden hair**
+  (and wreathes you in a flame aura). Ascend *again* before the form fades to climb to the next
+  level — let it lapse and you fall back to base and must build up from SSJ1 again.
 
 ### 📈 Progression & skill depth
 - **Abilities are learned, not given.** You start with one signature skill; each level-up
@@ -113,6 +129,13 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Streamed for performance** — the world is large, so **distance fog** fades the horizon
   and only objects and enemies **near the player are drawn and updated** (the rest stream
   out), keeping the frame rate smooth despite a continent's worth of content.
+- **Fishing** — stand at any shoreline (lake, river, or the Sundered Sea) and press **`E`**
+  to cast a line. A bobber drops in; wait for the float to dip, then press **`E`** in the
+  window to reel in your catch. Fish range from a humble **Minnow** up to a **Leviathan Fry**
+  — better/farther water yields rarer fish — and they're **edible** (a small heal) or
+  **sellable**. (Quaffing with **`Q`** prefers real potions, so it never eats your catch.)
+- **Emotes** — press **`T`** for an emote wheel (wave, dance, cheer, flex, laugh, bow, cry,
+  sit). Your stickman acts it out and a little bubble pops above your head.
 - **Hidden treasure & shrines** — **30 treasure chests** are tucked off the roads across
   the wild (loot scales with how far out they sit), and **buff shrines** in each region
   grant a long blessing (30–60 min) — Might (+25% dmg), Swiftness (+20% speed), Titan (+14

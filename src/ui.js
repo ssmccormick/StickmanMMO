@@ -76,6 +76,15 @@ export class UI {
     this.el.hud.appendChild(this.airBar);
     this.airFill = this.airBar.querySelector('.air-fill');
 
+    // Ki gauge (saiyan hero class only): fills in battle; spend a full bar to
+    // ascend a Super Saiyan form.
+    this.kiBar = document.createElement('div');
+    this.kiBar.className = 'ki-bar hidden';
+    this.kiBar.innerHTML = '<span class="ki-label">⚡ KI</span><div class="ki-track"><div class="ki-fill"></div></div><span class="ki-form"></span>';
+    this.el.hud.appendChild(this.kiBar);
+    this.kiFill = this.kiBar.querySelector('.ki-fill');
+    this.kiForm = this.kiBar.querySelector('.ki-form');
+
     // Area name banner.
     this.areaBanner = document.createElement('div');
     this.areaBanner.className = 'area-banner hidden';
@@ -135,8 +144,8 @@ export class UI {
     for (const id of CLASS_ORDER) {
       const c = CLASSES[id];
       const card = document.createElement('div');
-      card.className = 'class-card' + (id === this.selectedClass ? ' selected' : '');
-      card.innerHTML = `<div class="glyph">${c.glyph}</div><div class="cname">${c.name}</div><div class="ctag">${c.tag}</div>`;
+      card.className = 'class-card' + (id === this.selectedClass ? ' selected' : '') + (c.hero ? ' hero' : '');
+      card.innerHTML = `${c.hero ? '<div class="hero-flag">HERO</div>' : ''}<div class="glyph">${c.glyph}</div><div class="cname">${c.name}</div><div class="ctag">${c.tag}</div>`;
       card.onclick = () => { this.selectedClass = id; this._buildClassGrid(); this._showClassDetail(id); };
       this.el.classGrid.appendChild(card);
     }
@@ -303,6 +312,23 @@ export class UI {
       this.airFill.style.background = player.air < player.maxAir * 0.3 ? '#ff5a5a' : '#5ac8ff';
     } else {
       this.airBar.classList.add('hidden');
+    }
+
+    // Ki gauge + Super Saiyan form (saiyan only).
+    if (player.isSaiyan) {
+      this.kiBar.classList.remove('hidden');
+      this.kiFill.style.width = `${(player.ki / player.kiMax) * 100}%`;
+      const ready = player.canAscend();
+      this.kiBar.classList.toggle('ready', ready);
+      this.kiBar.classList.toggle('ssj', player.ssjActive);
+      if (player.ssjActive) {
+        const rem = Math.max(0, Math.ceil(player.ssjUntil - player.clock));
+        this.kiForm.textContent = `SSJ${player.ssjLevel} · ${rem}s`;
+      } else {
+        this.kiForm.textContent = ready ? 'ASCEND READY' : '';
+      }
+    } else if (!this.kiBar.classList.contains('hidden')) {
+      this.kiBar.classList.add('hidden');
     }
 
     // Active consumable buffs with countdown.

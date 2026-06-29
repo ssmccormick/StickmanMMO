@@ -90,7 +90,88 @@ export class Player {
     this._speed01 = 0;
     this._clock = 0;
     this.maxAir = 12; this.air = 12; this._drownAcc = 0;
+
+    // ---- Ki & Super Saiyan (the saiyan hero class) ----
+    // Ki builds while fighting; a FULL gauge can be spent to ascend through
+    // Super Saiyan forms, each one multiplying all attributes for 30s.
+    this.ki = 0; this.kiMax = 100;
+    this.ssjLevel = 0;   // 0 = base, 1..3 = SSJ tiers
+    this.ssjUntil = 0;   // clock time the current form fades
+    this._buildSsjFx();
+
     this.recomputeGear();
+  }
+
+  get isSaiyan() { return this.classId === 'saiyan'; }
+  get ssjActive() { return this.ssjLevel > 0 && this._clock < this.ssjUntil; }
+  // Power multiplier from the active form: SSJ1 ×2, SSJ2 ×3, SSJ3 ×4.
+  get ssjMult() { return this.ssjActive ? 1 + this.ssjLevel : 1; }
+  get kiFull() { return this.isSaiyan && this.ki >= this.kiMax - 0.01; }
+  canAscend() { return this.kiFull && this.ssjLevel < 3; }
+  addKi(amount) {
+    if (!this.isSaiyan || amount <= 0) return;
+    this.ki = Math.min(this.kiMax, this.ki + amount);
+  }
+  // Spend a full gauge to climb one form (or kindle SSJ1 from base/faded).
+  ascend() {
+    if (!this.canAscend()) return 0;
+    this.ki = 0;
+    this.ssjLevel = this.ssjActive ? this.ssjLevel + 1 : 1;
+    this.ssjUntil = this._clock + 30;
+    this._updateSsjVisual();
+    return this.ssjLevel;
+  }
+
+  // Golden spiky hair (grows per tier) + a rising flame aura, both attached
+  // to the player mesh and hidden until a Super Saiyan form is active.
+  _buildSsjFx() {
+    const j = this.mesh.userData.joints;
+    if (!j || !j.head) return;
+    const gold = new THREE.MeshBasicMaterial({ color: 0xffe24a });
+    const hair = new THREE.Group();
+    // [x, y, z, rotX, rotZ, length] — spikes radiating up & back from the scalp.
+    const defs = [
+      [0, 0.28, -0.02, 0.05, 0.0, 1.05],
+      [0.14, 0.25, -0.04, 0.2, 0.5, 0.85],
+      [-0.14, 0.25, -0.04, 0.2, -0.5, 0.85],
+      [0.09, 0.23, -0.16, 0.7, 0.2, 0.9],
+      [-0.09, 0.23, -0.16, 0.7, -0.2, 0.9],
+      [0, 0.22, -0.2, 1.0, 0.0, 1.0],
+      [0.11, 0.26, 0.12, -0.45, 0.3, 0.65],
+      [-0.11, 0.26, 0.12, -0.45, -0.3, 0.65],
+    ];
+    for (const [x, y, z, rx, rz, len] of defs) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.44 * len, 5), gold);
+      c.position.set(x, y, z);
+      c.rotation.x = rx; c.rotation.z = rz;
+      hair.add(c);
+    }
+    hair.visible = false;
+    j.head.add(hair);
+    this.ssjHair = hair;
+
+    // Flame aura — a translucent open cone that envelops the body.
+    const auraMat = new THREE.MeshBasicMaterial({ color: 0xffe24a, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false });
+    const aura = new THREE.Mesh(new THREE.ConeGeometry(0.72, 2.7, 14, 1, true), auraMat);
+    aura.position.y = 1.15;
+    aura.visible = false;
+    this.mesh.add(aura);
+    this.ssjAura = aura;
+  }
+
+  _updateSsjVisual() {
+    const on = this.ssjActive;
+    if (this.ssjHair) {
+      this.ssjHair.visible = on;
+      // Taller, more dramatic hair each tier.
+      this.ssjHair.scale.set(1 + this.ssjLevel * 0.12, 0.75 + this.ssjLevel * 0.6, 1 + this.ssjLevel * 0.12);
+    }
+    if (this.ssjAura) {
+      this.ssjAura.visible = on;
+      this.ssjAura.scale.setScalar(0.85 + this.ssjLevel * 0.22);
+      // Brighter, whiter-gold at the highest tier.
+      this.ssjAura.material.color.setHex(this.ssjLevel >= 3 ? 0xfff6b0 : 0xffe24a);
+    }
   }
 
   // ---- Equipment-derived effective stats ----
@@ -125,9 +206,10 @@ export class Player {
   get effMaxHp() { return this.stats.maxHp + (this.bonus.maxHp || 0); }
   get effMaxMp() { return this.stats.maxMp + (this.bonus.maxMp || 0); }
   get effMaxSp() { return this.stats.maxSp + (this.bonus.maxSp || 0); }
-  get effStr() { return this.stats.str + (this.bonus.str || 0) + this._t('str'); }
-  get effDex() { return this.stats.dex + (this.bonus.dex || 0) + this._t('dex'); }
-  get effInt() { return this.stats.int + (this.bonus.int || 0) + this._t('int'); }
+  // Super Saiyan multiplies every attribute (×2 / ×3 / ×4) while a form holds.
+  get effStr() { return Math.round((this.stats.str + (this.bonus.str || 0) + this._t('str')) * this.ssjMult); }
+  get effDex() { return Math.round((this.stats.dex + (this.bonus.dex || 0) + this._t('dex')) * this.ssjMult); }
+  get effInt() { return Math.round((this.stats.int + (this.bonus.int || 0) + this._t('int')) * this.ssjMult); }
   get gearCrit() { return this.bonus.crit || 0; }
   get gearArmor() { return this.bonus.armor || 0; }
   get gearSpeed() { return (this.bonus.speed || 0) + (this._tm('speedMult') - 1); }
@@ -264,6 +346,7 @@ export class Player {
       this._updateSwim(dt, input, move, moving);
     } else {
       let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
+      if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
       if (this.mounted) speed *= 2.6; // gallop
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt; }
 
@@ -444,6 +527,13 @@ export class Player {
       climbing: this.state === 'climb', airborne: this.state === 'air', emote,
     });
 
+    // Super Saiyan aura: flicker the flame and let the hair shimmer.
+    if (this.ssjActive && this.ssjAura) {
+      const f = 0.22 + Math.abs(Math.sin(this._clock * 16)) * 0.18;
+      this.ssjAura.material.opacity = f;
+      this.ssjAura.scale.y = (0.85 + this.ssjLevel * 0.22) * (1 + Math.sin(this._clock * 12) * 0.05);
+    }
+
     // Mount: sit the rider higher and trot the steed beneath.
     if (this.mounted) {
       this.mesh.position.y += 0.85;
@@ -467,6 +557,14 @@ export class Player {
     s.sp = Math.max(0, s.sp);
     for (let i = 0; i < this.cooldowns.length; i++) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     if (this.attackTimer > 0) this.attackTimer -= dt;
+
+    // Ki: a slow passive trickle (so you can always eventually transform),
+    // topped up much faster by dealing/taking damage in combat.
+    if (this.isSaiyan) {
+      if (this.ki < this.kiMax) this.ki = Math.min(this.kiMax, this.ki + 1.5 * dt);
+      // A faded Super Saiyan form drops you back to base.
+      if (this.ssjLevel > 0 && this._clock >= this.ssjUntil) { this.ssjLevel = 0; this._updateSsjVisual(); }
+    }
   }
 
   // ---- Vitals ----
@@ -480,6 +578,7 @@ export class Player {
     if (this.buffs.shieldUntil > this._clock && this.buffs.shield > 0) amount *= (1 - this.buffs.shield);
     amount = Math.max(1, Math.round(amount));
     this.stats.hp -= amount;
+    if (this.isSaiyan) this.addKi(amount * 0.4); // pain fuels ki
     if (this.stats.hp <= 0) { this.stats.hp = 0; this.die(); }
     return amount;
   }

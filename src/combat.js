@@ -130,6 +130,12 @@ export class Combat {
     if (p.cooldowns[i] > 0) { this.ui.log(`${ab.name} on cooldown`, 'sys'); return; }
     const pool = ab.costType === 'sp' ? 'sp' : 'mp';
     if (p.stats[pool] < ab.cost) { this.ui.log(`Not enough ${pool.toUpperCase()}`, 'sys'); return; }
+    // Ascending costs a FULL Ki gauge, not MP/SP — block it (without burning the
+    // cooldown) until the gauge is full and there's a higher form to reach.
+    if (ab.kind === 'transform' && !p.canAscend()) {
+      this.ui.log(p.ssjLevel >= 3 ? 'Already at the highest Super Saiyan form!' : `Ki not full — ${Math.floor(p.ki)}/${p.kiMax}.`, 'sys');
+      return;
+    }
 
     p.stats[pool] -= ab.cost;
     p.cooldowns[i] = ab.cooldown;
@@ -148,6 +154,9 @@ export class Combat {
       case 'buff': this._kBuff(ab); break;
       case 'dash': this._kDash(ab); break;
       case 'summon': this._kSummon(ab); break;
+      case 'beam': this._kBeam(ab); break;
+      case 'instantstep': this._kInstantStep(ab); break;
+      case 'transform': this._kTransform(ab); break;
     }
     this.ui.flashSlot(i);
   }
@@ -291,6 +300,73 @@ export class Combat {
     this.ui.log(`${ab.name} summoned!`, 'xp');
   }
 
+  // Kamehameha-style beam: a channelled line that hits every foe in its path.
+  _kBeam(ab) {
+    const dir = this.cam.forward();
+    this._face(dir);
+    const origin = this.player.pos.clone();
+    const halfW = (ab.width || 2) * 0.5 + 0.6; // a little forgiving on the edges
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const to = new THREE.Vector3().subVectors(e.pos, origin); to.y = 0;
+      const proj = to.x * dir.x + to.z * dir.z;       // distance along the beam
+      if (proj < 0 || proj > ab.range) continue;
+      const perp = Math.hypot(to.x - dir.x * proj, to.z - dir.z * proj);
+      if (perp > halfW) continue;
+      this._strike(e, this.player.apower * ab.mult, { crit: this.def.critBonus || 0 });
+      if (ab.stunOnHit) e.applyStun(ab.stunOnHit);
+    }
+    this._beamFx(origin, dir, ab.range, ab.width || 2, ab.color || 0x3aa0ff);
+    if (this.audio) this.audio.play('cast');
+  }
+
+  // Instant Step: teleport behind the locked/aimed target, face it, and snap
+  // the camera around so you're looking at the foe from your new vantage.
+  _kInstantStep(ab) {
+    const p = this.player;
+    let e = (this.target && this.target.alive && this.target.pos.distanceTo(p.pos) <= ab.range) ? this.target : null;
+    if (!e) e = this._aimEnemy(ab.range, 1.8) || this._nearest(p.pos, ab.range);
+    if (!e) { this.ui.log('No target to step behind.', 'sys'); return; }
+    this._dashFx(p.pos, ab.color);                 // after-image at the old spot
+    // Approach vector → land just beyond the enemy (its "back" relative to you).
+    const dir = new THREE.Vector3().subVectors(e.pos, p.pos); dir.y = 0;
+    if (dir.lengthSq() < 1e-4) dir.set(0, 0, 1);
+    dir.normalize();
+    const spot = e.pos.clone().addScaledVector(dir, 1.7);
+    const res = p.world.resolveCircle(spot.x, spot.z, 0.5);
+    p.pos.x = res.x; p.pos.z = res.z; p.pos.y = e.pos.y;
+    // Face the target; it now lies back along -dir from where we landed.
+    const face = new THREE.Vector3().subVectors(e.pos, p.pos); face.y = 0;
+    if (face.lengthSq() < 1e-4) face.copy(dir).negate();
+    p.facing = Math.atan2(face.x, face.z);
+    p.iframeUntil = p.clock + 0.4;
+    // Swing the camera so its forward points from the player toward the foe.
+    if (this.cam && this.cam.yaw != null) this.cam.yaw = Math.atan2(-face.x, -face.z);
+    this._dashFx(p.pos, ab.color);
+    this._strike(e, p.apower * ab.mult, { crit: (this.def.critBonus || 0) + 0.3 }); // a strike from behind
+    if (this.audio) this.audio.play('cast');
+  }
+
+  // Super Saiyan: spend a full Ki gauge to ascend a tier; release a golden
+  // shockwave that damages nearby foes. Readiness is pre-checked in useAbility.
+  _kTransform(ab) {
+    const p = this.player;
+    const lvl = p.ascend();
+    if (!lvl) return;
+    this.ui.log(`⚡ SUPER SAIYAN ${lvl}! All attributes +${lvl * 100}% for ${ab.dur || 30}s!`, 'xp');
+    this.ui.floater(`SUPER SAIYAN ${lvl}!`, 'crit', p.pos);
+    const r = 5 + lvl;
+    for (const e of this.enemies) {
+      if (e.alive && e.pos.distanceTo(p.pos) <= r) {
+        this._strike(e, p.apower * (0.6 + lvl * 0.4), {});
+        e.applyStun && e.applyStun(0.8);
+      }
+    }
+    this._novaFx(p.pos, r, ab.color || 0xffe24a);
+    this._explodeFx(p.pos.clone().setY(p.pos.y + 1), r * 0.7, 0xfff2a0);
+    if (this.audio) this.audio.play('level');
+  }
+
   // ---- Helpers ----
   _inArc(origin, dir, range, arc) {
     const out = [];
@@ -322,6 +398,8 @@ export class Combat {
     if (isCrit) dmg *= 1.8;
     const res = enemy.takeDamage(dmg, isCrit);
     if (this.audio) this.audio.play('hit');
+    // Dealing damage charges the Saiyan's Ki gauge.
+    if (res.dealt > 0) this.player.addKi(res.dealt * 0.2 + 2);
     this.ui.floater(`${res.dealt}${isCrit ? '!' : ''}`, isCrit ? 'crit' : 'dmg', enemy.pos);
     // Lifesteal from gear (e.g. unique weapons) heals on every hit.
     if (this.player.gearLifesteal > 0 && res.dealt > 0) this.player.heal(res.dealt * this.player.gearLifesteal);
@@ -606,6 +684,27 @@ export class Combat {
     const m = new THREE.Mesh(new THREE.RingGeometry(r * 0.85, r, 28), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide }));
     m.rotation.x = -Math.PI / 2; m.position.set(pos.x, 0.14, pos.z); m.userData.baseOpacity = 0.6;
     this._tempMesh(m, life);
+  }
+  // A thick channelled beam: a translucent outer shaft + bright white core,
+  // laid along `dir` from chest height. Used by Kamehameha.
+  _beamFx(origin, dir, range, width, color = 0x3aa0ff) {
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    const mid = origin.clone().addScaledVector(dir, range / 2); mid.y += 1.3;
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(width * 0.5, width * 0.38, range, 18, 1, true),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+    shaft.position.copy(mid); shaft.quaternion.copy(q); shaft.userData.baseOpacity = 0.7;
+    this._tempMesh(shaft, 0.45);
+    const core = new THREE.Mesh(
+      new THREE.CylinderGeometry(width * 0.2, width * 0.13, range, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.92, depthWrite: false }));
+    core.position.copy(mid); core.quaternion.copy(q); core.userData.baseOpacity = 0.92;
+    this._tempMesh(core, 0.4);
+    // Muzzle burst at the caster's hands.
+    const burst = new THREE.Mesh(new THREE.SphereGeometry(width * 0.6, 12, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8 }));
+    burst.position.copy(origin); burst.position.y += 1.3; burst.userData.grow = 2.4; burst.userData.baseOpacity = 0.8;
+    this._tempMesh(burst, 0.3);
   }
   _boltFx(from, to, color = 0x9fe0ff) {
     const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
