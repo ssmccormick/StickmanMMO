@@ -377,6 +377,26 @@ export function spawnBosses(scene, world) {
   });
 }
 
+// Populate each dungeon with a pack of monsters and a dungeon Warden boss.
+export function spawnDungeons(scene, world) {
+  const enemies = [];
+  for (const d of world.dungeons) {
+    const pool = TYPE_BY_LEVEL(d.level);
+    // A pack of regular monsters scattered through the room.
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2, r = 8 + Math.random() * 22;
+      const home = new THREE.Vector3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r);
+      const e = new Enemy(scene, world, pool[Math.floor(Math.random() * pool.length)], d.level + Math.floor(Math.random() * 2), home);
+      d.members.push(e); enemies.push(e);
+    }
+    // The Warden — a boss at the far end guarding the chest.
+    const bossHome = new THREE.Vector3(d.chestPos.x, 0, d.chestPos.z + 6);
+    const warden = new Enemy(scene, world, d.level >= 14 ? 'knight' : 'brute', d.level + 3, bossHome, { boss: true, bossName: `${d.name} Warden` });
+    d.members.push(warden); enemies.push(warden);
+  }
+  return enemies;
+}
+
 // Populate each elite war-camp with a pack of elites guarding its chest.
 export function spawnCamps(scene, world) {
   const enemies = [];

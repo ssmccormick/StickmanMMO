@@ -93,6 +93,37 @@ export class UI {
     this.el.hud.appendChild(this.bossBar);
     this.bbName = this.bossBar.querySelector('.bb-name');
     this.bbFill = this.bossBar.querySelector('.bb-fill');
+
+    // Party frames + invite popup.
+    this.partyFrames = document.createElement('div');
+    this.partyFrames.className = 'party-frames hidden';
+    this.el.hud.appendChild(this.partyFrames);
+    this.partyInviteEl = document.createElement('div');
+    this.partyInviteEl.className = 'party-invite hidden';
+    this.el.hud.appendChild(this.partyInviteEl);
+  }
+
+  updatePartyFrames(player, network) {
+    const members = network.party || [];
+    if (members.length <= 1) { this.partyFrames.classList.add('hidden'); return; }
+    this.partyFrames.classList.remove('hidden');
+    this.partyFrames.innerHTML = '<div class="pf-title">Party</div>' + members.map((mrec) => {
+      const isSelf = mrec.id === network.id;
+      let name, lvl, hp, maxHp = null;
+      if (isSelf) { name = player.name + ' (you)'; lvl = player.stats.level; hp = Math.round(player.stats.hp); maxHp = Math.round(player.effMaxHp); }
+      else { const o = network.others[mrec.id]; name = mrec.name; lvl = (o && o.level) || mrec.level || 1; hp = (o && o.hp != null) ? o.hp : (mrec.hp || 0); }
+      const body = maxHp
+        ? `<div class="pf-bar"><div class="pf-fill" style="width:${Math.max(0, hp / maxHp * 100)}%"></div></div>`
+        : `<div class="pf-hp">❤ ${hp}</div>`;
+      return `<div class="pf"><div class="pf-top">${name} · Lv ${lvl}</div>${body}</div>`;
+    }).join('');
+  }
+
+  showPartyInvite(fromName, onAccept, onDecline) {
+    this.partyInviteEl.classList.remove('hidden');
+    this.partyInviteEl.innerHTML = `<div class="pi-text"><b>${fromName}</b> invites you to a party</div><div class="pi-btns"><button class="pi-yes">Accept</button><button class="pi-no">Decline</button></div>`;
+    this.partyInviteEl.querySelector('.pi-yes').onclick = () => { onAccept(); this.partyInviteEl.classList.add('hidden'); };
+    this.partyInviteEl.querySelector('.pi-no').onclick = () => { onDecline(); this.partyInviteEl.classList.add('hidden'); };
   }
 
   updateBossBar(enemy) {

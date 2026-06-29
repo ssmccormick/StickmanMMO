@@ -69,15 +69,57 @@ wss.on('connection', (ws) => {
         if (text) broadcast({ type: 'chat', id, name: p.name, text }, ws);
         break;
       }
+      // ---- Party / grouping ----
+      case 'party_invite': {
+        const target = findByName(String(msg.targetName || ''));
+        if (target && target !== ws) target.send(JSON.stringify({ type: 'party_invited', fromId: id, fromName: p.name }));
+        break;
+      }
+      case 'party_accept': {
+        const leader = findById(msg.leaderId);
+        if (!leader) break;
+        const lp = players.get(leader);
+        const party = lp.party || new Set([leader]);
+        party.add(leader); party.add(ws);
+        for (const m of party) players.get(m).party = party;
+        broadcastParty(party);
+        break;
+      }
+      case 'party_leave': {
+        leaveParty(ws);
+        break;
+      }
     }
   });
 
   ws.on('close', () => {
+    leaveParty(ws);
     players.delete(ws);
     broadcast({ type: 'despawn', id });
     console.log(`[-] #${id} left — ${players.size} online`);
   });
 });
+
+function findByName(name) {
+  for (const [ws, p] of players) if (p.name === name) return ws;
+  return null;
+}
+function findById(pid) {
+  for (const [ws, p] of players) if (p.id === pid) return ws;
+  return null;
+}
+function broadcastParty(party) {
+  const members = [...party].map((ws) => { const p = players.get(ws); return { id: p.id, name: p.name, classId: p.classId, level: p.level, hp: p.hp }; });
+  const data = JSON.stringify({ type: 'party_update', members });
+  for (const ws of party) if (ws.readyState === 1) ws.send(data);
+}
+function leaveParty(ws) {
+  const p = players.get(ws); if (!p || !p.party) return;
+  const party = p.party; party.delete(ws); p.party = null;
+  ws.readyState === 1 && ws.send(JSON.stringify({ type: 'party_update', members: [] }));
+  if (party.size <= 1) { for (const m of party) { const mp = players.get(m); if (mp) mp.party = null; if (m.readyState === 1) m.send(JSON.stringify({ type: 'party_update', members: [] })); } }
+  else broadcastParty(party);
+}
 
 httpServer.listen(PORT, () => {
   console.log(`Stickman MMO server listening on ws://localhost:${PORT}`);

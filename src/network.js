@@ -18,6 +18,10 @@ export class Network {
     this.id = null;
     this.others = {};           // id -> remote player record
     this.onChat = null;
+    this.party = [];            // member records {id,name,...} (incl. self)
+    this.partyInvite = null;    // pending {fromId, fromName}
+    this.onParty = null;        // () => void, fired on party change
+    this.onPartyInvite = null;  // (fromName) => void
     this._sendTimer = 0;
   }
 
@@ -71,8 +75,21 @@ export class Network {
       case 'chat':
         if (this.onChat) this.onChat(msg);
         break;
+      case 'party_invited':
+        this.partyInvite = { fromId: msg.fromId, fromName: msg.fromName };
+        if (this.onPartyInvite) this.onPartyInvite(msg.fromName);
+        break;
+      case 'party_update':
+        this.party = msg.members || [];
+        if (this.onParty) this.onParty();
+        break;
     }
   }
+
+  inviteByName(name) { this._send({ type: 'party_invite', targetName: name }); }
+  acceptInvite() { if (this.partyInvite) { this._send({ type: 'party_accept', leaderId: this.partyInvite.fromId }); this.partyInvite = null; } }
+  declineInvite() { this.partyInvite = null; }
+  leaveParty() { this._send({ type: 'party_leave' }); this.party = []; if (this.onParty) this.onParty(); }
 
   _spawnOther(p) {
     if (this.others[p.id]) return;
@@ -98,6 +115,7 @@ export class Network {
     o.target.set(msg.x, msg.y, msg.z);
     o.targetFacing = msg.facing;
     o.state = msg.state;
+    o.hp = msg.hp; o.level = msg.level;
   }
 
   _despawn(id) {

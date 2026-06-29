@@ -41,6 +41,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Shift** | Sprint (drains stamina) |
 | **Space** | Jump / climb up / **swim up** |
 | **Shift** (in water) | Dive down |
+| **R** | Summon / dismiss your mount |
 | **W into a cliff** | Climb it BotW-style (drains stamina; reach the top to mantle) |
 | **Left Mouse** | Auto-attack (melee swing or ranged bolt by class) |
 | **1 – 6** | Learned class abilities |
@@ -161,7 +162,16 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 - **Gold & a town merchant** — enemies drop **gold**; visit the **merchant stall** in town
   (press `E`) to **buy** a rotating stock of level-appropriate gear and **sell** your spare
   loot. Gold is saved with your character.
-- **Multiplayer** — see other players move and chat in real time when a server is set.
+- **Mounts** — press **`R`** to summon your **Sticksteed** and gallop (~2.6× speed) across
+  the big world. You dismount automatically to fight, to swim, or when hit.
+- **Day/night cycle** — a ~5-minute day with a moving sun, shifting sky/fog colours, a
+  dusk glow, and a star field at night (bonfires and lamps light the dark).
+- **Dungeons** — glowing purple **entrance portals** near the towns lead to instanced,
+  walled **dungeon rooms** (The Undervault, Frostcrypt, Sunken Tomb) packed with monsters
+  and a **Warden boss**. Clear it to unlock a loot chest; step on the exit portal to leave.
+- **Multiplayer & parties** — see other players move and chat in real time when a server is
+  set. Form a **party** with `/invite <name>` in chat (and `/leave`); party members show on
+  a party panel with live health.
 
 ## 🛰️ Multiplayer (optional)
 

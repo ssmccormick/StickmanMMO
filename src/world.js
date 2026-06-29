@@ -95,10 +95,21 @@ export function roadDistance(x, z) {
   return best;
 }
 
+// Dungeons: an overworld entrance portal that teleports you to an instanced
+// room far off the map. The room sites get a hard-flat floor in heightAt.
+export const DUNGEONS = [
+  { id: 'undervault', name: 'The Undervault', ex: 34, ez: -28, sx: 720, sz: 0, level: 6 },
+  { id: 'frostcrypt', name: 'Frostcrypt', ex: -64, ez: 62, sx: -720, sz: 0, level: 12 },
+  { id: 'sunkentomb', name: 'Sunken Tomb', ex: 64, ez: -62, sx: 0, sz: 720, level: 19 },
+];
+const DUNGEON_SITES = DUNGEONS.map((d) => ({ x: d.sx, z: d.sz, radius: 44, floorY: 0 }));
+
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
 // plateaus), all flattened to level ground around every town.
 export function heightAt(x, z) {
+  // Dungeon rooms are flat platforms far off the overworld.
+  for (const d of DUNGEON_SITES) if (Math.hypot(x - d.x, z - d.z) < d.radius) return d.floorY;
   let h = 0;
   h += smoothNoise(x * 0.012, z * 0.012) * 14;
   h += smoothNoise(x * 0.04, z * 0.04) * 4;
@@ -188,6 +199,7 @@ export class World {
     this.questGivers = []; // { name, giver, pos, marker, npc }
     this.vendors = [];     // { name, label, type, pos }
     this.villagers = [];   // { pos, town } — interactable for lore
+    this.dungeons = [];    // { id, name, entrance, spawn, exit, level, cleared }
     this._build();
   }
 
@@ -200,6 +212,7 @@ export class World {
     this._ruins();
     this._cliffs();
     this._camps();
+    this._dungeons();
     this._bonfires();
     this._spawnZones();
   }
@@ -210,6 +223,7 @@ export class World {
 
     const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x6a7050, 0.85);
     this.scene.add(hemi);
+    this.hemi = hemi;
     const sun = new THREE.DirectionalLight(0xfff2d6, 1.1);
     sun.position.set(60, 120, 40);
     sun.castShadow = true;
@@ -221,6 +235,20 @@ export class World {
     sun.shadow.bias = -0.0004;
     this.scene.add(sun);
     this.sun = sun;
+
+    // Day/night palette + a star field that fades in at night.
+    this._dayCol = new THREE.Color(0x9fc4e8);
+    this._duskCol = new THREE.Color(0xe88a4a);
+    this._nightCol = new THREE.Color(0x0a1024);
+    const starGeo = new THREE.BufferGeometry();
+    const sp = [];
+    for (let i = 0; i < 600; i++) {
+      const a = hash2(i, 91) * Math.PI * 2, el = hash2(i, 93) * Math.PI * 0.5 + 0.1, r = 500;
+      sp.push(Math.cos(a) * Math.cos(el) * r, Math.sin(el) * r + 60, Math.sin(a) * Math.cos(el) * r);
+    }
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+    this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, transparent: true, opacity: 0 }));
+    this.scene.add(this.stars);
 
     // Stylized drifting clouds for the 2.5D backdrop.
     const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 });
@@ -765,18 +793,102 @@ export class World {
     }
   }
 
+  _portal(x, y, z, color) {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.18, 8, 20), new THREE.MeshBasicMaterial({ color }));
+    ring.position.y = 1.6;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(1.2, 20), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+    disc.position.y = 1.6;
+    const light = new THREE.PointLight(color, 1.8, 12); light.position.y = 1.6;
+    g.add(ring, disc, light);
+    g.position.set(x, y, z);
+    this.group.add(g);
+    return g;
+  }
+
+  _dungeons() {
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x3a3540 });
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x2a2630 });
+    for (const d of DUNGEONS) {
+      const sx = d.sx, sz = d.sz, fy = 0, half = 36;
+      // Floor.
+      const floor = new THREE.Mesh(new THREE.BoxGeometry(half * 2, 1, half * 2), floorMat);
+      floor.position.set(sx, fy - 0.5, sz); floor.receiveShadow = true;
+      this.group.add(floor);
+      // Perimeter walls (colliders).
+      const wallSpecs = [[0, half, half * 2, 2], [0, -half, half * 2, 2], [half, 0, 2, half * 2], [-half, 0, 2, half * 2]];
+      for (const [ox, oz, w, dpt] of wallSpecs) {
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 7, dpt), wallMat);
+        wall.position.set(sx + ox, fy + 3.5, sz + oz); wall.castShadow = true;
+        this.group.add(wall); this._addBox(wall, false);
+      }
+      // Interior pillars (cover + colliders).
+      for (const [ox, oz] of [[-16, -8], [16, -8], [-16, 12], [16, 12], [0, 0]]) {
+        const pil = new THREE.Mesh(new THREE.BoxGeometry(3, 7, 3), wallMat);
+        pil.position.set(sx + ox, fy + 3.5, sz + oz); pil.castShadow = true;
+        this.group.add(pil); this._addBox(pil, false);
+      }
+      // Torches (dim mood lighting).
+      for (const [ox, oz] of [[-half + 3, -half + 3], [half - 3, -half + 3], [-half + 3, half - 3], [half - 3, half - 3]]) {
+        const fl = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 6), new THREE.MeshBasicMaterial({ color: 0xff8a4a }));
+        fl.position.set(sx + ox, fy + 2.4, sz + oz);
+        const lt = new THREE.PointLight(0xff8a4a, 1.6, 26); lt.position.set(sx + ox, fy + 3, sz + oz);
+        this.group.add(fl, lt);
+      }
+      // Exit portal (near the south wall) + spawn just in front of it.
+      const exit = this._portal(sx, fy, sz + half - 4, 0x9fd0ff);
+      const spawn = new THREE.Vector3(sx, fy, sz + half - 9);
+      // Loot chest near the boss end.
+      const chest = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), new THREE.MeshLambertMaterial({ color: 0xb8860b })); base.position.y = 0.45;
+      const lid = new THREE.Group();
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), new THREE.MeshLambertMaterial({ color: 0x8a6410 })); lidMesh.position.set(0, 0.25, 0);
+      lid.position.set(0, 0.9, -0.6); lid.add(lidMesh);
+      const glow = new THREE.PointLight(0xffcf3a, 0, 8); glow.position.y = 1.4;
+      chest.add(base, lid, glow); chest.position.set(sx, fy, sz - half + 6);
+      chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(chest);
+
+      // Overworld entrance portal.
+      const entrance = new THREE.Vector3(d.ex, heightAt(d.ex, d.ez), d.ez);
+      this._portal(entrance.x, entrance.y, entrance.z, 0xb05aff);
+
+      this.dungeons.push({
+        id: d.id, name: d.name, level: d.level, entrance,
+        spawn, exit: new THREE.Vector3(sx, fy, sz + half - 4),
+        center: new THREE.Vector3(sx, fy, sz),
+        chestPos: new THREE.Vector3(sx, fy, sz - half + 6),
+        chest, lid, glow, opened: false, members: [], cleared: false,
+      });
+    }
+  }
+  nearestDungeonEntrance(pos, maxDist = 4) {
+    for (const d of this.dungeons) if (d.entrance.distanceTo(pos) < maxDist) return d;
+    return null;
+  }
+  nearestDungeonExit(pos, maxDist = 3.5) {
+    for (const d of this.dungeons) if (d.exit.distanceTo(pos) < maxDist) return d;
+    return null;
+  }
+  nearestDungeonChest(pos, maxDist = 4) {
+    for (const d of this.dungeons) if (d.chestPos.distanceTo(pos) < maxDist) return d;
+    return null;
+  }
+  dungeonCleared(d) { return d.members.length > 0 && d.members.every((m) => !m.alive); }
+
   campCleared(camp) { return camp.members.length > 0 && camp.members.every((m) => !m.alive); }
   nearestCamp(pos, maxDist = 4.5) {
     for (const c of this.camps) { if (c.pos.distanceTo(pos) < maxDist) return c; }
     return null;
   }
 
-  // Animate flickering bonfires + drifting clouds.
+  // Animate flickering bonfires + drifting clouds + day/night.
   update(t, dt = 0.016) {
+    this._dayNight(t);
     if (this.clouds) {
       for (const c of this.clouds) {
         c.position.x += c.userData.drift * dt;
-        if (c.position.x > 240) c.position.x = -240; // wrap around
+        if (c.position.x > 420) c.position.x = -420; // wrap around
       }
     }
     for (const b of this.bonfires) {
@@ -796,6 +908,32 @@ export class World {
         c.glow.intensity = 1.4 + Math.sin(t * 5) * 0.5; // ready-to-open shimmer
       }
     }
+    // Dungeon chests behave the same once the dungeon is cleared.
+    for (const d of this.dungeons) {
+      if (d.opened) { d.lid.rotation.x = THREE.MathUtils.lerp(d.lid.rotation.x, -2.2, Math.min(1, dt * 6)); d.glow.intensity = 0; }
+      else if (this.dungeonCleared(d)) d.glow.intensity = 1.4 + Math.sin(t * 5) * 0.5;
+    }
+  }
+
+  // Advance the day/night cycle (one full day ~ 5 minutes).
+  _dayNight(t) {
+    const DAY = 300;
+    const phase = (t % DAY) / DAY;                 // 0..1
+    const ang = phase * Math.PI * 2 - Math.PI / 2; // sunrise at phase 0
+    const elev = Math.sin(phase * Math.PI * 2);    // -1..1 (noon = +1)
+    const day = Math.max(0, elev);                 // 0 at night
+    this.sun.position.set(Math.cos(ang) * 160, Math.max(8, Math.sin(ang) * 160), 60);
+    this.sun.intensity = 0.15 + day * 1.0;
+    this.hemi.intensity = 0.22 + day * 0.62;
+    // Sky/fog: night → dusk (low sun) → day.
+    const dusk = Math.max(0, 1 - Math.abs(elev) * 3); // peaks near horizon
+    const col = this._nightCol.clone().lerp(this._dayCol, day);
+    col.lerp(this._duskCol, dusk * 0.5);
+    this.scene.background.copy(col);
+    if (this.scene.fog) this.scene.fog.color.copy(col);
+    if (this.stars) this.stars.material.opacity = Math.max(0, 0.9 - day * 4);
+    this.timeOfDay = day > 0.15 ? 'day' : (elev > 0 ? 'dawn' : dusk > 0.3 ? 'dusk' : 'night');
+    this.isNight = day <= 0.05;
   }
 
   nearestBonfire(pos, maxDist = 4) {

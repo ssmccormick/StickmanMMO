@@ -52,6 +52,13 @@ export class Player {
 
     this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
     scene.add(this.mesh);
+    this.scene = scene;
+
+    // Mount: a simple "Sticksteed" you can summon to cross the world faster.
+    this.mounted = false;
+    this.steed = this._buildSteed();
+    this.steed.visible = false;
+    scene.add(this.steed);
 
     this.pos = new THREE.Vector3(0, heightAt(0, 0), 6);
     this.vel = new THREE.Vector3();
@@ -211,6 +218,7 @@ export class Player {
       this._updateSwim(dt, input, move, moving);
     } else {
       let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
+      if (this.mounted) speed *= 2.6; // gallop
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt; }
 
       this.vel.x = move.x * speed;
@@ -227,7 +235,7 @@ export class Player {
       this.pos.x = res.x; this.pos.z = res.z;
 
       // Start climbing: press forward into a climbable wall with stamina.
-      if (res.climb && axis.z > 0 && this.stats.sp > 2) this._startClimb(res.climb, move);
+      if (res.climb && axis.z > 0 && this.stats.sp > 2 && !this.mounted) this._startClimb(res.climb, move);
 
       const ground = heightAt(this.pos.x, this.pos.z);
       if (this.pos.y <= ground) { this.pos.y = ground; this.vel.y = 0; this.state = 'ground'; }
@@ -299,10 +307,43 @@ export class Player {
 
   _dropClimb() { this.state = 'air'; this.climbCollider = null; }
 
+  // ---- Mount ----
+  _buildSteed() {
+    const g = new THREE.Group();
+    const hide = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
+    const mane = new THREE.MeshLambertMaterial({ color: 0x3a2a1a });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 1.1, 4, 8), hide);
+    body.rotation.z = Math.PI / 2; body.position.set(0, 1.0, 0);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.9, 6), hide);
+    neck.position.set(0, 1.4, 0.7); neck.rotation.x = 0.7;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.6), hide);
+    head.position.set(0, 1.7, 1.05);
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 0.8, 5), mane);
+    tail.position.set(0, 1.1, -0.8); tail.rotation.x = -0.6;
+    g.add(body, neck, head, tail);
+    const legs = [];
+    for (const [lx, lz] of [[0.25, 0.5], [-0.25, 0.5], [0.25, -0.5], [-0.25, -0.5]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1, 5), hide);
+      leg.position.set(lx, 0.5, lz);
+      g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = legs; g.userData.phase = 0;
+    return g;
+  }
+  canMount() { return this.alive && (this.state === 'ground' || this.state === 'air'); }
+  toggleMount() {
+    if (this.mounted) { this.dismount(); return false; }
+    if (!this.canMount()) return false;
+    this.mounted = true; this.steed.visible = true; return true;
+  }
+  dismount() { this.mounted = false; if (this.steed) this.steed.visible = false; }
+
   // Swimming: WASD glides horizontally, Space ascends, Shift dives; gentle
   // buoyancy floats you up otherwise. Air drains while your head is submerged.
   _updateSwim(dt, input, move, moving) {
     this.state = 'swim';
+    if (this.mounted) this.dismount(); // can't ride in deep water
     const SWIM = 5.5;
     this.vel.x = move.x * SWIM;
     this.vel.z = move.z * SWIM;
@@ -354,6 +395,16 @@ export class Player {
       speed01: this._speed01, attack: this.attackAnim,
       climbing: this.state === 'climb', airborne: this.state === 'air',
     });
+
+    // Mount: sit the rider higher and trot the steed beneath.
+    if (this.mounted) {
+      this.mesh.position.y += 0.85;
+      this.steed.position.set(this.pos.x, this.pos.y, this.pos.z);
+      this.steed.rotation.y = this.mesh.rotation.y;
+      const sd = this.steed.userData;
+      sd.phase += dt * (4 + this._speed01 * 14);
+      sd.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(sd.phase + (i % 2) * Math.PI) * 0.5 * (0.3 + this._speed01); });
+    }
   }
 
   _regen(dt, sprinting) {
@@ -373,6 +424,7 @@ export class Player {
   // ---- Vitals ----
   takeDamage(amount, fromPos) {
     if (!this.alive) return 0;
+    if (this.mounted) this.dismount(); // knocked off your steed
     if (this._clock < this.iframeUntil) return 0;
     // Armor mitigation (diminishing, capped at 75%).
     const armor = this.gearArmor;
@@ -388,7 +440,7 @@ export class Player {
     this.stats.hp = Math.min(this.effMaxHp, this.stats.hp + amount);
     return amount;
   }
-  die() { this.alive = false; this.state = 'air'; this.deathAt = this._clock; }
+  die() { this.alive = false; this.state = 'air'; this.deathAt = this._clock; this.dismount(); }
   reviveAt(pos) {
     this.alive = true;
     this.pos.copy(pos); this.pos.y = heightAt(pos.x, pos.z);

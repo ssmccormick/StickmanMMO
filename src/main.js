@@ -7,7 +7,7 @@ import { World, areaAt } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -61,9 +61,21 @@ network.onChat = (msg) => {
 };
 
 ui.setupChat((text) => {
+  // Party chat commands.
+  if (text.startsWith('/invite ')) {
+    const name = text.slice(8).trim();
+    if (!network.connected) { ui.log('Party needs a server connection.', 'sys'); return; }
+    network.inviteByName(name); ui.log(`Party invite sent to ${name}.`, 'sys'); return;
+  }
+  if (text === '/leave') { network.leaveParty(); ui.log('You left the party.', 'sys'); return; }
+  if (text === '/party') { ui.log('Party: /invite <name> to invite, /leave to leave.', 'sys'); return; }
   ui.log(`${player.name}: ${text}`, 'chat');
   network.sendChat(text);
 });
+
+// Party hooks (active only when connected to a server).
+network.onParty = () => { if (player) ui.updatePartyFrames(player, network); };
+network.onPartyInvite = (fromName) => ui.showPartyInvite(fromName, () => network.acceptInvite(), () => network.declineInvite());
 
 // ---- Start the game (shared by "new character" and "continue") ----
 function beginGame(classId, name, server, save) {
@@ -90,6 +102,7 @@ function beginGame(classId, name, server, save) {
   enemies = spawnEnemies(scene, world);
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
   enemies.push(...spawnBosses(scene, world)); // world bosses
+  enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
   // Keep panels live as loot is picked up; refresh quest markers on kills.
@@ -186,6 +199,7 @@ function animate() {
     if (input.just('KeyJ')) ui.toggleQuestLog(player);
     if (input.just('KeyC')) ui.toggleCharSheet(player);
     if (input.just('KeyM')) ui.toggleWorldMap(player, enemies);
+    if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
     if (input.just('KeyQ')) quickHeal();
 
     // Area banner when entering a new named area.
@@ -207,7 +221,7 @@ function animate() {
       if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
     }
     if (newMinions.length) enemies.push(...newMinions);
-    combat.suppressInput = menuOpen;
+    combat.suppressInput = menuOpen || player.mounted; // dismount (R) to fight
     combat.update(dt, input);
     network.update(dt);
     network.sendState(player, dt);
@@ -258,6 +272,34 @@ function animate() {
     } else if (villager) {
       ui.showPrompt('Press <b>E</b> to talk');
       if (input.just('KeyE')) ui.showDialogue('Villager', ui.randomLore());
+    } else if (player.alive && world.nearestDungeonEntrance(player.pos)) {
+      const d = world.nearestDungeonEntrance(player.pos);
+      ui.showPrompt(`Press <b>E</b> to enter <b>${d.name}</b> (Lv ${d.level})`);
+      if (input.just('KeyE')) {
+        player.dismount(); player.pos.copy(d.spawn); player.pos.y = d.spawn.y;
+        player.vel.set(0, 0, 0); player.state = 'ground'; lastHp = player.stats.hp;
+        ui.log(`You descend into ${d.name}.`, 'sys');
+      }
+    } else if (player.alive && world.nearestDungeonExit(player.pos)) {
+      const d = world.nearestDungeonExit(player.pos);
+      ui.showPrompt('Press <b>E</b> to leave the dungeon');
+      if (input.just('KeyE')) {
+        player.pos.copy(d.entrance); player.vel.set(0, 0, 0); player.state = 'ground'; lastHp = player.stats.hp;
+        ui.log(`You leave ${d.name}.`, 'sys');
+      }
+    } else if (player.alive && world.nearestDungeonChest(player.pos)) {
+      const d = world.nearestDungeonChest(player.pos);
+      if (d.opened) ui.hidePrompt();
+      else if (world.dungeonCleared(d)) {
+        ui.showPrompt('Press <b>E</b> to open the dungeon chest');
+        if (input.just('KeyE')) {
+          d.opened = true;
+          combat.openChest({ level: d.level + 2, pos: d.chestPos });
+          ui.log(`You loot the ${d.name} chest!`, 'xp');
+        }
+      } else {
+        ui.showPrompt('Clear the dungeon to unlock the chest');
+      }
     } else if (camp) {
       if (camp.opened) {
         ui.hidePrompt();
@@ -306,9 +348,10 @@ function animate() {
     // Camera follows the player.
     followCam.update(player.pos, dt);
 
-    // HUD + minimap.
+    // HUD + minimap + party frames (live HP).
     ui.updateHud(player, network.count);
     ui.drawMinimap(player, enemies, world, network.others);
+    if (network.party.length > 1) ui.updatePartyFrames(player, network);
   }
 
   renderer.render(scene, camera);
