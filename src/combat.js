@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { CLASSES } from './classes.js';
 import { createStickman } from './stickman.js';
-import { rollDrop, goldDrop, generateItem, makeUnique, RARITY } from './items.js';
+import { rollDrop, goldDrop, generateItem, makeUnique, bossDrop, RARITY } from './items.js';
 import * as Quests from './quests.js';
 
 export class Combat {
@@ -347,8 +347,8 @@ export class Combat {
   // ---- Loot drops ----
   _dropLoot(enemy) {
     if (enemy.boss) {
-      // Bosses always drop a unique plus a couple of high-rarity pieces.
-      this._spawnDrop(makeUnique(enemy.level), enemy.pos);
+      // Bosses drop their signature unique plus a couple of high-rarity pieces.
+      this._spawnDrop(bossDrop(enemy.bossName, enemy.level), enemy.pos);
       for (let i = 0; i < 2; i++) {
         const off = new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
         this._spawnDrop(generateItem({ level: enemy.level, rarityBoost: 1.5 }), enemy.pos.clone().add(off));

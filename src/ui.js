@@ -7,6 +7,18 @@ import { CLASSES, CLASS_ORDER } from './classes.js';
 import { Saves } from './save.js';
 import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import * as Quests from './quests.js';
+import { TOWNS, AREAS } from './world.js';
+
+const LORE_LINES = [
+  'They say the Nexus was raised by the first heroes, ages past.',
+  'Mind the deep wilds — the further out, the deadlier the beasts.',
+  'A bonfire remembers you, traveller. Rest, and you can return.',
+  'The Mirelord has not been seen in a generation… until now.',
+  'Merchants here trade fair. The alchemist\'s elixirs saved my life.',
+  'Frostgard\'s walls have never fallen. Long may they stand.',
+  'Gold buys gear, but courage clears the camps.',
+  'Stay on the roads after dark, friend.',
+];
 
 export class UI {
   constructor() {
@@ -61,6 +73,18 @@ export class UI {
     this.questTracker = document.createElement('div');
     this.questTracker.className = 'quest-tracker';
     this.el.hud.appendChild(this.questTracker);
+
+    // Air/breath bar (shown only while swimming underwater).
+    this.airBar = document.createElement('div');
+    this.airBar.className = 'air-bar hidden';
+    this.airBar.innerHTML = '🫧 <div class="air-track"><div class="air-fill"></div></div>';
+    this.el.hud.appendChild(this.airBar);
+    this.airFill = this.airBar.querySelector('.air-fill');
+
+    // Area name banner.
+    this.areaBanner = document.createElement('div');
+    this.areaBanner.className = 'area-banner hidden';
+    this.el.hud.appendChild(this.areaBanner);
 
     // Boss health bar (top-center, shown only when fighting a boss).
     this.bossBar = document.createElement('div');
@@ -245,6 +269,15 @@ export class UI {
     this.el.xpText.textContent = `XP ${Math.floor(s.xp)} / ${s.xpNext}`;
     this.el.gold.textContent = player.gold;
     this.el.playerCount.textContent = playerCount;
+
+    // Air bar — only while it matters (underwater / recovering).
+    if (player.air < player.maxAir - 0.01) {
+      this.airBar.classList.remove('hidden');
+      this.airFill.style.width = `${(player.air / player.maxAir) * 100}%`;
+      this.airFill.style.background = player.air < player.maxAir * 0.3 ? '#ff5a5a' : '#5ac8ff';
+    } else {
+      this.airBar.classList.add('hidden');
+    }
 
     // Active consumable buffs with countdown.
     this.buffBar.innerHTML = player.timed.map((b) => {
@@ -725,7 +758,7 @@ export class UI {
     ov.className = 'inv-overlay hidden';
     ov.innerHTML = `
       <div class="inv-panel vendor-panel">
-        <div class="inv-header"><span>🛒 Merchant <span class="vendor-gold"></span></span><button class="inv-close">✕</button></div>
+        <div class="inv-header"><span>🛒 <span class="vendor-title">Merchant</span> <span class="vendor-gold"></span></span><button class="inv-close">✕</button></div>
         <div class="vendor-body">
           <div class="vendor-col">
             <div class="bag-title">Buy</div>
@@ -743,24 +776,40 @@ export class UI {
     this.vendorBuyEl = ov.querySelector('.vendor-buy');
     this.vendorSellEl = ov.querySelector('.vendor-sell');
     this.vendorGoldEl = ov.querySelector('.vendor-gold');
+    this.vendorTitleEl = ov.querySelector('.vendor-title');
     this.vendorTip = ov.querySelector('.item-tip');
     ov.querySelector('.inv-close').onclick = () => this.closeVendor();
     ov.addEventListener('click', (e) => { if (e.target === ov) this.closeVendor(); });
   }
 
-  openVendor(player) {
+  openVendor(player, vendor) {
     this._ensureVendor();
     this._vendorPlayer = player;
-    // Stock: potions/elixirs always available, plus fresh level-scaled gear.
-    const lvl = player.stats.level;
-    this._vendorStock = ['hp_minor', 'hp_major', 'buff_swift', 'buff_power', 'buff_might'].map((id) => makeConsumable(id));
-    for (let i = 0; i < 7; i++) {
-      this._vendorStock.push(generateItem({ level: Math.max(1, lvl + (i % 3) - 1), rarityBoost: 0.4 }));
-    }
+    this._vendorInfo = vendor || { label: 'Trader', type: 'general' };
+    this._vendorStock = this._genStock(this._vendorInfo.type, player.stats.level);
     this.vendorOpen = true;
     this.vendorOverlay.classList.remove('hidden');
     if (document.exitPointerLock) document.exitPointerLock();
     this.renderVendor();
+  }
+
+  // Stock list filtered by merchant type.
+  _genStock(type, lvl) {
+    const stock = [];
+    const gear = (slot, n, boost = 0.45) => { for (let i = 0; i < n; i++) stock.push(generateItem({ slot, level: Math.max(1, lvl + (i % 3) - 1), rarityBoost: boost })); };
+    if (type === 'alchemist') {
+      for (const id of ['hp_minor', 'hp_major', 'buff_swift', 'buff_power', 'buff_might', 'hp_minor', 'hp_major']) stock.push(makeConsumable(id));
+    } else if (type === 'weapon') {
+      gear('weapon', 8, 0.55);
+    } else if (type === 'armor') {
+      for (const s of ['head', 'chest', 'hands', 'feet']) gear(s, 2, 0.55);
+    } else if (type === 'general') {
+      gear('ring', 3); gear('amulet', 3);
+      for (const id of ['hp_minor', 'hp_major']) stock.push(makeConsumable(id));
+    } else {
+      gear('weapon', 2); for (const s of ['head', 'chest']) gear(s, 2);
+    }
+    return stock;
   }
   closeVendor() {
     this.vendorOpen = false;
@@ -771,6 +820,7 @@ export class UI {
   renderVendor() {
     const p = this._vendorPlayer;
     if (!p) return;
+    if (this.vendorTitleEl) this.vendorTitleEl.textContent = (this._vendorInfo && this._vendorInfo.label) || 'Merchant';
     this.vendorGoldEl.textContent = `💰 ${p.gold}`;
 
     // Buy list.
@@ -1013,6 +1063,140 @@ export class UI {
         <div class="sk-desc">${q.desc}</div>
         <div class="sk-meta">${tag} · Reward: ${this._rewardText(q.reward)}</div></div>`;
     }).join('');
+  }
+
+  // ---- Area banner ----
+  showAreaBanner(area) {
+    this.areaBanner.innerHTML = `<div class="ab-name">${area.name}</div><div class="ab-sub">${area.safe ? 'Safe Haven' : 'Recommended Level ' + area.level + '+'}</div>`;
+    this.areaBanner.classList.remove('hidden', 'show');
+    void this.areaBanner.offsetWidth;
+    this.areaBanner.classList.add('show');
+    clearTimeout(this._abT);
+    this._abT = setTimeout(() => this.areaBanner.classList.add('hidden'), 3600);
+  }
+
+  // ---- NPC dialogue ----
+  _ensureDialogue() {
+    if (this.dlgOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel quest-dialog"><div class="inv-header"><span class="dlg-name">Villager</span><button class="inv-close">✕</button></div><div class="qd-body"><div class="qd-desc dlg-line"></div><button class="qd-btn">Close</button></div></div>`;
+    document.body.appendChild(ov);
+    this.dlgOverlay = ov;
+    ov.querySelector('.inv-close').onclick = () => this.closeDialogue();
+    ov.querySelector('.qd-btn').onclick = () => this.closeDialogue();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeDialogue(); });
+  }
+  showDialogue(name, line) {
+    this._ensureDialogue();
+    this.dialogueOpen = true;
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.dlgOverlay.querySelector('.dlg-name').textContent = name;
+    this.dlgOverlay.querySelector('.dlg-line').textContent = '"' + line + '"';
+    this.dlgOverlay.classList.remove('hidden');
+  }
+  closeDialogue() { this.dialogueOpen = false; if (this.dlgOverlay) this.dlgOverlay.classList.add('hidden'); }
+  randomLore() { return LORE_LINES[Math.floor(Math.random() * LORE_LINES.length)]; }
+
+  // ---- World map ----
+  _ensureWorldMap() {
+    if (this.wmOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel wm-panel">
+        <div class="inv-header"><span>🗺️ World Map</span><button class="inv-close">✕</button></div>
+        <div class="wm-body">
+          <canvas class="wm-canvas" width="600" height="600"></canvas>
+          <div class="wm-legend">
+            <div><span class="lg" style="background:#d8b24a"></span> Town</div>
+            <div><span class="lg" style="background:#ff8a2a"></span> Bonfire (click to travel)</div>
+            <div><span class="lg" style="background:#ff4444"></span> Boss</div>
+            <div><span class="lg" style="background:#cc8844"></span> Elite camp</div>
+            <div><span class="lg" style="background:#5aa9ff"></span> Area</div>
+            <div><span class="lg" style="background:#7be38a"></span> You</div>
+            <div class="wm-hint"></div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    this.wmOverlay = ov;
+    this.wmCanvas = ov.querySelector('.wm-canvas');
+    this.wmHint = ov.querySelector('.wm-hint');
+    ov.querySelector('.inv-close').onclick = () => this.closeWorldMap();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeWorldMap(); });
+    this.wmCanvas.addEventListener('click', (e) => this._worldMapClick(e));
+  }
+  toggleWorldMap(player, enemies) {
+    this._ensureWorldMap();
+    this._wmPlayer = player; this._wmEnemies = enemies;
+    if (this.worldMapOpen) this.closeWorldMap();
+    else { this.worldMapOpen = true; this.wmOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this.renderWorldMap(); }
+  }
+  closeWorldMap() { this.worldMapOpen = false; if (this.wmOverlay) this.wmOverlay.classList.add('hidden'); }
+
+  _wmScale() { const S = 600, span = 760; return { S, k: (v) => (v + 380) / span * S }; }
+  renderWorldMap() {
+    const w = this._world, player = this._wmPlayer, enemies = this._wmEnemies || [];
+    if (!w) return;
+    const ctx = this.wmCanvas.getContext('2d');
+    const { S, k } = this._wmScale();
+    ctx.fillStyle = '#10141c'; ctx.fillRect(0, 0, S, S);
+
+    // Roads (Nexus → towns).
+    ctx.strokeStyle = 'rgba(180,150,110,0.5)'; ctx.lineWidth = 3;
+    for (const t of TOWNS) { if (t.nexus) continue; ctx.beginPath(); ctx.moveTo(k(0), k(0)); ctx.lineTo(k(t.x), k(t.z)); ctx.stroke(); }
+
+    // Areas.
+    for (const a of AREAS) {
+      if (a.safe) continue;
+      ctx.fillStyle = 'rgba(90,169,255,0.08)'; ctx.strokeStyle = 'rgba(90,169,255,0.35)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(k(a.x), k(a.z), a.r / 760 * S, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#9bd0ff'; ctx.font = '10px Trebuchet MS'; ctx.textAlign = 'center';
+      ctx.fillText(`${a.name} (Lv${a.level})`, k(a.x), k(a.z) - a.r / 760 * S - 3);
+    }
+    // Camps.
+    ctx.fillStyle = '#cc8844';
+    for (const c of w.camps) { ctx.beginPath(); ctx.arc(k(c.pos.x), k(c.pos.z), 4, 0, 7); ctx.fill(); }
+    // Bosses (alive).
+    ctx.font = 'bold 11px Trebuchet MS';
+    for (const e of enemies) {
+      if (!e.boss || !e.alive) continue;
+      ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(k(e.pos.x), k(e.pos.z), 5, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffb0b0'; ctx.textAlign = 'center'; ctx.fillText('☠ ' + e.bossName, k(e.pos.x), k(e.pos.z) - 8);
+    }
+    // Bonfires.
+    this._wmBonfires = w.bonfires.map((b) => ({ b, cx: k(b.pos.x), cy: k(b.pos.z), found: player.discovered.includes(b.name) }));
+    for (const m of this._wmBonfires) {
+      ctx.fillStyle = m.found ? '#ff8a2a' : 'rgba(150,120,90,0.5)';
+      ctx.beginPath(); ctx.arc(m.cx, m.cy, 5, 0, 7); ctx.fill();
+    }
+    // Towns.
+    for (const t of TOWNS) {
+      ctx.fillStyle = '#d8b24a'; ctx.fillRect(k(t.x) - 4, k(t.z) - 4, 8, 8);
+      ctx.fillStyle = '#ffe9a8'; ctx.font = 'bold 11px Trebuchet MS'; ctx.textAlign = 'center';
+      ctx.fillText(t.name, k(t.x), k(t.z) + 16);
+    }
+    // Player.
+    ctx.fillStyle = '#7be38a'; ctx.beginPath(); ctx.arc(k(player.pos.x), k(player.pos.z), 5, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+    this._canTravel = !!(w.nearestBonfire(player.pos, 6) || w.inSafeZone(player.pos.x, player.pos.z));
+    this.wmHint.textContent = this._canTravel ? 'Click a discovered bonfire to fast-travel.' : 'Stand at a bonfire or town to fast-travel.';
+    this.wmHint.style.color = this._canTravel ? '#9be29e' : '#caa';
+  }
+  _worldMapClick(e) {
+    if (!this._canTravel || !this._wmBonfires) return;
+    const rect = this.wmCanvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (600 / rect.width);
+    const my = (e.clientY - rect.top) * (600 / rect.height);
+    let best = null, bd = 14;
+    for (const m of this._wmBonfires) {
+      if (!m.found) continue;
+      const d = Math.hypot(mx - m.cx, my - m.cy);
+      if (d < bd) { bd = d; best = m; }
+    }
+    if (best && this.onFastTravel) { this.onFastTravel(best.b); this.closeWorldMap(); }
   }
 
   // ---- Chat ----

@@ -39,7 +39,8 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Mouse** | Look / orbit camera (click canvas to lock pointer) |
 | **Mouse wheel** | Zoom camera |
 | **Shift** | Sprint (drains stamina) |
-| **Space** | Jump — or kick off a wall while climbing |
+| **Space** | Jump / climb up / **swim up** |
+| **Shift** (in water) | Dive down |
 | **W into a cliff** | Climb it BotW-style (drains stamina; reach the top to mantle) |
 | **Left Mouse** | Auto-attack (melee swing or ranged bolt by class) |
 | **1 – 6** | Learned class abilities |
@@ -48,6 +49,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **I** | Inventory & equipment |
 | **K** | Skills (details & damage) |
 | **C** | Character sheet |
+| **M** | World map (click a discovered bonfire to fast-travel) |
 | **J** | Quest log |
 | **Q** | Quaff a health potion |
 | **Enter** | Chat |
@@ -93,11 +95,20 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   blend along noise-distorted borders. Scattered trees, rocks, bushes, flowers, water,
   drifting clouds, and **ruins** dress the land. Climbable cliffs, and **solid collision**
   on structures for both you and monsters.
-- **Towns** — the central hub **The Nexus** (big plaza, glowing portal-obelisk, many
-  houses, watchtower, well, merchant, and three quest-givers) plus four biome outposts —
-  **Thornhollow** (forest), **Frostgard** (snow), **Dustmarket** (desert), and **Gloomfen**
-  (swamp) — each biome-styled and stocked with a **merchant**, a **quest-giver**, and
-  ambient villagers.
+- **A big, spread-out world** with **dirt roads** linking the Nexus to every town,
+  **named areas** within each biome (Whisperwood Glade, Frostfang Pass, The Bonewaste,
+  Rotheart Hollow…) each with a recommended level and a **zone banner** on entry, plus
+  **lakes you can swim in** — dive with Shift, surface with Space, and watch your **air
+  bar** while submerged (run out and you drown).
+- **Towns are safe havens** — no monsters spawn near or wander into a town. Each has its
+  own **campfire**. The central hub **The Nexus** (big plaza, glowing portal-obelisk,
+  watchtower, well, and **four merchants** — Weaponsmith, Armorer, Alchemist, Trader) is
+  joined by four biome outposts — **Thornhollow** (forest), **Frostgard** (snow),
+  **Dustmarket** (desert), **Gloomfen** (swamp) — each biome-styled with **two specialised
+  merchants**, a quest-giver, and ambient villagers you can talk to for lore.
+- **World map (`M`)** showing towns, named areas & levels, elite camps, world bosses, and
+  bonfires. Rested bonfires become **fast-travel** points — open the map at a bonfire/town
+  and click one to teleport.
 - **Quests & chains** — quest-giver NPCs across all towns (look for the ❗ marker) offer
   **multi-step quest chains** and **boss-slaying quests** — slay N of a type, clear a camp
   chest, defeat a named boss, etc. Track them on the HUD and in the **quest log (`J`)**;
@@ -113,7 +124,8 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
   Wildking, Frosthelm the Fallen, Sandmaw the Devourer, The Mirelord) — enormous, ~8× HP,
   with a **telegraphed shockwave slam**, **multiple phases** (they enrage at 66%/33% HP —
   faster, harder, and they **summon minions**), and a dedicated **boss health bar**. They
-  always drop a **unique** plus high-rarity gear and a pile of gold.
+  drop their own **signature named unique** (Gorath's Wildaxe, The Frosthelm, Maw of the
+  Dunes, Shroud of the Mire) plus high-rarity gear and a pile of gold.
 - **Consumables** — **health potions** and **elixirs** (temporary buffs to move speed,
   damage, or all attributes). Buy them from the merchant, use them from your bag, or hit
   **`Q`** to quaff a health potion in a pinch. Active buffs show on the HUD with a timer.

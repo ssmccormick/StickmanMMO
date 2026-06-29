@@ -3,7 +3,7 @@
 // player, camera, enemies, combat, UI, audio, and networking.
 // ============================================================
 import * as THREE from 'three';
-import { World } from './world.js';
+import { World, areaAt } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
@@ -24,7 +24,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 600);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1400);
 
 const ui = new UI();
 const audio = new Audio();
@@ -40,6 +40,7 @@ let started = false;
 let deathHandled = false;
 let lastHp = 0;
 let restCooldown = 0;
+let currentArea = null;
 const clock = new THREE.Clock();
 
 // Project a world position to 2D screen coords for floating text.
@@ -97,6 +98,16 @@ function beginGame(classId, name, server, save) {
 
   ui.setWorld(world);
   ui.refreshGiverMarkers(player);
+  // Fast-travel: teleport to a discovered bonfire and arrive rested.
+  ui.onFastTravel = (bonfire) => {
+    player.pos.copy(bonfire.pos);
+    player.vel.set(0, 0, 0); player.state = 'ground';
+    player.restAtBonfire(bonfire.pos);
+    if (!player.discovered.includes(bonfire.name)) player.discovered.push(bonfire.name);
+    lastHp = player.stats.hp;
+    ui.log(`Fast-travelled to ${bonfire.name}.`, 'xp');
+  };
+  currentArea = null;
 
   ui.enterWorld(player);
   ui.log(save
@@ -158,7 +169,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen;
 
     // Crosshair shows while mouse-look is active (aiming), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
@@ -174,7 +185,13 @@ function animate() {
     if (input.just('KeyK')) ui.toggleSkills(player);
     if (input.just('KeyJ')) ui.toggleQuestLog(player);
     if (input.just('KeyC')) ui.toggleCharSheet(player);
+    if (input.just('KeyM')) ui.toggleWorldMap(player, enemies);
     if (input.just('KeyQ')) quickHeal();
+
+    // Area banner when entering a new named area.
+    const area = areaAt(player.pos.x, player.pos.z);
+    if (area && area !== currentArea) { currentArea = area; ui.showAreaBanner(area); }
+    else if (!area) currentArea = null;
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
 
@@ -225,18 +242,22 @@ function animate() {
     const nearVendor = player.alive ? world.nearestVendor(player.pos, 4.5) : null;
     const giver = player.alive ? world.questGivers.find((g) => g.pos.distanceTo(player.pos) < 4.5) : null;
     const giverQuest = giver ? Quests.giverActiveQuest(player, giver.giver) : null;
+    const villager = player.alive ? world.villagers.find((v) => v.pos.distanceTo(player.pos) < 3.5) : null;
     const camp = player.alive ? world.nearestCamp(player.pos, 5) : null;
     const bonfire = world.nearestBonfire(player.pos, 4.5);
     if (menuOpen) {
       ui.hidePrompt();
     } else if (nearVendor) {
-      ui.showPrompt('Press <b>E</b> to trade with the merchant');
-      if (input.just('KeyE')) ui.openVendor(player);
+      ui.showPrompt(`Press <b>E</b> to trade with the <b>${nearVendor.label}</b>`);
+      if (input.just('KeyE')) ui.openVendor(player, nearVendor);
     } else if (giver && giverQuest) {
       const st = Quests.statusOf(player, giverQuest);
       const verb = st === 'available' ? 'speak with' : st === 'complete' ? 'turn in quest with' : 'talk to';
       ui.showPrompt(`Press <b>E</b> to ${verb} <b>${giver.name}</b>`);
       if (input.just('KeyE')) ui.openQuestDialog(player, giver);
+    } else if (villager) {
+      ui.showPrompt('Press <b>E</b> to talk');
+      if (input.just('KeyE')) ui.showDialogue('Villager', ui.randomLore());
     } else if (camp) {
       if (camp.opened) {
         ui.hidePrompt();
@@ -257,6 +278,10 @@ function animate() {
       if (input.just('KeyE') && restCooldown <= 0) {
         restCooldown = 1;
         player.restAtBonfire(bonfire.pos);
+        if (bonfire.name && !player.discovered.includes(bonfire.name)) {
+          player.discovered.push(bonfire.name);
+          ui.log(`Discovered bonfire: ${bonfire.name} (fast-travel unlocked).`, 'xp');
+        }
         // Resting respawns the world's monsters (Dark Souls style).
         for (const e of enemies) if (!e.alive) e.respawnTimer = 0.1;
         // Overwrite this character's save at the bonfire.

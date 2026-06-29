@@ -10,7 +10,7 @@ import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
 } from './classes.js';
-import { heightAt } from './world.js';
+import { heightAt, WATER_LEVEL } from './world.js';
 import { sumStats, SLOTS, RARITY, SETS } from './items.js';
 
 function emptyGear() {
@@ -48,6 +48,7 @@ export class Player {
     this.gold = 0;
     this.timed = [];        // active consumable buffs: {until, label, color, str?, dmgMult?, speedMult?...}
     this.questLog = {};     // id -> { accepted, progress, turnedIn }
+    this.discovered = [];   // names of bonfires rested at (fast-travel points)
 
     this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
     scene.add(this.mesh);
@@ -67,6 +68,7 @@ export class Player {
 
     this._speed01 = 0;
     this._clock = 0;
+    this.maxAir = 12; this.air = 12; this._drownAcc = 0;
     this.recomputeGear();
   }
 
@@ -200,8 +202,13 @@ export class Player {
     const wantSprint = input.down('ShiftLeft') || input.down('ShiftRight');
     const sprinting = wantSprint && moving && this.stats.sp > 1 && this.state !== 'climb';
 
+    const groundHere = heightAt(this.pos.x, this.pos.z);
+    const inWater = groundHere < WATER_LEVEL - 0.6 && this.pos.y < WATER_LEVEL + 1.2;
+
     if (this.state === 'climb') {
       this._updateClimb(dt, input, move, moving);
+    } else if (inWater) {
+      this._updateSwim(dt, input, move, moving);
     } else {
       let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt; }
@@ -292,6 +299,48 @@ export class Player {
 
   _dropClimb() { this.state = 'air'; this.climbCollider = null; }
 
+  // Swimming: WASD glides horizontally, Space ascends, Shift dives; gentle
+  // buoyancy floats you up otherwise. Air drains while your head is submerged.
+  _updateSwim(dt, input, move, moving) {
+    this.state = 'swim';
+    const SWIM = 5.5;
+    this.vel.x = move.x * SWIM;
+    this.vel.z = move.z * SWIM;
+    const up = input.down('Space');
+    const down = input.down('ShiftLeft') || input.down('ShiftRight');
+    let vy = 0;
+    if (up) vy += 4.5;
+    if (down) vy -= 4.5;
+    if (!up && !down) vy += 1.4; // buoyancy
+    this.vel.y = vy;
+
+    this.pos.x += this.vel.x * dt;
+    this.pos.z += this.vel.z * dt;
+    this.pos.y += this.vel.y * dt;
+
+    const res = this.world.resolveCircle(this.pos.x, this.pos.z, RADIUS);
+    this.pos.x = res.x; this.pos.z = res.z;
+    const gy = heightAt(this.pos.x, this.pos.z);
+    this.pos.y = THREE.MathUtils.clamp(this.pos.y, gy + 0.3, WATER_LEVEL + 0.4);
+    if (gy >= WATER_LEVEL - 0.4) this.state = 'air'; // reached the shore
+
+    if (moving) this.facing = Math.atan2(move.x, move.z);
+    this.moveDir = moving ? move.clone() : null;
+    this._speed01 = moving ? 0.7 : 0;
+
+    // Air / drowning.
+    const headUnder = this.pos.y < WATER_LEVEL - 0.6;
+    if (headUnder) {
+      this.air -= dt;
+      if (this.air <= 0) {
+        this.air = 0; this._drownAcc += dt;
+        if (this._drownAcc >= 0.7) { this._drownAcc = 0; this.takeDamage(this.effMaxHp * 0.06, this.pos); }
+      }
+    } else {
+      this.air = Math.min(this.maxAir, this.air + dt * 3); this._drownAcc = 0;
+    }
+  }
+
   _applyTransform(dt) {
     this.mesh.position.copy(this.pos);
     const cur = this.mesh.rotation.y;
@@ -311,6 +360,8 @@ export class Player {
     const s = this.stats;
     // Expire finished consumable buffs.
     if (this.timed.length) this.timed = this.timed.filter((b) => b.until > this._clock);
+    // Air refills on land.
+    if (this.state !== 'swim') this.air = this.maxAir;
     if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + 16 * dt);
     s.mp = Math.min(this.effMaxMp, s.mp + (1.5 + this.effInt * 0.05) * dt);
     if (this.state === 'ground' && this._speed01 < 0.1) s.hp = Math.min(this.effMaxHp, s.hp + 2.0 * dt);
@@ -366,6 +417,7 @@ export class Player {
       inventory: this.inventory,
       gold: this.gold,
       questLog: this.questLog,
+      discovered: this.discovered,
     };
   }
 
@@ -390,6 +442,7 @@ export class Player {
     if (Array.isArray(save.inventory)) this.inventory = save.inventory;
     if (typeof save.gold === 'number') this.gold = save.gold;
     if (save.questLog && typeof save.questLog === 'object') this.questLog = save.questLog;
+    if (Array.isArray(save.discovered)) this.discovered = save.discovered;
     this.recomputeGear();
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;

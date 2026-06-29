@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import { createStickman } from './stickman.js';
 import { GIVERS } from './quests.js';
 
-export const WORLD_SIZE = 220; // half-extent; world spans -220..220
+export const WORLD_SIZE = 380; // half-extent; world spans -380..380
+export const WATER_LEVEL = -4.0;
 
 // Deterministic value-noise so the world is the same every load and
 // the server/client agree on terrain height without sharing data.
@@ -45,15 +46,54 @@ export function biomeWeights(x, z) {
   };
 }
 
-// Town centers (flattened so settlements sit on level ground). Populated by
-// the TOWNS list below; declared here for heightAt.
+// Town centers (flattened so settlements sit on level ground). Declared here
+// for heightAt. Spread far across the larger world.
 export const TOWNS = [
-  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 26, nexus: true },
-  { name: 'Thornhollow', x: 76, z: 34, biome: 'forest', radius: 17 },
-  { name: 'Frostgard', x: -76, z: 40, biome: 'snow', radius: 17 },
-  { name: 'Dustmarket', x: 82, z: -36, biome: 'desert', radius: 17 },
-  { name: 'Gloomfen', x: -78, z: -40, biome: 'swamp', radius: 17 },
+  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 28, nexus: true },
+  { name: 'Thornhollow', x: 150, z: 105, biome: 'forest', radius: 20 },
+  { name: 'Frostgard', x: -150, z: 110, biome: 'snow', radius: 20 },
+  { name: 'Dustmarket', x: 155, z: -108, biome: 'desert', radius: 20 },
+  { name: 'Gloomfen', x: -152, z: -112, biome: 'swamp', radius: 20 },
 ];
+
+// Named adventuring areas within the biomes, each with a level and a spawn
+// budget. The player gets a zone banner on entering one.
+export const AREAS = [
+  { name: 'Greenmeadow', x: 0, z: 0, r: 40, level: 0, biome: 'meadow', safe: true },
+  { name: 'Whisperwood Glade', x: 90, z: 62, r: 42, level: 1, biome: 'forest', count: 9 },
+  { name: 'Tanglethorn Deep', x: 205, z: 158, r: 52, level: 10, biome: 'forest', count: 12 },
+  { name: 'Frostfang Pass', x: -92, z: 66, r: 42, level: 3, biome: 'snow', count: 9 },
+  { name: 'Glacial Reach', x: -205, z: 165, r: 52, level: 13, biome: 'snow', count: 12 },
+  { name: 'Sunscar Flats', x: 96, z: -62, r: 42, level: 5, biome: 'desert', count: 9 },
+  { name: 'The Bonewaste', x: 212, z: -158, r: 54, level: 17, biome: 'desert', count: 13 },
+  { name: 'Murkmire', x: -95, z: -64, r: 42, level: 7, biome: 'swamp', count: 9 },
+  { name: 'Rotheart Hollow', x: -212, z: -162, r: 54, level: 22, biome: 'swamp', count: 13 },
+];
+
+// Find the named area a point is in (nearest area whose radius contains it).
+export function areaAt(x, z) {
+  let best = null, bd = Infinity;
+  for (const a of AREAS) {
+    const d = Math.hypot(x - a.x, z - a.z);
+    if (d < a.r && d < bd) { bd = d; best = a; }
+  }
+  return best;
+}
+
+// Roads: straight dirt routes from the Nexus out to each town.
+const ROADS = TOWNS.filter((t) => !t.nexus).map((t) => ({ ax: 0, az: 0, bx: t.x, bz: t.z }));
+export function roadDistance(x, z) {
+  let best = Infinity;
+  for (const r of ROADS) {
+    const dx = r.bx - r.ax, dz = r.bz - r.az;
+    const len2 = dx * dx + dz * dz || 1;
+    let t = ((x - r.ax) * dx + (z - r.az) * dz) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = r.ax + dx * t, pz = r.az + dz * t;
+    best = Math.min(best, Math.hypot(x - px, z - pz));
+  }
+  return best;
+}
 
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
@@ -146,7 +186,8 @@ export class World {
     this.spawnZones = [];  // { center:Vec3, radius, level }
     this.camps = [];       // elite war-camps with loot chests
     this.questGivers = []; // { name, giver, pos, marker, npc }
-    this.vendors = [];     // { name, pos }
+    this.vendors = [];     // { name, label, type, pos }
+    this.villagers = [];   // { pos, town } — interactable for lore
     this._build();
   }
 
@@ -165,7 +206,7 @@ export class World {
 
   _sky() {
     this.scene.background = new THREE.Color(0x9fc4e8);
-    this.scene.fog = new THREE.Fog(0x9fc4e8, 90, 320);
+    this.scene.fog = new THREE.Fog(0x9fc4e8, 140, 620);
 
     const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x6a7050, 0.85);
     this.scene.add(hemi);
@@ -200,12 +241,13 @@ export class World {
   }
 
   _terrain() {
-    const seg = 200;
+    const seg = 300;
     const geo = new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = [];
     const col = new THREE.Color();
+    const road = new THREE.Color(0x9a8466);
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
       const y = heightAt(x, z);
@@ -215,6 +257,9 @@ export class World {
       // tiny per-vertex noise so flats aren't a single flat color
       const n = (smoothNoise(x * 0.3, z * 0.3) - 0.5) * 0.06;
       col.offsetHSL(0, 0, n);
+      // Dirt roads from the Nexus to each town.
+      const rd = roadDistance(x, z);
+      if (rd < 6) col.lerp(road, (1 - rd / 6) * 0.85);
       colors.push(col.r, col.g, col.b);
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -224,13 +269,13 @@ export class World {
     mesh.receiveShadow = true;
     this.group.add(mesh);
 
-    // Water plane in low areas.
+    // Water plane (lakes/seas sit in the low biome areas).
     const water = new THREE.Mesh(
       new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2),
-      new THREE.MeshLambertMaterial({ color: 0x3b6ea5, transparent: true, opacity: 0.8 })
+      new THREE.MeshLambertMaterial({ color: 0x3b6ea5, transparent: true, opacity: 0.78 })
     );
     water.rotation.x = -Math.PI / 2;
-    water.position.y = -4.2;
+    water.position.y = WATER_LEVEL;
     this.group.add(water);
     this.water = water;
   }
@@ -326,18 +371,24 @@ export class World {
     this._tower(cx + R * 0.62, cz - R * 0.62, pal);
     this._well(cx - R * 0.6, cz + R * 0.4);
 
-    // Merchant stall + vendor record.
-    this._merchant(cx - R * 0.45, cz - R * 0.5, t.name);
+    // Merchant stalls — the Nexus has all four trades; outposts have two.
+    const mTypes = big ? ['weapon', 'armor', 'alchemist', 'general'] : ['armor', 'alchemist'];
+    mTypes.forEach((type, i) => {
+      const ang = Math.PI + i * (Math.PI * 2 / (mTypes.length + 1));
+      const mx = cx + Math.cos(ang) * (R * 0.62), mz = cz + Math.sin(ang) * (R * 0.62);
+      this._merchant(mx, mz, t.name, type, ang + Math.PI);
+    });
 
-    // Ambient villagers (flavor; no AI).
+    // Ambient villagers (flavor; interactable for lore).
     const villagerCols = [0xb08a6a, 0x8a8a9a, 0xa06a6a, 0x6a8a7a];
-    for (let i = 0; i < (big ? 5 : 3); i++) {
-      const ang = hash2(i + 3, cx) * Math.PI * 2, rr = 4 + hash2(i, cz) * (R - 8);
+    for (let i = 0; i < (big ? 6 : 4); i++) {
+      const ang = hash2(i + 3, cx) * Math.PI * 2, rr = 5 + hash2(i, cz) * (R - 10);
       const nx = cx + Math.cos(ang) * rr, nz = cz + Math.sin(ang) * rr;
       const npc = createStickman({ color: villagerCols[i % villagerCols.length], accent: 0x554433, scale: 0.95 });
       npc.position.set(nx, heightAt(nx, nz), nz);
       npc.rotation.y = hash2(i, 9) * Math.PI * 2;
       this.group.add(npc);
+      this.villagers.push({ pos: new THREE.Vector3(nx, heightAt(nx, nz), nz), town: t.name });
     }
 
     // Quest givers for this town.
@@ -388,7 +439,13 @@ export class World {
     this._addBox(ring, false);
   }
 
-  _merchant(x, z, townName) {
+  _merchant(x, z, townName, type = 'general', facing = 0) {
+    const TYPE = {
+      weapon: { label: 'Weaponsmith', awning: 0xb04a3a, glyph: '⚔️' },
+      armor: { label: 'Armorer', awning: 0x4a6a9a, glyph: '🛡️' },
+      alchemist: { label: 'Alchemist', awning: 0x4a9a5a, glyph: '🧪' },
+      general: { label: 'Trader', awning: 0xc9a227, glyph: '💍' },
+    }[type] || { label: 'Trader', awning: 0xc9a227 };
     const y = heightAt(x, z);
     const g = new THREE.Group();
     const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.2), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
@@ -398,21 +455,22 @@ export class World {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), postMat);
       post.position.set(sx, 1.3, -0.5); g.add(post);
     }
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: 0xc23b3b }));
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: TYPE.awning }));
     awning.position.set(0, 2.5, -0.4); awning.rotation.x = -0.25; g.add(awning);
     const sign = new THREE.Mesh(new THREE.CircleGeometry(0.35, 16), new THREE.MeshBasicMaterial({ color: 0xffcf3a, side: THREE.DoubleSide }));
     sign.position.set(0, 2.9, 0.4); g.add(sign);
     g.add(counter);
-    g.position.set(x, y, z);
+    g.position.set(x, y, z); g.rotation.y = facing;
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     this.group.add(g);
     this._addBox(counter, false);
 
     const keeper = createStickman({ color: 0xcaa46a, accent: 0x6a4a2a });
-    keeper.position.set(x, y, z - 1.1); keeper.rotation.y = Math.PI;
+    keeper.position.set(x - Math.sin(facing) * 1.1, y, z - Math.cos(facing) * 1.1);
+    keeper.rotation.y = facing + Math.PI;
     this.group.add(keeper);
 
-    this.vendors.push({ name: townName, pos: new THREE.Vector3(x, y, z) });
+    this.vendors.push({ name: `${TYPE.label} of ${townName}`, label: TYPE.label, type, pos: new THREE.Vector3(x, y, z) });
   }
 
   _marker(text, color) {
@@ -449,12 +507,13 @@ export class World {
   // Scattered ruins (broken pillars) out in the wild, per biome.
   _ruins() {
     const pillarMat = new THREE.MeshLambertMaterial({ color: 0x9a948a });
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 90; i++) {
       const ang = hash2(i, 201) * Math.PI * 2;
       const rad = 50 + hash2(i, 203) * (WORLD_SIZE - 70);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       const y = heightAt(x, z);
       if (y < -3) continue;
+      if (this.inSafeZone(x, z) || roadDistance(x, z) < 4) continue;
       const cluster = 2 + Math.floor(hash2(i, 205) * 3);
       for (let k = 0; k < cluster; k++) {
         const h = 1.5 + hash2(i, 207 + k) * 3;
@@ -477,12 +536,13 @@ export class World {
     const pineMats = [0x2f6f4a, 0x357a52].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const snowCapMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
 
-    for (let i = 0; i < 460; i++) {
+    for (let i = 0; i < 1100; i++) {
       const ang = hash2(i, 11) * Math.PI * 2;
       const rad = 24 + hash2(i, 13) * (WORLD_SIZE - 30);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       const y = heightAt(x, z);
       if (y < -3.5) continue; // skip water
+      if (this.inSafeZone(x, z) || roadDistance(x, z) < 4) continue;
       const biome = biomeAt(x, z);
 
       if (hash2(i, 17) < 0.7) {
@@ -553,12 +613,13 @@ export class World {
     const bushMats = [0x3f7d3a, 0x4f8f3f, 0x57752f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const flowerMats = [0xe85c8a, 0xf2c14e, 0xe8e8e8, 0x9a7bdc].map((c) => new THREE.MeshBasicMaterial({ color: c }));
 
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 600; i++) {
       const ang = hash2(i, 41) * Math.PI * 2;
       const rad = 18 + hash2(i, 43) * (WORLD_SIZE - 24);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       const y = heightAt(x, z);
       if (y < -3.2) continue; // skip water
+      if (this.inSafeZone(x, z) || roadDistance(x, z) < 4) continue;
 
       if (hash2(i, 47) < 0.55) {
         // Bush: a cluster of small spheres.
@@ -622,57 +683,59 @@ export class World {
     }
   }
 
-  _bonfires() {
-    // Checkpoints: rest to heal, set respawn, and refill. Deliberately FEW and
-    // FAR between — one in town, then one deep in each biome. Dying means a
-    // real trek back, Dark Souls style.
-    const spots = [[0, 9], [78, 64], [-72, 70], [-78, -66], [82, -72]];
-    for (const [x, z] of spots) {
-      const y = heightAt(x, z);
-      const g = new THREE.Group();
-      const pit = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 0.5, 10), new THREE.MeshLambertMaterial({ color: 0x4a4a4a }));
-      pit.position.y = 0.25;
-      // Bundled "logs"
-      for (let i = 0; i < 5; i++) {
-        const log = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.3, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }));
-        log.position.y = 0.6; log.rotation.z = 0.5; log.rotation.y = (i / 5) * Math.PI * 2;
-        g.add(log);
-      }
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.4, 8), new THREE.MeshBasicMaterial({ color: 0xff8a2a }));
-      flame.position.y = 1.3;
-      g.add(pit, flame);
-      const light = new THREE.PointLight(0xff8a2a, 2.2, 16);
-      light.position.y = 1.6;
-      g.add(light);
-      g.position.set(x, y, z);
-      g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      this.group.add(g);
-      this.bonfires.push({ pos: new THREE.Vector3(x, y, z), mesh: g, flame, light });
+  _makeBonfire(x, z, name) {
+    const y = heightAt(x, z);
+    const g = new THREE.Group();
+    const pit = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 0.5, 10), new THREE.MeshLambertMaterial({ color: 0x4a4a4a }));
+    pit.position.y = 0.25;
+    for (let i = 0; i < 5; i++) {
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.3, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }));
+      log.position.y = 0.6; log.rotation.z = 0.5; log.rotation.y = (i / 5) * Math.PI * 2;
+      g.add(log);
     }
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.4, 8), new THREE.MeshBasicMaterial({ color: 0xff8a2a }));
+    flame.position.y = 1.3;
+    const light = new THREE.PointLight(0xff8a2a, 2.2, 16); light.position.y = 1.6;
+    g.add(pit, flame, light);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this.bonfires.push({ pos: new THREE.Vector3(x, y, z), mesh: g, flame, light, name });
+  }
+
+  _bonfires() {
+    // A campfire in every town, plus one deep in each far area. These double
+    // as fast-travel points once discovered.
+    for (const t of TOWNS) this._makeBonfire(t.x + t.radius * 0.45, t.z, t.name);
+    for (const a of AREAS) if (!a.safe && a.level >= 10) this._makeBonfire(a.x, a.z, a.name);
   }
 
   _spawnZones() {
-    // Enemy spawn zones spread across the biomes, harder the further out.
-    this.spawnZones = [
-      { center: new THREE.Vector3(34, 0, 26), radius: 28, level: 1, count: 8 },   // forest near
-      { center: new THREE.Vector3(-34, 0, 30), radius: 28, level: 3, count: 9 },  // snow near
-      { center: new THREE.Vector3(34, 0, -30), radius: 28, level: 5, count: 9 },  // desert near
-      { center: new THREE.Vector3(-34, 0, -30), radius: 28, level: 7, count: 9 }, // swamp near
-      { center: new THREE.Vector3(90, 0, 80), radius: 36, level: 10, count: 11 }, // forest deep
-      { center: new THREE.Vector3(-90, 0, 85), radius: 36, level: 13, count: 11 },// snow deep
-      { center: new THREE.Vector3(95, 0, -85), radius: 36, level: 16, count: 12 },// desert deep
-      { center: new THREE.Vector3(-95, 0, -90), radius: 38, level: 20, count: 12 },// swamp deep
-    ];
+    // Spawn zones are the named, level-gated areas (no enemies in safe areas).
+    this.spawnZones = AREAS.filter((a) => !a.safe).map((a) => ({
+      center: new THREE.Vector3(a.x, 0, a.z), radius: a.r * 0.85, level: a.level, count: a.count || 9, name: a.name,
+    }));
+  }
+
+  // ---- Safe zones (no monsters near towns) ----
+  nearestTown(pos) {
+    let best = null, bd = Infinity;
+    for (const t of TOWNS) { const d = Math.hypot(pos.x - t.x, pos.z - t.z); if (d < bd) { bd = d; best = t; } }
+    return { town: best, dist: bd };
+  }
+  inSafeZone(x, z) {
+    for (const t of TOWNS) if (Math.hypot(x - t.x, z - t.z) < t.radius + 16) return t;
+    return null;
   }
 
   _camps() {
     // Elite war-camps: clusters of tough enemies guarding a loot chest.
     // The chest stays locked until every camp member is slain.
     const specs = [
-      { id: 'camp_forest', x: 58, z: 46, level: 4 },
-      { id: 'camp_snow', x: -56, z: 52, level: 6 },
-      { id: 'camp_desert', x: 62, z: -56, level: 9 },
-      { id: 'camp_swamp', x: -60, z: -52, level: 13 },
+      { id: 'camp_forest', x: 130, z: 95, level: 5 },
+      { id: 'camp_snow', x: -128, z: 100, level: 7 },
+      { id: 'camp_desert', x: 135, z: -100, level: 10 },
+      { id: 'camp_swamp', x: -130, z: -102, level: 14 },
     ];
     const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
     const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });

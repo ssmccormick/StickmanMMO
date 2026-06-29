@@ -180,6 +180,24 @@ export function makeUnique(ilvl) {
   return it;
 }
 
+// Signature uniques dropped by specific world bosses.
+export const BOSS_UNIQUES = {
+  'Gorath the Wildking': { slot: 'weapon', base: 'axe', name: "Gorath's Wildaxe", glyph: '🪓', bonus: { lifesteal: 0.12, str: 12, speed: 0.05 }, flavor: 'Torn from the Wildking’s dying grip.' },
+  'Frosthelm the Fallen': { slot: 'head', name: 'The Frosthelm', glyph: '⛑️', bonus: { armor: 55, maxHp: 130, int: 12 }, flavor: 'The frozen crown of a fallen lord.' },
+  'Sandmaw the Devourer': { slot: 'weapon', base: 'sword', name: 'Maw of the Dunes', glyph: '🗡️', bonus: { crit: 0.15, dex: 16, lifesteal: 0.08 }, flavor: 'It hungers still.' },
+  'The Mirelord': { slot: 'chest', name: 'Shroud of the Mire', glyph: '🥼', bonus: { armor: 75, maxHp: 220, lifesteal: 0.07 }, flavor: 'Woven from the swamp’s own rot.' },
+};
+export function bossDrop(bossName, level) {
+  const u = BOSS_UNIQUES[bossName];
+  if (!u) return makeUnique(level);
+  const it = generateItem({ slot: u.slot, level, forceRarity: 'legendary' });
+  it.name = u.name; it.glyph = u.glyph; it.unique = true; it.flavor = u.flavor;
+  if (u.base) it.baseId = u.base;
+  it.setId = null; it.setName = null;
+  for (const k in u.bonus) it.stats[k] = (it.stats[k] || 0) + u.bonus[k];
+  return it;
+}
+
 // Roll a drop for a slain enemy. Tougher types drop more & better.
 export function rollDrop(enemyLevel, enemyTypeId) {
   const chance = { slime: 0.22, grunt: 0.3, wolf: 0.28, knight: 0.42, brute: 0.55 }[enemyTypeId] ?? 0.3;

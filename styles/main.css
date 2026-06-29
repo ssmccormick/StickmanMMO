@@ -453,6 +453,34 @@ html, body {
 .qt.done { color: #9be29e; }
 .qt.done b { color: #9be29e; }
 
+/* ---------------- Air / breath bar ---------------- */
+.air-bar { position: absolute; top: 132px; left: 14px; display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.air-track { width: 150px; height: 12px; background: rgba(0,0,0,0.55); border: 1px solid rgba(0,0,0,0.6); border-radius: 5px; overflow: hidden; }
+.air-fill { height: 100%; width: 100%; background: #5ac8ff; transition: width 0.1s linear; }
+
+/* ---------------- Area banner ---------------- */
+.area-banner {
+  position: absolute; top: 22%; left: 50%; transform: translateX(-50%);
+  text-align: center; pointer-events: none; opacity: 0;
+}
+.area-banner.show { animation: areaFade 3.6s ease forwards; }
+.ab-name { font-size: 34px; letter-spacing: 3px; color: #fff; text-shadow: 0 2px 8px #000, 0 0 20px rgba(216,178,74,0.5); }
+.ab-sub { font-size: 14px; letter-spacing: 2px; color: var(--gold); margin-top: 2px; text-shadow: 0 1px 3px #000; }
+@keyframes areaFade {
+  0% { opacity: 0; transform: translate(-50%, 10px); }
+  12% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---------------- World map ---------------- */
+.wm-panel { width: min(760px, 96vw); }
+.wm-body { display: flex; gap: 14px; padding: 14px 18px 18px; }
+.wm-canvas { background: #10141c; border: 1px solid var(--panel-edge); border-radius: 8px; width: 600px; max-width: 64vw; height: auto; aspect-ratio: 1; cursor: crosshair; }
+.wm-legend { font-size: 12.5px; display: flex; flex-direction: column; gap: 7px; }
+.wm-legend .lg { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.wm-hint { margin-top: 8px; font-size: 11.5px; max-width: 130px; line-height: 1.4; }
+
 /* ---------------- Boss health bar ---------------- */
 .boss-bar {
   position: absolute; top: 56px; left: 50%; transform: translateX(-50%);

@@ -159,6 +159,7 @@ export class Enemy {
       const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
       this.pos.x = res.x; this.pos.z = res.z;
       this.pos.y = heightAt(this.pos.x, this.pos.z);
+      this._repelFromTowns();
       this._finish(dt);
       return;
     }
@@ -215,9 +216,24 @@ export class Enemy {
     const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
     this.pos.x = res.x; this.pos.z = res.z;
     this.pos.y = heightAt(this.pos.x, this.pos.z);
+    this._repelFromTowns();
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
     this._finish(dt);
+  }
+
+  // Towns are safe zones — keep monsters out of them.
+  _repelFromTowns() {
+    const t = this.world.inSafeZone(this.pos.x, this.pos.z);
+    if (!t) return;
+    let ax = this.pos.x - t.x, az = this.pos.z - t.z;
+    const len = Math.hypot(ax, az) || 1;
+    ax /= len; az /= len;
+    const edge = t.radius + 16.5;
+    this.pos.x = t.x + ax * edge;
+    this.pos.z = t.z + az * edge;
+    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    if (this.state === 'chase' || this.state === 'attack') this.state = 'return';
   }
 
   _finish(dt) {
@@ -350,10 +366,10 @@ export function spawnMinions(scene, world, boss, n) {
 // World bosses — one powerful named boss deep in each biome.
 export function spawnBosses(scene, world) {
   const specs = [
-    { name: 'Gorath the Wildking', type: 'brute', x: 96, z: 86, level: 12 },
-    { name: 'Frosthelm the Fallen', type: 'knight', x: -96, z: 90, level: 16 },
-    { name: 'Sandmaw the Devourer', type: 'brute', x: 100, z: -90, level: 21 },
-    { name: 'The Mirelord', type: 'knight', x: -100, z: -94, level: 27 },
+    { name: 'Gorath the Wildking', type: 'brute', x: 205, z: 158, level: 12 },
+    { name: 'Frosthelm the Fallen', type: 'knight', x: -205, z: 165, level: 16 },
+    { name: 'Sandmaw the Devourer', type: 'brute', x: 212, z: -158, level: 21 },
+    { name: 'The Mirelord', type: 'knight', x: -212, z: -162, level: 27 },
   ];
   return specs.map((sp) => {
     const home = new THREE.Vector3(sp.x, 0, sp.z);
