@@ -118,10 +118,28 @@ export function applyAppearance(root, app) {
     if (bar) { bar.scale.x = app.limb; bar.scale.z = app.limb; }
   }
 
-  // Rebuild hair.
-  if (j.hair) { j.head.remove(j.hair); j.hair = null; }
-  const hair = buildHair(app.hair, m.hair);
-  if (hair) { j.head.add(hair); j.hair = hair; }
+  // Rebuild hair only when the STYLE changes. Colour tweaks just recolour the
+  // shared hair material in place (above); proportion tweaks don't touch hair.
+  // This matters because the wardrobe fires applyAppearance on every slider
+  // drag — rebuilding (and leaking) a hairpiece each frame would bloat GPU
+  // memory. When we do rebuild, dispose the old piece's geometry/materials.
+  if (root.userData.hairStyle !== app.hair) {
+    if (j.hair) { disposeHair(j.hair, m); j.head.remove(j.hair); j.hair = null; }
+    const hair = buildHair(app.hair, m.hair);
+    if (hair) { j.head.add(hair); j.hair = hair; }
+    root.userData.hairStyle = app.hair;
+  }
+}
+
+// Free a discarded hairpiece's GPU resources. Geometries are always unique to
+// the piece, but base styles share the figure's hair material — never dispose
+// the shared body/accent/hair materials, only the cosmetic-specific ones.
+function disposeHair(group, mats) {
+  const keep = new Set([mats.body, mats.accent, mats.hair]);
+  group.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material && !keep.has(o.material)) o.material.dispose();
+  });
 }
 
 // Build a hairpiece Group positioned relative to the HEAD centre (head radius

@@ -109,7 +109,6 @@ export const COSMETICS = [
   { id: 'haircol_void', type: 'hairColor', value: 0x7a2aff, name: 'Voidweave', glyph: '🟣',
     unlock: { kind: 'quest', id: 'q_boss_mirelord' }, hint: 'Defeat the Mirelord in the Mire.' },
 ];
-export const COSMETIC_BY_ID = Object.fromEntries(COSMETICS.map((c) => [c.id, c]));
 
 // ---- Default (class-flavoured) look for a brand-new character ----
 export function defaultAppearance(classId) {
@@ -152,7 +151,6 @@ function writeUnlocks(set) {
   try { localStorage.setItem(UKEY, JSON.stringify([...set])); } catch { /* storage blocked — fail soft */ }
 }
 export function unlockedCosmetics() { return readUnlocks(); }
-export function isCosmeticUnlocked(id) { return readUnlocks().has(id); }
 
 // Is an appearance VALUE available to wear? Base options are always free; only
 // catalogue cosmetics need their id in the account unlock set.

@@ -124,6 +124,7 @@ html, body {
 }
 .back-btn:hover { opacity: 1; text-decoration: underline; }
 .storage-note { opacity: 0.55; font-size: 11px; }
+.server-hint { margin-top: 6px; font-size: 11px; opacity: 0.5; max-width: 520px; }
 
 .class-detail {
   min-height: 64px; font-size: 14px; line-height: 1.5;

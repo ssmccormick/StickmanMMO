@@ -27,10 +27,24 @@ export class Network {
     this._sendTimer = 0;
   }
 
+  // Normalise a user-entered server address into a usable WebSocket URL.
+  // Accepts bare hosts ("play.example.com" / "1.2.3.4:8080") and, crucially,
+  // upgrades ws:// → wss:// when the page itself is served over HTTPS — browsers
+  // block insecure ws:// from an https:// page (mixed content), which is the #1
+  // gotcha when connecting from the live GitHub Pages site.
+  _normalizeUrl(url) {
+    let u = url.trim();
+    const pageSecure = typeof location !== 'undefined' && location.protocol === 'https:';
+    if (!/^wss?:\/\//i.test(u)) u = (pageSecure ? 'wss://' : 'ws://') + u; // add scheme
+    if (pageSecure && /^ws:\/\//i.test(u)) u = u.replace(/^ws:\/\//i, 'wss://'); // force secure
+    return u;
+  }
+
   // Attempt connection. selfInfo = { name, classId }. Resolves either way.
   connect(url, selfInfo) {
     this.selfInfo = selfInfo;
     if (!url) { this.ui.setServerStatus('offline', 'offline — solo play'); return; }
+    url = this._normalizeUrl(url);
     this.ui.setServerStatus('connecting', 'connecting…');
     try {
       this.ws = new WebSocket(url);

@@ -85,12 +85,12 @@ const BIOME_LAYOUT = [
 const BIOME_SIZE = { forest: 1.18, snow: 1.0, desert: 1.12, swamp: 0.9, ash: 1.06, jungle: 1.22, crystal: 0.88, badlands: 1.1 };
 
 // Biome region centers — used by biomeWeights as soft-Voronoi sites.
-export const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, size: BIOME_SIZE[b.biome] || 1, ...polar(b.heading, b.dist) }));
+const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, size: BIOME_SIZE[b.biome] || 1, ...polar(b.heading, b.dist) }));
 
 // Smooth, noise-distorted biome membership weights at a point: a soft Voronoi
 // over the biome region centers, with a meadow core around the Nexus. Defined
 // before heightAt so terrain elevation can vary by biome.
-export function biomeWeights(x, z) {
+function biomeWeights(x, z) {
   // Distort the sample point so biome borders wander instead of being clean circles.
   const nx = x + (smoothNoise(x * 0.02 + 1.3, z * 0.02 + 2.7) - 0.5) * 70;
   const nz = z + (smoothNoise(x * 0.02 + 9.1, z * 0.02 + 4.2) - 0.5) * 70;
@@ -133,7 +133,7 @@ export const AREAS = [
 
 // Elite war-camps and world bosses (one per biome) — camps sit between the town
 // and the high area; bosses lurk in the high area.
-export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + capOff(b.camp.off), b.camp.dist) }));
+const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + capOff(b.camp.off), b.camp.dist) }));
 export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + capOff(b.high.off), b.high.dist) }));
 
 // Find the named area a point is in (nearest area whose radius contains it).
@@ -165,7 +165,7 @@ const ROADS = TOWNS.filter((t) => !t.nexus).map((t) => {
   }
   return pts;
 });
-export function roadDistance(x, z) {
+function roadDistance(x, z) {
   let best = Infinity;
   for (const pts of ROADS) {
     for (let i = 0; i < pts.length - 1; i++) {
@@ -296,7 +296,7 @@ export const BIOMES = {
 
 // Discrete biome (for prop choice / camps) — the dominant weight, distorted
 // so prop regions interleave at borders to match the blended terrain.
-export function biomeAt(x, z) {
+function biomeAt(x, z) {
   if (Math.hypot(x, z) < 22) return BIOMES.meadow;
   const w = biomeWeights(x, z);
   let best = 'forest', bv = -1;
@@ -324,7 +324,7 @@ export function biomeColorAt(x, z, y) {
 }
 
 // Buff shrines — pray at one for a long-lived blessing (30–60 min).
-export const SHRINE_TYPES = [
+const SHRINE_TYPES = [
   { id: 'might', name: 'Shrine of Might', glyph: '⚔️', color: 0xff6a2a, buff: { dmgMult: 1.25 }, dur: 2700, desc: '+25% damage' },
   { id: 'swift', name: 'Shrine of Swiftness', glyph: '🪽', color: 0x6fc8ff, buff: { speedMult: 1.20 }, dur: 2700, desc: '+20% move speed' },
   { id: 'titan', name: 'Shrine of the Titan', glyph: '💪', color: 0x9be29e, buff: { str: 14, dex: 14, int: 14 }, dur: 1800, desc: '+14 to all attributes' },
