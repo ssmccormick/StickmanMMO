@@ -700,13 +700,13 @@ export class UI {
 
     // Equipment slots.
     this.equipSlotsEl.innerHTML = '';
-    for (const slot of SLOTS) {
+    const addSlot = (slot, label, active) => {
       const item = p.gear[slot];
       const cell = document.createElement('div');
-      cell.className = 'equip-slot' + (item ? ` filled r-${item.rarity}` : '');
+      cell.className = 'equip-slot' + (item ? ` filled r-${item.rarity}` : '') + (active ? ' active-weapon' : '');
       cell.innerHTML = item
-        ? `<div class="slot-glyph">${item.glyph}</div>`
-        : `<div class="slot-empty">${SLOT_LABEL[slot]}</div>`;
+        ? `<div class="slot-glyph">${item.glyph}</div>${active ? '<div class="slot-active">★</div>' : ''}`
+        : `<div class="slot-empty">${label}</div>`;
       if (item) {
         this._tipFor(cell, item, p.stats.level);
         cell.onclick = () => {
@@ -716,7 +716,10 @@ export class UI {
         };
       }
       this.equipSlotsEl.appendChild(cell);
-    }
+    };
+    for (const slot of SLOTS) addSlot(slot, SLOT_LABEL[slot], slot === 'weapon' && p.activeWeapon === 0 && !!p.gear.weapon2);
+    // Second weapon slot — Tab swaps which one is wielded (★ = active).
+    addSlot('weapon2', 'Weapon 2', p.activeWeapon === 1);
 
     // Effective stats summary.
     const b = p.bonus;

@@ -53,7 +53,8 @@ export class TouchControls {
         <button class="tc-btn tc-jump" data-press="Space">⤴</button>
         <button class="tc-btn tc-interact" data-press="KeyE">E</button>
         <button class="tc-btn tc-sprint" data-hold="ShiftLeft">»</button>
-        <button class="tc-btn tc-target" data-press="Tab">🎯</button>
+        <button class="tc-btn tc-target" data-press="KeyF">🎯</button>
+        <button class="tc-btn tc-swap" data-press="Tab">🔁</button>
         <button class="tc-btn tc-potion" data-press="KeyQ">🧪</button>
         <button class="tc-btn tc-mount" data-press="KeyR">🐎</button>
       </div>`;

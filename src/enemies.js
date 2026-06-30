@@ -16,20 +16,56 @@ const TYPES = {
   knight:   { name: 'Fallen Knight', color: 0x3a3f4a, accent: 0x9aa4ef, scale: 1.1, hp: 95,  dmg: 16, speed: 3.8, range: 2.4, xp: 44, aggro: 18 },
   wraith:   { name: 'Sky Wraith',    color: 0x5a3a6a, accent: 0xc07bff, scale: 1.0, hp: 52,  dmg: 13, speed: 6.0, range: 2.2, xp: 34, aggro: 24, fly: true },
   dragon:   { name: 'Vetharion',     color: 0x4a2030, accent: 0x73402c, scale: 1.7, hp: 400, dmg: 18, speed: 5.6, range: 3.4, xp: 1200, aggro: 46, fly: true },
+  // Ranged mobs: they close to firing range, then loose projectiles you must
+  // dodge. `shootRange` is how far they'll open fire from; `projSpeed` how fast
+  // (slower = easier to sidestep).
+  archer:   { name: 'Bandit Archer',  color: 0x7a6a4a, accent: 0xffe27a, scale: 1.0, hp: 46,  dmg: 11, speed: 3.6, range: 2.0, xp: 32, aggro: 24, ranged: true, shootRange: 16, projSpeed: 17, projColor: 0xffe27a },
+  hexer:    { name: 'Blight Hexer',   color: 0x4a3a64, accent: 0xb05aff, scale: 1.0, hp: 58,  dmg: 14, speed: 3.0, range: 2.0, xp: 40, aggro: 24, ranged: true, shootRange: 18, projSpeed: 13, projColor: 0xb05aff },
+  gargoyle: { name: 'Spitfire Gargoyle', color: 0x4a4a55, accent: 0xff7a3c, scale: 1.05, hp: 64, dmg: 15, speed: 5.4, range: 2.2, xp: 46, aggro: 28, fly: true, ranged: true, shootRange: 19, projSpeed: 18, projColor: 0xff7a3c },
 };
 
 // Where the great dragon roosts — a far-north open expanse below the high peaks.
 export const DRAGON_ROOST = { x: -150, z: 210 };
 const TYPE_BY_LEVEL = (lvl) => {
   if (lvl <= 1) return ['slime', 'slime', 'grunt'];
-  if (lvl <= 3) return ['grunt', 'wolf', 'slime'];
-  if (lvl <= 5) return ['grunt', 'wolf', 'knight'];
-  if (lvl <= 7) return ['wolf', 'knight', 'brute'];
-  if (lvl <= 10) return ['knight', 'brute', 'wolf'];
-  return ['brute', 'knight', 'brute'];
+  if (lvl <= 3) return ['grunt', 'wolf', 'slime', 'archer'];
+  if (lvl <= 5) return ['grunt', 'wolf', 'knight', 'archer'];
+  if (lvl <= 7) return ['wolf', 'knight', 'brute', 'archer', 'hexer'];
+  if (lvl <= 10) return ['knight', 'brute', 'wolf', 'hexer'];
+  return ['brute', 'knight', 'brute', 'hexer'];
 };
 
 let NEXT_ID = 1;
+
+// Enemy projectiles (the dodgeable shots fired by ranged mobs). Module-level so
+// the main loop can tick them all at once with updateEnemyShots().
+const ENEMY_SHOTS = [];
+export function updateEnemyShots(dt, player) {
+  for (let i = ENEMY_SHOTS.length - 1; i >= 0; i--) {
+    const s = ENEMY_SHOTS[i];
+    s.mesh.position.addScaledVector(s.dir, s.speed * dt);
+    s.mesh.rotation.x += dt * 6; s.mesh.rotation.y += dt * 5;
+    s.traveled += s.speed * dt;
+    let done = s.traveled >= s.range;
+    if (!done && player.alive) {
+      const pc = player.pos.clone(); pc.y += 1.0;
+      if (s.mesh.position.distanceTo(pc) < 1.0) {
+        const dealt = player.takeDamage(s.dmg, s.mesh.position);
+        if (dealt > 0) player.lastHitBy = s.owner;
+        done = true;
+      }
+    }
+    if (done) {
+      if (s.mesh.parent) s.mesh.parent.remove(s.mesh);
+      s.mesh.geometry.dispose();
+      ENEMY_SHOTS.splice(i, 1);
+    }
+  }
+}
+export function clearEnemyShots(scene) {
+  for (const s of ENEMY_SHOTS) { if (s.mesh.parent) s.mesh.parent.remove(s.mesh); }
+  ENEMY_SHOTS.length = 0;
+}
 
 export class Enemy {
   constructor(scene, world, typeId, level, home, opts = {}) {
@@ -80,6 +116,8 @@ export class Enemy {
       scene.add(this._shockRing);
     }
 
+    this.ranged = !!this.type.ranged;       // fires dodgeable projectiles
+    this.shootRange = this.type.shootRange || this.type.range;
     this.flying = !!this.type.fly;          // hovers; swoops down to attack
     this.flyHeight = this.flying ? 9 : 0;   // current altitude above the ground
     this.pos = home.clone();
@@ -177,8 +215,10 @@ export class Enemy {
     }
 
     // ---- FSM ----
+    // Ranged mobs engage from afar (shootRange); melee mobs must close in.
+    const engageRange = this.ranged ? this.shootRange : this.type.range;
     if (player.alive && dist < this.type.aggro) {
-      this.state = dist <= this.type.range ? 'attack' : 'chase';
+      this.state = dist <= engageRange ? 'attack' : 'chase';
     } else if (this.state !== 'idle' && dist > this.type.aggro * 1.4) {
       this.state = 'return';
     }
@@ -187,12 +227,16 @@ export class Enemy {
     if (this.state === 'chase' && toPlayer) {
       move.copy(toPlayer).setY(0).normalize();
     } else if (this.state === 'attack' && toPlayer) {
-      // face player, hold, swing on cooldown
       this.facing = Math.atan2(toPlayer.x, toPlayer.z);
-      if (this.attackTimer <= 0) {
+      if (this.ranged) {
+        // Hold at range and fire; back away (kite) if the player closes in.
+        if (dist < this.shootRange * 0.55) move.copy(toPlayer).setY(0).normalize().multiplyScalar(-1);
+        if (this.attackTimer <= 0) { this.attackTimer = 1.9 + Math.random() * 0.6; this.attackAnim = 1; this._fireShot(player); }
+      } else if (this.attackTimer <= 0) {
+        // melee: telegraph then land a hit
         this.attackTimer = 1.6;
         this.attackAnim = 1;
-        this.pendingHit = { at: t + 0.35, applied: false }; // telegraph window
+        this.pendingHit = { at: t + 0.35, applied: false };
       }
     } else if (this.state === 'return') {
       const toHome = new THREE.Vector3().subVectors(this.home, this.pos).setY(0);
@@ -228,8 +272,10 @@ export class Enemy {
     const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
     this.pos.x = res.x; this.pos.z = res.z;
     if (this.flying) {
-      // Cruise high when idle, glide lower while chasing, dive to strike.
-      const target = this.state === 'attack' ? 1.4 : this.state === 'chase' ? 4.5 : 9;
+      // Ranged flyers hover and rain fire from above; melee flyers dive to strike.
+      const target = this.ranged
+        ? (this.state === 'idle' ? 9 : 6.5)
+        : (this.state === 'attack' ? 1.4 : this.state === 'chase' ? 4.5 : 9);
       this.flyHeight = THREE.MathUtils.lerp(this.flyHeight, target, Math.min(1, dt * 3));
       this.pos.y = heightAt(this.pos.x, this.pos.z) + this.flyHeight;
     } else {
@@ -240,6 +286,19 @@ export class Enemy {
 
     if (this.attackTimer > 0) this.attackTimer -= dt;
     this._finish(dt);
+  }
+
+  // Loose a dodgeable projectile at the player's current position.
+  _fireShot(player) {
+    const from = this.pos.clone(); from.y += this.flying ? Math.max(0.6, this.flyHeight * 0.4) : 1.1;
+    const to = player.pos.clone(); to.y += 1.0;
+    const dir = to.sub(from); if (dir.lengthSq() < 1e-4) return; dir.normalize();
+    const col = this.type.projColor || 0xffaa44;
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+    mesh.position.copy(from);
+    mesh.add(new THREE.PointLight(col, 1.2, 6));
+    this.scene.add(mesh);
+    ENEMY_SHOTS.push({ mesh, dir, speed: this.type.projSpeed || 15, range: this.shootRange + 8, traveled: 0, dmg: this.dmg, owner: this });
   }
 
   // Towns are safe zones — keep monsters out of them.
@@ -394,7 +453,9 @@ export function spawnFlyers(scene, world) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * zone.radius;
       const home = new THREE.Vector3(zone.center.x + Math.cos(a) * d, 0, zone.center.z + Math.sin(a) * d);
-      out.push(new Enemy(scene, world, 'wraith', zone.level + Math.floor(Math.random() * 2), home));
+      // Some flyers are fire-spitting Gargoyles that strafe you from the air.
+      const type = (i === 0 && zone.level >= 4) ? 'gargoyle' : 'wraith';
+      out.push(new Enemy(scene, world, type, zone.level + Math.floor(Math.random() * 2), home));
     }
   }
   return out;

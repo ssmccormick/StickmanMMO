@@ -40,7 +40,7 @@ export class Combat {
     this._updateCast(dt);
 
     if (p.alive && !this.suppressInput) {
-      if (input.just('Tab')) this.cycleTarget();
+      if (input.just('KeyF')) this.cycleTarget(); // Tab now swaps weapons (handled in main)
       // Auto-attacks and new abilities are locked out while charging a spell.
       if (!this.casting) {
         if (input.lmb && p.attackTimer <= 0) this.autoAttack();
@@ -126,19 +126,22 @@ export class Combat {
   // ---- Auto attack ----
   autoAttack() {
     const p = this.player;
+    // The wielded weapon decides melee vs. ranged (so a melee class with a bow
+    // or throwing weapon equipped fires projectiles instead of swinging).
+    const prof = p.attackProfile ? p.attackProfile() : { ranged: this.def.ranged, range: this.def.range, speed: 24, shape: 'orb', projColor: this.def.projColor };
     p.attackTimer = this.def.attackSpeed;
     p.attackAnim = 1;
     if (this.audio) this.audio.play('swing');
-    if (this.def.ranged) {
-      const dir = this._aimDir(this.def.range, 0.8);
+    if (prof.ranged) {
+      const dir = this._aimDir(prof.range, 0.8);
       this._face(dir);
       this.spawnProjectile(this._muzzle(), dir, {
-        speed: 24, mult: 1, color: this.def.projColor || 0xffffff,
-        shape: this.def.projGlyph === 'arrow' ? 'arrow' : 'orb', range: this.def.range,
+        speed: prof.speed || 24, mult: 1, color: prof.projColor || 0xffffff,
+        shape: prof.shape || 'orb', range: prof.range,
       });
     } else {
       this._faceCam();
-      const e = this._aimEnemy(this.def.range, 1.3);
+      const e = this._aimEnemy(prof.range || this.def.range, 1.3);
       if (e) this._strike(e, p.apower, { crit: this.def.critBonus || 0 });
     }
   }

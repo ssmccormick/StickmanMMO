@@ -8,7 +8,7 @@ import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -128,6 +128,7 @@ function beginGame(classId, name, server, save) {
   lastHp = player.stats.hp;
   lastGold = player.gold;
   dragonAwoken = false;
+  clearEnemyShots(scene); // no stray projectiles from a previous character
   enemies = spawnEnemies(scene, world);
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
   enemies.push(...spawnBosses(scene, world)); // world bosses
@@ -324,6 +325,12 @@ function animate() {
     if (input.just('KeyT')) ui.toggleEmotes(player);
     if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
     if (input.just('KeyQ')) quickHeal();
+    // Tab swaps between your two weapons (e.g. melee ↔ a bow for flying foes).
+    if (input.just('Tab')) {
+      const w = player.swapWeapon();
+      if (w) { ui.log(`Switched to ${w.glyph} ${w.name}.`, 'sys'); if (ui.inventoryOpen) ui.renderInventory(); if (ui.charSheetOpen) ui.renderCharSheet(player); }
+      else ui.log('Equip a second weapon to swap (Tab).', 'sys');
+    }
 
     // Area banner when entering a new named area; first visit reveals it on the map.
     const area = areaAt(player.pos.x, player.pos.z);
@@ -353,6 +360,7 @@ function animate() {
     if (newMinions.length) enemies.push(...newMinions);
     combat.suppressInput = menuOpen || player.mounted || !!fishing; // no attacking while fishing
     combat.update(dt, input);
+    updateEnemyShots(dt, player); // fly the ranged mobs' projectiles you must dodge
     network.update(dt);
     network.sendState(player, dt);
 

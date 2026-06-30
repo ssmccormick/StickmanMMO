@@ -43,9 +43,10 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Shift** (in water) | Dive down |
 | **R** | Summon / dismiss your mount |
 | **W into a cliff** | Climb it BotW-style (drains stamina; reach the top to mantle) |
-| **Left Mouse** | Auto-attack (melee swing or ranged bolt by class) |
+| **Left Mouse** | Auto-attack (melee swing or ranged shot by your wielded weapon) |
 | **1 – 6** | Learned class abilities |
-| **Tab** | Cycle target |
+| **Tab** | Swap between your two weapons |
+| **F** | Cycle target |
 | **E** | Interact / rest at a bonfire |
 | **I** | Inventory & equipment |
 | **K** | Skills (details & damage) |
@@ -132,6 +133,16 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
   clearly mean — no pixel-perfect aiming required. **Look up or down to aim up or down**:
   attacks, bolts, and beams now angle vertically, so you can shoot a **Sky Wraith** out of the
   air or blast the **dragon** overhead. The camera's vertical range is wider to match.
+- **Two weapon slots — press `Tab` to swap.** Equip a primary and a secondary weapon and
+  switch between them instantly. The **wielded** weapon decides how you auto-attack, so a melee
+  hero can carry a **bow, crossbow, or throwing knives/axes** in the off-slot to pluck flying
+  foes and ranged mobs out of the sky, then `Tab` back to a blade up close. Each weapon kind is
+  held in its own pose (poles upright, blades angled) and **fires from its tip** — and ranged
+  weapons thrust forward when you attack or cast.
+- **Ranged enemies you have to dodge.** Beyond melee mobs, the world now has **Bandit Archers**
+  and **Blight Hexers** that close to firing range and loose projectiles at you, plus
+  **Spitfire Gargoyles** that hover and strafe you from the air. Their shots are slow enough to
+  **sidestep** — keep moving, break line of sight, or shoot back.
 - **Distinct skill kinds**, each with their own feel and visuals: melee arcs, projectiles
   (piercing, multi-shot, exploding), **ground-targeted AoE** (Meteor, Earthquake, Arrow
   Rain), **chain lightning**, **damage-over-time** patches (poison, consecrate, corruption),

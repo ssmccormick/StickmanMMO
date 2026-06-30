@@ -20,6 +20,9 @@ export function createCreature(typeId, opts = {}) {
     case 'brute':  return makeOgre(opts);
     case 'wraith': return makeWraith(opts);
     case 'dragon': return makeDragon(opts);
+    case 'archer': return makeBandit(opts);   // hooded humanoid with a bow-feel
+    case 'hexer':  return makeBandit(opts);   // hooded caster
+    case 'gargoyle': return makeWraith(opts); // winged flyer that spits fire
     default:       return createStickman(opts);
   }
 }

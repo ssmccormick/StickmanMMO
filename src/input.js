@@ -109,13 +109,14 @@ export class Input {
     if (!layer && b(PAD.LB)) want.add('ShiftLeft');            // sprint (hold)
     const face = layer
       ? { [PAD.A]: 'Digit1', [PAD.B]: 'Digit2', [PAD.X]: 'Digit3', [PAD.Y]: 'Digit4', [PAD.RB]: 'Digit5', [PAD.LB]: 'Digit6' }
-      : { [PAD.A]: 'Space', [PAD.B]: 'KeyE', [PAD.X]: 'KeyQ', [PAD.Y]: 'KeyR', [PAD.RB]: 'Tab' };
+      : { [PAD.A]: 'Space', [PAD.B]: 'KeyE', [PAD.X]: 'KeyQ', [PAD.Y]: 'KeyR', [PAD.RB]: 'KeyF' }; // RB = target
     for (const i in face) if (b(+i)) want.add(face[i]);
     const menus = { [PAD.UP]: 'KeyI', [PAD.DOWN]: 'KeyK', [PAD.LEFT]: 'KeyM', [PAD.RIGHT]: 'KeyJ' };
     for (const i in menus) if (b(+i)) want.add(menus[i]);
     if (b(PAD.START)) want.add('KeyC');
     if (b(PAD.BACK)) want.add('KeyB');
     if (b(PAD.L3)) want.add('KeyT');
+    if (b(PAD.R3)) want.add('Tab'); // R3 = swap weapon
 
     if (want.size || this._padDesired.size) this.padActive = true;
     for (const code of want) if (!this._padDesired.has(code)) this.pressVirtual(code);

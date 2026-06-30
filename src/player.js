@@ -6,7 +6,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { createStickman, animateStickman } from './stickman.js';
-import { buildWeaponMesh } from './weapons.js';
+import { buildWeaponMesh, isRangedWeaponKind, WEAPON_PROFILE } from './weapons.js';
 import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
@@ -18,6 +18,7 @@ import * as Achievements from './achievements.js';
 function emptyGear() {
   const g = {};
   for (const s of SLOTS) g[s] = null;
+  g.weapon2 = null; // secondary weapon (Tab swaps which one is wielded)
   return g;
 }
 
@@ -38,14 +39,18 @@ export const EMOTES = [
 export const MAP_GRID = 64;
 const MAP_SPAN = 760, MAP_HALF = 380;
 
-// How each weapon kind sits in the hand (local to the right arm). Poles run
-// straight up & down; the wand points forward; blades sit angled, ready.
+// How each weapon kind RESTS in the hand (local to the right arm). Poles are
+// held upright and a little out from the body (so they don't merge into the
+// arm); ranged kinds then thrust forward when attacking (see _poseHeldWeapon).
 const WEAPON_HOLD = {
-  staff:  { pos: [0.04, -1.0, 0], rot: [0, 0, 0] },             // upright quarterstaff
-  bow:    { pos: [0.05, -0.66, 0.06], rot: [0, 0, 0] },          // held vertical
-  wand:   { pos: [0, -0.6, 0.04], rot: [-Math.PI / 2.3, 0, 0] }, // pointed forward
-  dagger: { pos: [0, -0.56, 0], rot: [0, 0, Math.PI / 2.4] },
-  default: { pos: [0, -0.62, 0], rot: [0, 0, Math.PI / 2.5] },   // sword/axe/mace
+  staff:    { pos: [-0.07, -0.82, 0.1], rot: [0.18, 0, -0.13] }, // upright, leaning outward
+  wand:     { pos: [-0.05, -0.62, 0.1], rot: [0.2, 0, -0.1] },
+  bow:      { pos: [-0.05, -0.66, 0.1], rot: [0.05, 0, -0.05] },
+  crossbow: { pos: [-0.05, -0.62, 0.12], rot: [0.1, 0, 0] },
+  throwknife: { pos: [0, -0.56, 0.04], rot: [0.1, 0, -0.1] },
+  throwaxe:   { pos: [0, -0.6, 0.04], rot: [0.1, 0, -0.1] },
+  dagger:   { pos: [0, -0.56, 0], rot: [0, 0, Math.PI / 2.4] },
+  default:  { pos: [0, -0.62, 0], rot: [0, 0, Math.PI / 2.5] },  // sword/axe/mace
 };
 
 const GRAVITY = 26;
@@ -71,6 +76,7 @@ export class Player {
 
     // Equipment & inventory.
     this.gear = emptyGear();
+    this.activeWeapon = 0;  // 0 = weapon slot, 1 = weapon2 slot (Tab toggles)
     this.inventory = [];
     this.maxInventory = 24;
     this.bonus = {};        // cached summed gear stats
@@ -201,8 +207,41 @@ export class Player {
   }
 
   // ---- Equipment-derived effective stats ----
+  // The weapon currently wielded (slot 1 or 2 per activeWeapon).
+  curWeapon() {
+    const w = this.activeWeapon === 1 ? this.gear.weapon2 : this.gear.weapon;
+    return w || this.gear.weapon || this.gear.weapon2 || null;
+  }
+  // Toggle which of the two weapons is wielded (only if both slots are filled).
+  swapWeapon() {
+    if (!this.gear.weapon || !this.gear.weapon2) return null;
+    this.activeWeapon = this.activeWeapon === 0 ? 1 : 0;
+    this.recomputeGear(); // re-applies stats and swaps the held model
+    return this.curWeapon();
+  }
+  // Auto-attack profile from the WIELDED weapon (so a melee class holding a bow
+  // fires arrows), falling back to the class default when unarmed.
+  attackProfile() {
+    const w = this.curWeapon();
+    const prof = w && WEAPON_PROFILE[w.kind];
+    if (prof && prof.ranged) {
+      const col = (this.def.projColor) || (prof.shape === 'arrow' ? 0xddccaa : 0xffd24a);
+      return { ranged: true, shape: prof.shape, speed: prof.speed, range: prof.range, projColor: col };
+    }
+    if (prof && !prof.ranged) return { ranged: false, range: this.def.range };
+    // Unarmed → class default.
+    return { ranged: !!this.def.ranged, shape: this.def.projGlyph === 'arrow' ? 'arrow' : 'orb', speed: 24, range: this.def.range, projColor: this.def.projColor || 0xffffff };
+  }
+
   recomputeGear() {
-    const items = Object.values(this.gear).filter(Boolean);
+    // Only the WIELDED weapon contributes stats (the stowed one is inactive).
+    const active = this.curWeapon();
+    const items = [];
+    for (const s in this.gear) {
+      if (s === 'weapon' || s === 'weapon2') continue;
+      if (this.gear[s]) items.push(this.gear[s]);
+    }
+    if (active) items.push(active);
     this.bonus = sumStats(items);
     // Set bonuses: tally equipped pieces per set, add active tier bonuses.
     const counts = {};
@@ -304,8 +343,14 @@ export class Player {
     if (!item) return { error: 'missing' };
     if (this.stats.level < item.reqLevel) return { error: 'level', item };
     this._removeUid(uid);
-    const prev = this.gear[item.slot];
-    this.gear[item.slot] = item;
+    // Weapons fill slot 1, then slot 2; if both are full, replace the wielded one.
+    let slot = item.slot;
+    if (item.slot === 'weapon') {
+      slot = !this.gear.weapon ? 'weapon' : !this.gear.weapon2 ? 'weapon2' : (this.activeWeapon === 1 ? 'weapon2' : 'weapon');
+      this.activeWeapon = slot === 'weapon2' ? 1 : 0; // wield what you just equipped
+    }
+    const prev = this.gear[slot];
+    this.gear[slot] = item;
     if (prev) this.addItem(prev);
     this.recomputeGear();
     return { equipped: item, replaced: prev };
@@ -316,6 +361,11 @@ export class Player {
     if (this.inventory.length >= this.maxInventory) return { error: 'full' };
     this.gear[slot] = null;
     this.addItem(item);
+    // Keep the wielded-weapon pointer valid when a weapon slot empties.
+    if (slot === 'weapon' || slot === 'weapon2') {
+      if (!this.gear.weapon && this.gear.weapon2) this.activeWeapon = 1;
+      else this.activeWeapon = 0;
+    }
     this.recomputeGear();
     return { unequipped: item };
   }
@@ -324,7 +374,7 @@ export class Player {
   _updateWeaponVisual() {
     const j = this.mesh && this.mesh.userData.joints;
     if (!j || !j.armR) return;
-    const w = this.gear.weapon;
+    const w = this.curWeapon();
     const kind = w ? (w.kind || 'sword') : null;
     const color = w ? RARITY[w.rarity].hex : this.def.accent;
     // Swap the held model only when the weapon kind/rarity actually changes.
@@ -350,6 +400,24 @@ export class Player {
         this._heldWeapon = wm;
       }
       this._heldKey = key;
+      this._heldKind = kind;
+    }
+  }
+
+  // Ranged/caster weapons rest upright but THRUST FORWARD when attacking or
+  // casting, so the staff/bow/thrown weapon points outward at the target rather
+  // than staying glued to the arm. Melee keeps the normal arm swing.
+  _poseHeldWeapon() {
+    const w = this._heldWeapon;
+    if (!w || !isRangedWeaponKind(this._heldKind)) return;
+    const j = this.mesh.userData.joints;
+    const base = (WEAPON_HOLD[this._heldKind] || WEAPON_HOLD.default).rot;
+    if (this.attackAnim > 0) {
+      const t = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 ease over the swing
+      j.armR.rotation.set(-1.4 * t, 0, 0);                 // extend the arm toward the foe
+      w.rotation.set(base[0] + (2.9 - base[0]) * t, base[1], base[2] * (1 - t)); // tip points outward
+    } else {
+      w.rotation.set(base[0], base[1], base[2]);            // resting upright pose
     }
   }
 
@@ -681,6 +749,7 @@ export class Player {
       speed01: this._speed01, attack: this.attackAnim,
       climbing: this.state === 'climb', airborne: this.state === 'air', emote,
     });
+    this._poseHeldWeapon();
 
     // Super Saiyan aura: flicker the flame and let the hair shimmer.
     if (this.ssjActive && this.ssjAura) {
@@ -787,6 +856,7 @@ export class Player {
       questLog: this.questLog,
       discovered: this.discovered,
       stoneSword: this.stoneSwordPulled,
+      activeWeapon: this.activeWeapon,
       counters: this.counters,
       achievements: this.achievements,
       discoveredAreas: [...this.discoveredAreas],
@@ -818,6 +888,7 @@ export class Player {
     if (save.questLog && typeof save.questLog === 'object') this.questLog = save.questLog;
     if (Array.isArray(save.discovered)) this.discovered = save.discovered;
     this.stoneSwordPulled = !!save.stoneSword;
+    if (typeof save.activeWeapon === 'number') this.activeWeapon = save.activeWeapon;
     // Achievements: restore counters & claimed tiers, then re-derive rewards.
     if (save.counters && typeof save.counters === 'object') this.counters = { ...save.counters };
     if (save.achievements && typeof save.achievements === 'object') this.achievements = { ...save.achievements };
