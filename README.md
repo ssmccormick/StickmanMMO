@@ -60,6 +60,20 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **Enter** | Chat |
 | **H** | Toggle the controls hint |
 
+### 🎮 Gamepad & 📱 touch
+The game also plays with a **controller** or on a **phone/tablet** — every source feeds the
+same input, so all systems work the same.
+
+- **Gamepad** (standard layout, just plug in / pair and it's detected): **left stick** moves,
+  **right stick** looks, **RT** attacks, **LB** sprints, **RB** cycles target, **A** jumps,
+  **B** interacts, **X** potion, **Y** mount. Hold **LT** for the *ability layer* — then
+  **A/B/X/Y** and the bumpers fire abilities **1–6**. **D-pad** opens inventory / skills /
+  map / quests; **Start** = character, **Back** = achievements, **L3** = emotes.
+- **Touch**: on phones/tablets an on-screen layer appears automatically — a **left analog
+  joystick** to move, **drag the right side** to look (**pinch** to zoom), a big **attack**
+  button with jump / interact / sprint / target / potion / mount, an **ability bar (1–6)**,
+  and a **menu strip** (bag, character, quests, map, achievements, skills, lore, emotes).
+
 ## 🗡️ Classes (D&D-inspired)
 
 **Eleven** classes — ten D&D archetypes plus one **special hero class** — each with unique

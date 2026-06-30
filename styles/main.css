@@ -673,3 +673,59 @@ html, body {
 .ach-row.capstone { border-color: rgba(255,90,60,0.55); background: linear-gradient(160deg, rgba(255,90,60,0.08), rgba(120,40,30,0.05)); }
 .ach-row.capstone .ach-name { color: #ff8a5a; }
 .ach-locked { font-size: 11px; color: #ffae8a; opacity: 0.85; }
+
+/* ---------------- Touch controls (mobile) ---------------- */
+#touch-controls { position: fixed; inset: 0; z-index: 15; pointer-events: none; touch-action: none; }
+#touch-controls.tc-menuhidden { display: none; }
+#touch-controls button { pointer-events: auto; -webkit-tap-highlight-color: transparent; user-select: none; }
+
+/* Left movement joystick */
+.tc-stick {
+  position: absolute; left: 24px; bottom: 26px; width: 140px; height: 140px;
+  border-radius: 50%; background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.18); pointer-events: auto; touch-action: none; z-index: 2;
+}
+.tc-knob {
+  position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px;
+  border-radius: 50%; background: rgba(216,178,74,0.55); border: 2px solid rgba(255,255,255,0.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+
+/* Right-side look + pinch-zoom drag area (transparent) */
+.tc-look { position: absolute; left: 34%; top: 0; right: 0; bottom: 0; pointer-events: auto; touch-action: none; }
+
+/* Round action buttons, bottom-right */
+.tc-actions { position: absolute; right: 16px; bottom: 20px; width: 230px; height: 200px; z-index: 3; }
+.tc-btn {
+  position: absolute; width: 62px; height: 62px; border-radius: 50%;
+  background: rgba(20,26,36,0.6); border: 2px solid rgba(255,255,255,0.22); color: #fff;
+  font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.tc-btn.tc-on { background: rgba(216,178,74,0.55); transform: scale(0.94); }
+.tc-attack { right: 16px; bottom: 70px; width: 84px; height: 84px; font-size: 30px; background: rgba(180,60,50,0.6); border-color: rgba(255,140,120,0.5); }
+.tc-jump { right: 104px; bottom: 96px; }
+.tc-interact { right: 110px; bottom: 18px; background: rgba(40,90,140,0.6); }
+.tc-sprint { right: 18px; bottom: 162px; }
+.tc-target { right: 176px; bottom: 70px; width: 52px; height: 52px; font-size: 18px; }
+.tc-potion { right: 40px; bottom: 0; width: 52px; height: 52px; font-size: 18px; }
+.tc-mount { right: 168px; bottom: 8px; width: 52px; height: 52px; font-size: 18px; }
+
+/* Ability bar (1–6) along the bottom centre */
+.tc-abilities { position: absolute; left: 50%; bottom: 14px; transform: translateX(-58%); display: flex; gap: 8px; z-index: 3; }
+.tc-ab {
+  width: 46px; height: 46px; border-radius: 10px; font-weight: bold; font-size: 16px; color: #fff;
+  background: rgba(20,26,36,0.6); border: 2px solid rgba(255,255,255,0.2);
+}
+.tc-ab.tc-on { background: rgba(216,178,74,0.55); }
+
+/* Menu strip (top-right, under the minimap) */
+.tc-menus { position: absolute; right: 14px; top: 196px; display: flex; flex-wrap: wrap; gap: 6px; width: 180px; justify-content: flex-end; z-index: 3; }
+.tc-menu-btn {
+  width: 40px; height: 40px; border-radius: 9px; font-size: 18px;
+  background: rgba(20,26,36,0.55); border: 1px solid rgba(255,255,255,0.18); color: #fff;
+}
+.tc-menu-btn.tc-on { background: rgba(216,178,74,0.5); }
+
+@media (max-width: 720px) {
+  .controls-hint { display: none; }
+}

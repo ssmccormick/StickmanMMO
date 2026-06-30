@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { World, areaAt, WATER_LEVEL } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
+import { TouchControls } from './touch.js';
 import { Player } from './player.js';
 import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST } from './enemies.js';
 import { Combat } from './combat.js';
@@ -31,6 +32,7 @@ const ui = new UI();
 const audio = new Audio();
 ui.audio = audio; // lets the UI play a sting on achievement unlocks
 const input = new Input(canvas);
+const touch = new TouchControls(input);
 const followCam = new FollowCamera(camera);
 const world = new World(scene);
 const network = new Network(scene, ui);
@@ -160,9 +162,10 @@ function beginGame(classId, name, server, save) {
 
   network.connect(server, { name, classId });
   input.enabled = true;
+  if (input.touchDevice) { touch.enable(); ui.log('Touch controls enabled — left stick to move, drag right to look.', 'sys'); }
 
   // Debug/tinkering handle — e.g. StickmanGame.player.gainXp(500).
-  window.StickmanGame = { player, world, enemies, combat, ui, followCam, renderer };
+  window.StickmanGame = { player, world, enemies, combat, ui, followCam, renderer, input, touch };
 }
 
 ui.setupStart({
@@ -242,6 +245,8 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
+  input.pollGamepad(dt); // fold any controller state into the unified input
+
   world.update(t, dt);
 
   if (started && player) {
@@ -291,8 +296,10 @@ function animate() {
 
     const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen;
 
-    // Crosshair shows while mouse-look is active (aiming), hidden in menus.
-    ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
+    // Crosshair shows while aiming (mouse-look, gamepad, or touch), hidden in menus.
+    ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.aiming);
+    // Tuck the touch controls away while a full-screen menu is open.
+    if (input.touchDevice) touch.setPlayVisible(!menuOpen);
 
     // Mouse-look only when no cursor-driven menu is open.
     if (!menuOpen) {
