@@ -1,0 +1,51 @@
+// ============================================================
+// Shared enemy archetypes + stat derivation — NO Three.js, NO DOM.
+// Imported by the client (enemies.js, for meshes/AI) AND the headless
+// authoritative server (enemySim.js), so a "Bandit Archer (Lv 7)" has
+// the exact same HP/damage/XP wherever it's simulated. Colours are plain
+// hex numbers here (data only) — turning them into materials happens
+// client-side.
+// ============================================================
+
+export const TYPES = {
+  slime:    { name: 'Stick Slime',   color: 0x6fae54, accent: 0x3f7d3a, scale: 0.8, hp: 30,  dmg: 6,  speed: 2.6, range: 1.8, xp: 14, aggro: 12 },
+  grunt:    { name: 'Bandit',        color: 0x8a6a4a, accent: 0xd8423c, scale: 1.0, hp: 55,  dmg: 10, speed: 3.6, range: 2.2, xp: 24, aggro: 16 },
+  wolf:     { name: 'Dire Stick',    color: 0x66707a, accent: 0xcfcfcf, scale: 0.9, hp: 45,  dmg: 9,  speed: 5.2, range: 2.0, xp: 22, aggro: 20 },
+  brute:    { name: 'Ogre Brute',    color: 0x7a5a8a, accent: 0xb04a3a, scale: 1.5, hp: 140, dmg: 22, speed: 2.8, range: 2.8, xp: 60, aggro: 14 },
+  knight:   { name: 'Fallen Knight', color: 0x3a3f4a, accent: 0x9aa4ef, scale: 1.1, hp: 95,  dmg: 16, speed: 3.8, range: 2.4, xp: 44, aggro: 18 },
+  wraith:   { name: 'Sky Wraith',    color: 0x5a3a6a, accent: 0xc07bff, scale: 1.0, hp: 52,  dmg: 13, speed: 6.0, range: 2.2, xp: 34, aggro: 24, fly: true },
+  dragon:   { name: 'Vetharion',     color: 0x4a2030, accent: 0x73402c, scale: 1.7, hp: 400, dmg: 18, speed: 5.6, range: 3.4, xp: 1200, aggro: 46, fly: true },
+  // Ranged mobs: they close to firing range, then loose projectiles you must
+  // dodge. `shootRange` is how far they'll open fire from; `projSpeed` how fast
+  // (slower = easier to sidestep).
+  archer:   { name: 'Bandit Archer',  color: 0x7a6a4a, accent: 0xffe27a, scale: 1.0, hp: 46,  dmg: 11, speed: 3.6, range: 2.0, xp: 32, aggro: 24, ranged: true, shootRange: 16, projSpeed: 17, projColor: 0xffe27a },
+  hexer:    { name: 'Blight Hexer',   color: 0x4a3a64, accent: 0xb05aff, scale: 1.0, hp: 58,  dmg: 14, speed: 3.0, range: 2.0, xp: 40, aggro: 24, ranged: true, shootRange: 18, projSpeed: 13, projColor: 0xb05aff },
+  gargoyle: { name: 'Spitfire Gargoyle', color: 0x4a4a55, accent: 0xff7a3c, scale: 1.05, hp: 64, dmg: 15, speed: 5.4, range: 2.2, xp: 46, aggro: 28, fly: true, ranged: true, shootRange: 19, projSpeed: 18, projColor: 0xff7a3c },
+};
+
+// Where the great dragon roosts — a far-north open expanse below the high peaks.
+export const DRAGON_ROOST = { x: -150, z: 210 };
+
+export const TYPE_BY_LEVEL = (lvl) => {
+  if (lvl <= 1) return ['slime', 'slime', 'grunt'];
+  if (lvl <= 3) return ['grunt', 'wolf', 'slime', 'archer'];
+  if (lvl <= 5) return ['grunt', 'wolf', 'knight', 'archer'];
+  if (lvl <= 7) return ['wolf', 'knight', 'brute', 'archer', 'hexer'];
+  if (lvl <= 10) return ['knight', 'brute', 'wolf', 'hexer'];
+  return ['brute', 'knight', 'brute', 'hexer'];
+};
+
+// The single derivation of an enemy's level-scaled combat stats — used by both
+// the client Enemy and the server SimEnemy so they always agree.
+export function deriveStats(typeId, level, opts = {}) {
+  const type = TYPES[typeId] || TYPES.grunt;
+  const boss = !!opts.boss, elite = !!opts.elite;
+  const lvlScale = 1 + (level - 1) * 0.32;
+  const em = boss ? 8 : elite ? 2.4 : 1;
+  return {
+    maxHp: Math.round(type.hp * lvlScale * em),
+    dmg: type.dmg * (1 + (level - 1) * 0.22) * (boss ? 1.9 : elite ? 1.5 : 1),
+    xp: Math.round(type.xp * (1 + (level - 1) * 0.4) * (boss ? 7 : elite ? 2.5 : 1)),
+    displayScale: type.scale * (boss ? 2.3 : elite ? 1.35 : 1),
+  };
+}
