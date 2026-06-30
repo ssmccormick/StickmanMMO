@@ -10,6 +10,7 @@ import { TouchControls } from './touch.js';
 import { Player } from './player.js';
 import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
+import { NetEnemies } from './netenemies.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
@@ -44,6 +45,8 @@ const network = new Network(scene, ui);
 
 let player = null;
 let enemies = [];
+let netEnemies = null;   // server-driven enemy manager (set when on an authoritative server)
+let netMode = false;     // true while enemies are server-authoritative
 let combat = null;
 let started = false;
 let deathHandled = false;
@@ -148,6 +151,27 @@ function beginGame(classId, name, server, save, appearance) {
   // Party-shared XP: relay half of every kill's XP to grouped members.
   combat.onPartyXp = (xp) => network.sendPartyXp(Math.round(xp * 0.5));
 
+  // ---- Synced encounters: switch to server-authoritative enemies ----
+  // Fires when we connect to a server that owns the enemies. We retire the
+  // local enemy simulation and render the shared, server-driven enemies instead.
+  netEnemies = null; netMode = false;
+  network.onAuthoritative = () => {
+    if (netMode) return;
+    netMode = true;
+    // Retire local enemies (clear the array IN PLACE so combat keeps its ref).
+    for (const e of enemies) { scene.remove(e.mesh); if (e._shockRing) scene.remove(e._shockRing); }
+    enemies.length = 0;
+    combat.target = null;
+    clearEnemyShots(scene);
+    netEnemies = new NetEnemies({ scene, world, enemies, player, network, combat });
+    ui.log('Joined a shared world — you and other heroes now fight the same monsters.', 'sys');
+  };
+  network.onEnemies = (list) => { if (netEnemies) netEnemies.onSnapshot(list); };
+  network.onEnemyHp = (id, hp) => { if (netEnemies) netEnemies.onHp(id, hp); };
+  network.onEnemyDeath = (m) => { if (netEnemies) netEnemies.onDeath(m); };
+  network.onEnemyAttack = (dmg, eid) => { if (netEnemies) netEnemies.onAttack(dmg, eid); };
+  network.onEnemyShot = (shot) => { if (netEnemies) netEnemies.onShot(shot); };
+
   ui.setWorld(world);
   ui.refreshGiverMarkers(player);
   // Fast-travel: teleport to a discovered bonfire and arrive rested.
@@ -172,7 +196,7 @@ function beginGame(classId, name, server, save, appearance) {
   if (input.touchDevice) { touch.enable(); ui.log('Touch controls enabled — left stick to move, drag right to look.', 'sys'); }
 
   // Debug/tinkering handle — e.g. StickmanGame.player.gainXp(500).
-  window.StickmanGame = { player, world, enemies, combat, ui, followCam, renderer, input, touch };
+  window.StickmanGame = { player, world, enemies, combat, ui, followCam, renderer, input, touch, network, get netMode() { return netMode; }, get netEnemies() { return netEnemies; } };
 }
 
 ui.setupStart({
@@ -349,6 +373,7 @@ function animate() {
     // Saves the per-frame AI/animation/collision cost of the world's ~300 mobs.
     const ACTIVE2 = 130 * 130;
     for (const e of enemies) {
+      if (e._net) continue; // server-driven enemies are updated by netEnemies below
       // The dragon stays loaded at any distance — it's a visual landmark
       // circling its far-north roost until the player unlocks the fight.
       const near = e.isDragon || e.pos.distanceToSquared(player.pos) < ACTIVE2;
@@ -359,9 +384,12 @@ function animate() {
       e.mesh.matrixWorldAutoUpdate = near;
       if (near) e.update(dt, player, t);
     }
-    // Boss phase reactions: announce enrage and spawn minion adds.
+    // Server enemies (synced multiplayer): drive their motion/animation here.
+    if (netEnemies) netEnemies.update(dt);
+    // Boss phase reactions: announce enrage and spawn minion adds. (Boss phases
+    // are owned by the server in authoritative mode, so skip locally.)
     const newMinions = [];
-    for (const e of enemies) {
+    if (!netMode) for (const e of enemies) {
       if (!e.boss) continue;
       if (e._newPhase) { ui.floater('ENRAGED!', 'crit', e.pos); ui.log(`${e.bossName} enters phase ${e._newPhase}!`, 'death'); e._newPhase = 0; }
       if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
@@ -599,8 +627,9 @@ function animate() {
     }
 
     // The end of everything: once all other achievements are complete, the
-    // great dragon descends from its endless orbit to be challenged.
-    if (!dragonAwoken && Achievements.endgameReady(player)) {
+    // great dragon descends from its endless orbit to be challenged. (In a shared
+    // world the dragon is server-owned, so the client never spawns its own.)
+    if (!netMode && !dragonAwoken && Achievements.endgameReady(player)) {
       dragonAwoken = true;
       const dragon = spawnDragon(scene, world, player.stats.level);
       enemies.push(dragon);

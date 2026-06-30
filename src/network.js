@@ -78,6 +78,10 @@ export class Network {
       case 'welcome':
         this.id = msg.id;
         (msg.players || []).forEach((p) => { if (p.id !== this.id) this._spawnOther(p); });
+        // An authoritative server owns the enemies — tell the game to switch
+        // from local enemy simulation to rendering the server's shared enemies.
+        this.authoritative = !!msg.authoritative;
+        if (this.authoritative && this.onAuthoritative) this.onAuthoritative();
         break;
       case 'spawn':
         if (msg.player.id !== this.id) this._spawnOther(msg.player);
@@ -105,8 +109,18 @@ export class Network {
       case 'party_loot':
         if (this.onPartyLoot) this.onPartyLoot(msg.item || null, msg.fromName || 'A partymate');
         break;
+      // ---- Authoritative enemies (synced encounters) ----
+      case 'enemies':     if (this.onEnemies) this.onEnemies(msg.e || []); break;
+      case 'enemy_hp':    if (this.onEnemyHp) this.onEnemyHp(msg.enemyId, msg.hp); break;
+      case 'enemy_death': if (this.onEnemyDeath) this.onEnemyDeath(msg); break;
+      case 'enemy_attack':if (this.onEnemyAttack) this.onEnemyAttack(msg.dmg, msg.enemyId); break;
+      case 'enemy_shot':  if (this.onEnemyShot) this.onEnemyShot(msg.shot); break;
     }
   }
+
+  // Report a hit on a server enemy; the server applies it and broadcasts the
+  // resulting HP/death.
+  sendEnemyHit(serverId, dmg) { this._send({ type: 'enemy_hit', enemyId: serverId, dmg }); }
 
   inviteByName(name) { this._send({ type: 'party_invite', targetName: name }); }
   acceptInvite() { if (this.partyInvite) { this._send({ type: 'party_accept', leaderId: this.partyInvite.fromId }); this.partyInvite = null; } }

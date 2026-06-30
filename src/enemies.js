@@ -50,6 +50,21 @@ export function clearEnemyShots(scene) {
   ENEMY_SHOTS.length = 0;
 }
 
+// Spawn a dodgeable projectile from a server-authoritative ranged enemy. Reuses
+// the same ENEMY_SHOTS pipeline (updateEnemyShots) so it flies and resolves
+// against the local player exactly like a locally-fired shot.
+export function spawnNetShot(scene, shot) {
+  const from = new THREE.Vector3(shot.x, shot.y, shot.z);
+  const to = new THREE.Vector3(shot.tx, shot.ty, shot.tz);
+  const dir = to.sub(from); if (dir.lengthSq() < 1e-4) return; dir.normalize();
+  const col = shot.color || 0xffaa44;
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+  mesh.position.copy(from);
+  mesh.add(new THREE.PointLight(col, 1.2, 6));
+  scene.add(mesh);
+  ENEMY_SHOTS.push({ mesh, dir, speed: shot.speed || 15, range: shot.range || 24, traveled: 0, dmg: shot.dmg || 8, owner: null });
+}
+
 export class Enemy {
   constructor(scene, world, typeId, level, home, opts = {}) {
     this.id = NEXT_ID++;
@@ -319,6 +334,15 @@ export class Enemy {
   takeDamage(amount, crit = false) {
     if (!this.alive) return { dealt: 0, killed: false };
     amount = Math.max(1, Math.round(amount));
+    // Server-driven enemy: forward the hit to the authority and show optimistic,
+    // never-lethal feedback. The kill (and XP/loot) come back via enemy_death.
+    if (this._net) {
+      if (this._onNetHit) this._onNetHit(this._serverId, amount);
+      this._hitFlash = 0.18;
+      this.hp = Math.max(1, this.hp - amount); // bar dips but the server owns death
+      this._drawPlate();
+      return { dealt: amount, killed: false, crit };
+    }
     this.hp -= amount;
     this._hitFlash = 0.18;
     // aggro on hit

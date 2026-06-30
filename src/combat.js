@@ -475,30 +475,36 @@ export class Combat {
     this.ui.floater(`${res.dealt}${isCrit ? '!' : ''}`, isCrit ? 'crit' : 'dmg', enemy.pos);
     // Lifesteal from gear (e.g. unique weapons) heals on every hit.
     if (this.player.gearLifesteal > 0 && res.dealt > 0) this.player.heal(res.dealt * this.player.gearLifesteal);
-    if (res.killed) {
-      const levels = this.player.gainXp(res.xp);
-      this.ui.floater(`+${res.xp} XP`, 'xp', enemy.pos);
-      this.ui.log(`Slain ${enemy.type.name} (+${res.xp} XP)`, 'xp');
-      if (this.audio) this.audio.play('kill');
-      // Gold drop (elites and especially bosses pay out far more; Midas adds 50%).
-      const midas = this.player.passives && this.player.passives.has('midas') ? 1.5 : 1;
-      const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1) * midas);
-      this.player.gold += gold;
-      this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
-      // Quest progress for kills (and boss-slaying).
-      Quests.onKill(this.player, enemy.typeId);
-      // recordKill credits kill_total and kill_<typeId> (so a dragon kill already
-      // feeds the kill_dragon Dragonslayer counter); bosses also bump kill_boss.
-      if (this.player.recordKill) this.player.recordKill(enemy.typeId);
-      if (enemy.boss) this.player.counters.kill_boss = (this.player.counters.kill_boss || 0) + 1;
-      if (enemy.boss) Quests.onBossKill(this.player, enemy.bossName);
-      if (this.onKillEvent) this.onKillEvent(enemy);
-      if (this.onPartyXp) this.onPartyXp(res.xp);
-      if (levels > 0 && this.onLevelUp) this.onLevelUp();
-      this._dropLoot(enemy);
-      if (this.target === enemy) this.target = null;
-    }
+    if (res.killed) this.creditKill(enemy);
     return res.dealt;
+  }
+
+  // Award everything a kill grants the local player: XP, gold, quest/achievement
+  // counters, kill FX, and loot. Used both for locally-resolved kills and for
+  // server-confirmed kills the local player is credited with (synced encounters).
+  creditKill(enemy) {
+    const xp = enemy.xp || 0;
+    const levels = this.player.gainXp(xp);
+    this.ui.floater(`+${xp} XP`, 'xp', enemy.pos);
+    this.ui.log(`Slain ${enemy.type.name} (+${xp} XP)`, 'xp');
+    if (this.audio) this.audio.play('kill');
+    // Gold drop (elites and especially bosses pay out far more; Midas adds 50%).
+    const midas = this.player.passives && this.player.passives.has('midas') ? 1.5 : 1;
+    const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1) * midas);
+    this.player.gold += gold;
+    this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
+    // Quest progress for kills (and boss-slaying).
+    Quests.onKill(this.player, enemy.typeId);
+    // recordKill credits kill_total and kill_<typeId> (so a dragon kill already
+    // feeds the kill_dragon Dragonslayer counter); bosses also bump kill_boss.
+    if (this.player.recordKill) this.player.recordKill(enemy.typeId);
+    if (enemy.boss) this.player.counters.kill_boss = (this.player.counters.kill_boss || 0) + 1;
+    if (enemy.boss) Quests.onBossKill(this.player, enemy.bossName);
+    if (this.onKillEvent) this.onKillEvent(enemy);
+    if (this.onPartyXp) this.onPartyXp(xp);
+    if (levels > 0 && this.onLevelUp) this.onLevelUp();
+    this._dropLoot(enemy);
+    if (this.target === enemy) this.target = null;
   }
 
   // ---- Loot drops ----
