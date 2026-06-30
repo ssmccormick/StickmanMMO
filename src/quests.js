@@ -84,20 +84,95 @@ export const QUESTS = {
     reward: { xp: 900, gold: 420, item: { rarityBoost: 1.5 } } },
   q_boss_mirelord: { title: 'The Mirelord', requires: 'q_swamp', type: 'boss', target: 'The Mirelord', count: 1,
     desc: 'Destroy the Mirelord at the swamp\'s heart.',
-    intro: 'The Mirelord is the Blight made flesh — the first thing to crawl from the cracks when the world broke. It is rooted at the swamp\'s heart, coiled around the largest shard of all. End it, Ashbound, and you end the corruption at its source. This is the one we\'ve all been too afraid to face.',
-    outro: 'It\'s done. The last and largest shard returns to the Emberheart. Carry it to the Nexus — the flame is whole enough to rekindle now. You did what the rest of us never could. Aethelgard will remember the name of the Ashbound who gave it back its fire.',
+    intro: 'The Mirelord is the Blight made flesh — the first thing to crawl from the cracks when the world broke. It is rooted at the swamp\'s heart, coiled around a great shard of the Emberheart. End it, Ashbound, and you cut the corruption at its oldest root. This is the one we\'ve all been too afraid to face.',
+    outro: 'It\'s done. A fourth shard returns to the flame — and the Mire falls quiet for the first time since the Sundering. But the Emberheart still aches; it counts EIGHT pieces of itself, not four. There are reaches beyond the old maps — the Outer Four — and a shard lost in each. Rest, Ashbound. The hardest road is still ahead.',
     reward: { xp: 2400, gold: 1200, item: { rarityBoost: 3.2 } } },
+
+  // ===================== THE OUTER FOUR (end-game reaches) =====================
+  // --- Cinderhold (ash / Emberwastes) ---
+  q_ash: { title: 'Where the Ash Burns', type: 'kill', target: 'brute', count: 10,
+    desc: 'Break 10 Ogre Brutes in the Emberwastes.',
+    intro: 'So the embers sent you past the old maps, to the Emberwastes — where the Blight burns instead of rots. Cinderhold has held this furnace of a reach for a hundred years, but the ash-swollen Brutes are battering our forge-gates. Break ten of them, and we\'ll see if you\'re forged for what comes next.',
+    outro: 'Tempered, not melted. Good. But the brutes only rage because the wyrm rages — Pyraxis, coiled in the molten deep with a shard smoldering in its breast. That fire is why this reach never cools.',
+    reward: { xp: 2000, gold: 900, item: { rarityBoost: 2.0 } } },
+  q_boss_pyraxis: { title: 'The Emberwyrm', requires: 'q_ash', type: 'boss', target: 'Pyraxis the Emberwyrm', count: 1,
+    desc: 'Slay Pyraxis the Emberwyrm in the molten deep.',
+    intro: 'Pyraxis is a beast born of the Sundering\'s own fire, and the shard in its breast keeps the whole reach burning. Quench it, Ashbound — drag the fifth shard out of the embers before the Emberwastes burn the rest of the world down with them.',
+    outro: 'The furnace cools at last. A fifth shard returns to the Emberheart, and the ash settles into something like peace. Three of the Outer Four remain — and they only grow stranger from here.',
+    reward: { xp: 3000, gold: 1500, item: { rarityBoost: 3.0 } } },
+
+  // --- Verdanthul (jungle / Verdant Wilds) ---
+  q_jungle: { title: 'The Hungry Green', type: 'kill', target: 'wolf', count: 10,
+    desc: 'Cull 10 Dire Sticks in the Verdant Wilds.',
+    intro: 'Welcome to the Verdant Wilds, ash-walker. Older and hungrier than the Greenwood ever was — the vines here drink blood, and the beasts have forgotten fear entirely. Cull ten of the Dire packs so my canopy-folk can keep the green from swallowing the town whole.',
+    outro: 'The green takes a breath, and so do we. But the Wilds answer to something far older than any wolf — Mossfang, who was rooted here before the first tree, and woke wrong when the world broke.',
+    reward: { xp: 2200, gold: 1000, item: { rarityBoost: 2.1 } } },
+  q_boss_mossfang: { title: 'The Ancient', requires: 'q_jungle', type: 'boss', target: 'Mossfang the Ancient', count: 1,
+    desc: 'Fell Mossfang the Ancient in the jungle\'s heart.',
+    intro: 'Mossfang is a primordial thing — vast, root-bound, its shard pulsing beneath a hundred years of bark and moss. It does not hunt; it simply grows, and the reach grows monstrous with it. Cut the sixth shard from its heartwood, Ashbound. Few who walk into that green walk back out.',
+    outro: 'The Ancient sleeps the true sleep now, and the sixth shard comes home. The Emberheart glows hotter in my hand than it has in a generation. Two reaches left. Two shards. Then... we shall see what the flame becomes.',
+    reward: { xp: 3300, gold: 1650, item: { rarityBoost: 3.0 } } },
+
+  // --- Prismhold (crystal / Shardspire Highlands) ---
+  q_crystal: { title: 'False Light', type: 'kill', target: 'knight', count: 10,
+    desc: 'Shatter 10 Fallen Knights in the Shardspire Highlands.',
+    intro: 'The Shardspire Highlands shine like the Emberheart itself — and that is the lie of them. The light here is fractured, cruel, and the Fallen that march the crystal flats gleam as they kill. Shatter ten, Ashbound, and do not be fooled by anything that glitters out here.',
+    outro: 'Ten less liars on the flats. But the brightest lie of all sits the crystal throne: Vael, the Prism Tyrant, who split a shard of the flame into a hundred cold colors and called it a crown.',
+    reward: { xp: 2500, gold: 1150, item: { rarityBoost: 2.2 } } },
+  q_boss_vael: { title: 'The Prism Tyrant', requires: 'q_crystal', type: 'boss', target: 'Vael the Prism Tyrant', count: 1,
+    desc: 'Break Vael the Prism Tyrant on the Shardspire.',
+    intro: 'Vael holds the brightest shard — and the coldest. It refracts the Emberheart\'s own light into something that warms nothing and blinds everything. End the Tyrant, Ashbound, and reclaim the seventh shard before the false light spreads to the Nexus itself.',
+    outro: 'The crystal goes dark, and the true warmth returns to the seventh shard. Only the Scarlands remain now — the last, farthest, hardest reach. One shard stands between you and an Emberheart made whole.',
+    reward: { xp: 3600, gold: 1800, item: { rarityBoost: 3.1 } } },
+
+  // --- Rustmarket (badlands / Scarlands) ---
+  q_badlands: { title: 'The Bone-Dry Frontier', type: 'kill', target: 'knight', count: 10,
+    desc: 'Put down 10 Fallen Knights in the Scarlands.',
+    intro: 'You\'ve come to the end of the world, Ashbound — the Scarlands, all rust-red rock and bone-dry canyon. Rustmarket scrapes a living from the ruin, but the dead outnumber us a hundred to one and march to a single drum. Put down ten of the marching Fallen so we can hear ourselves think.',
+    outro: 'That\'s ten fewer drums. But they all march for Skarn, the Bonelord, throned in the deepest canyon on the last lost shard. Reach him, and you reach the end of the long road.',
+    reward: { xp: 2800, gold: 1300, item: { rarityBoost: 2.3 } } },
+  q_boss_skarn: { title: 'The Bonelord', requires: 'q_badlands', type: 'boss', target: 'Skarn the Bonelord', count: 1,
+    desc: 'Cast down Skarn the Bonelord at the canyon\'s bottom.',
+    intro: 'Skarn is the marshal of every dead thing in the Scarlands, and the eighth and final shard is set in its bone throne like a jewel. Cast it down, Ashbound, and the Emberheart will hold all eight pieces of itself once more. Everything we are has come down to this.',
+    outro: 'The Bonelord falls, and the EIGHTH shard returns to the flame. For the first time since the Sundering, the Emberheart is whole — I can feel it blazing from here. You did what no Ashbound before you could. And yet... the sky has gone strange. Something vast is stirring above the far peaks. Go to Keeper Aelith at the Nexus. Quickly.',
+    reward: { xp: 4200, gold: 2200, item: { rarityBoost: 3.3 } } },
+
+  // ===================== THE SKY-TYRANT (the true finale) =====================
+  q_dragon: { title: 'The Sky-Tyrant', requires: 'q_boss_skarn', type: 'boss', target: 'Vetharion, the Sky-Tyrant', count: 1,
+    desc: 'Slay Vetharion, the Sky-Tyrant, at the Dragon\'s Roost.',
+    intro: 'You felt it the moment the eighth shard came home, didn\'t you? When the Emberheart was made whole, the Blight\'s last and greatest horror tore loose from the sky to reclaim it: Vetharion, the Sky-Tyrant — the dragon that has circled Aethelgard since the world broke, waiting for the flame to be worth devouring. It has descended to the Dragon\'s Roost in the far north. Everything — every shard, every Archfiend, every death and rebirth — has been preparing you for this. Go, Ashbound. End it, and the world is finally, truly free.',
+    outro: 'The Sky-Tyrant falls from the heavens, and the long shadow it cast over Aethelgard lifts at last. The Emberheart blazes whole and unthreatened, the Embers brighten in every reach, and the world remembers how to hope. You are no longer the last Ashbound — you are the first hero of the age to come. Aethelgard will sing your name beside the First Heroes, for as long as the flame remembers. And it will remember you forever.',
+    reward: { xp: 9000, gold: 5000, item: { rarityBoost: 4.0 } } },
+
+  // ===================== SIDE QUESTS =====================
+  q_angler: { title: 'A Quiet Hour', requires: 'q_chest', type: 'fish', count: 12,
+    desc: 'Reel in 12 fish from the waters of Aethelgard.',
+    intro: 'Between you and me, Ashbound, this world-saving business is exhausting to watch. Do an old fence a favor — go wet a line somewhere quiet and bring me back twelve good fish. The Sundered Sea, a river, a mountain tarn, doesn\'t matter. Half of them I\'ll sell. The other half... well, even the Emberheart\'s chosen has to eat.',
+    outro: 'Now THAT is a catch. There\'s coin in fish, and there\'s peace in fishing — and out here, peace is the rarer prize. Come back and cast a line whenever the war gets too loud, eh?',
+    reward: { xp: 600, gold: 400, item: { rarityBoost: 1.2 } } },
+  q_proving: { title: 'The Proving', requires: 'q_knights', type: 'level', count: 15,
+    desc: 'Grow to level 15 and prove you can carry the flame.',
+    intro: 'The reaches beyond the Nexus will eat a green Ashbound alive. Before I send anyone past the bridges with my blessing, they prove they can survive the road. Reach the fifteenth mark of your strength, soldier — claw your way to level 15 — and report back to me a hero, not a hopeful.',
+    outro: 'Fifteen levels of scars and grit. The flame chose well — you\'re ready for the reaches that matter now. Go carry the firelight where Frostgard and the rest can\'t. The Nexus stands with you, Ashbound.',
+    reward: { xp: 800, gold: 350, potion: 'hp_major', potionCount: 3 } },
 };
 
 // Quest-giver NPCs, grouped by town. Each offers its quest chain in order.
 export const GIVERS = [
   { name: 'Mara the Herbalist', town: 'The Nexus', dx: 8, dz: 8, color: 0x6fae54, accent: 0xffe27a, quests: ['q_slimes', 'q_wolves'] },
-  { name: 'Captain Stane', town: 'The Nexus', dx: -8, dz: 8, color: 0x9aa4b2, accent: 0xd8423c, quests: ['q_bandits', 'q_knights'] },
-  { name: 'Finn the Fence', town: 'The Nexus', dx: 8, dz: -7, color: 0x5a4f6a, accent: 0xc07bff, quests: ['q_chest'] },
+  { name: 'Captain Stane', town: 'The Nexus', dx: -8, dz: 8, color: 0x9aa4b2, accent: 0xd8423c, quests: ['q_bandits', 'q_knights', 'q_proving'] },
+  { name: 'Finn the Fence', town: 'The Nexus', dx: 8, dz: -7, color: 0x5a4f6a, accent: 0xc07bff, quests: ['q_chest', 'q_angler'] },
   { name: 'Ranger Elowen', town: 'Thornhollow', dx: 0, dz: 5, color: 0x4d8a3a, accent: 0x9bd86a, quests: ['q_forest', 'q_boss_gorath'] },
   { name: 'Warden Bram', town: 'Frostgard', dx: 0, dz: 5, color: 0x9aa6c2, accent: 0x9fe0ff, quests: ['q_snow', 'q_boss_frosthelm'] },
   { name: 'Sister Dune', town: 'Dustmarket', dx: 0, dz: 5, color: 0xd9c486, accent: 0xffcf6a, quests: ['q_desert', 'q_boss_sandmaw'] },
   { name: 'Old Cregg', town: 'Gloomfen', dx: 0, dz: 5, color: 0x6a7a52, accent: 0xb05aff, quests: ['q_swamp', 'q_boss_mirelord'] },
+  // The Outer Four — one giver per end-game town.
+  { name: 'Emberwright Hadda', town: 'Cinderhold', dx: 0, dz: 5, color: 0x8a4a2a, accent: 0xff8a2a, quests: ['q_ash', 'q_boss_pyraxis'] },
+  { name: 'Vinespeaker Oba', town: 'Verdanthul', dx: 0, dz: 5, color: 0x2f6e2a, accent: 0x9bd86a, quests: ['q_jungle', 'q_boss_mossfang'] },
+  { name: 'Lumen the Refracted', town: 'Prismhold', dx: 0, dz: 5, color: 0x8a9ad0, accent: 0xb2a8e2, quests: ['q_crystal', 'q_boss_vael'] },
+  { name: 'Scrap-Captain Dol', town: 'Rustmarket', dx: 0, dz: 5, color: 0xb0663a, accent: 0xc98a4a, quests: ['q_badlands', 'q_boss_skarn'] },
+  // The Keeper of the Flame, at the Nexus, offers the final trial.
+  { name: 'Keeper Aelith', town: 'The Nexus', dx: -8, dz: -7, color: 0xd8b24a, accent: 0xff6a2a, quests: ['q_dragon'] },
 ];
 
 // Tag each quest with the name of the giver who offers it (used by the quest
@@ -141,6 +216,7 @@ export function turnIn(player, id) {
   if (r.potion) { for (let i = 0; i < (r.potionCount || 1); i++) { const c = makeConsumable(r.potion); if (player.addItem(c)) out.items.push(c); } }
   if (r.xp) { out.xp = r.xp; out.levels = player.gainXp(r.xp); }
   player.questLog[id].turnedIn = true;
+  if (player.counters) player.counters.quests = (player.counters.quests || 0) + 1; // Hero of Aethelgard
   return out;
 }
 
@@ -153,3 +229,4 @@ function advance(player, predicate) {
 export function onKill(player, enemyTypeId) { advance(player, (q) => q.type === 'kill' && q.target === enemyTypeId); }
 export function onChestOpened(player) { advance(player, (q) => q.type === 'chest'); }
 export function onBossKill(player, bossName) { advance(player, (q) => q.type === 'boss' && q.target === bossName); }
+export function onFish(player) { advance(player, (q) => q.type === 'fish'); }

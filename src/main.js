@@ -224,6 +224,7 @@ function updateFishing(t) {
       const loot = rollFishingCatch(lvl, player.fishingStat);
       if (player.addItem(loot)) {
         player.counters.fish = (player.counters.fish || 0) + 1; // Master Angler progress
+        Quests.onFish(player); // advance fishing quests
         const rar = RARITY[loot.rarity];
         if (loot.type === 'consumable') {
           ui.log(`You reel in a <b>${loot.name}</b>! (${loot.rarity}, worth ${loot.value}g)`, 'xp');

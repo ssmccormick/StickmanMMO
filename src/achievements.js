@@ -27,6 +27,13 @@ export const SPECIALS = {
   blessed:    { name: 'Blessed',           glyph: '🙏', passive: 'blessed', stat: { maxMp: 60 }, desc: 'Shrine blessings last 50% longer; +60 Max MP.' },
   showman:    { name: 'Showman',           glyph: '🎭', passive: 'showman', stat: { speed: 0.05 }, desc: '+5% move speed and a flair for the dramatic.' },
   dragonlord: { name: 'Dragonlord',        glyph: '🐉', passive: 'dragonmount', stat: { damage: 120, maxHp: 220, str: 20 }, desc: 'Ride a DRAGON (press R), and wield a sky-tyrant’s might.' },
+  wolfsbane:  { name: 'Wolfsbane',         glyph: '🐺', stat: { crit: 0.06, dex: 10 }, desc: '+6% Crit, +10 DEX.' },
+  lawbringer: { name: 'Lawbringer',        glyph: '⚖️', stat: { damage: 34 }, desc: '+34 Damage.' },
+  vanguard:   { name: 'Vanguard',          glyph: '🛡️', stat: { armor: 45, maxHp: 90 }, desc: '+45 Armor, +90 Max HP.' },
+  berserker:  { name: 'Berserker',         glyph: '🪓', passive: 'berserker', stat: { damage: 40 }, desc: '+40 Damage; deal +25% damage while below 35% HP.' },
+  skywarden:  { name: 'Skywarden',         glyph: '🦅', stat: { dex: 14, speed: 0.05 }, desc: '+14 DEX, +5% move speed.' },
+  champion:   { name: 'Champion of Aethelgard', glyph: '🏅', stat: { str: 12, dex: 12, int: 12, maxHp: 120 }, desc: '+12 to all attributes, +120 Max HP.' },
+  homeward:   { name: 'Homeward',          glyph: '🏕️', stat: { maxHp: 80, maxSp: 60 }, desc: '+80 Max HP, +60 Max SP.' },
 };
 
 // Each achievement: a counter it watches + four ascending tiers.
@@ -155,6 +162,69 @@ export const ACHIEVEMENTS = [
       { count: 75,  reward: { speed: 0.03 } },
       { count: 200, reward: { maxHp: 50 } },
       { count: 500, reward: { special: 'showman' } },
+    ],
+  },
+  {
+    id: 'wolfsbane', name: 'Wolfsbane', glyph: '🐺', cat: 'Combat', counter: 'kill_wolf', noun: 'Dire Sticks slain',
+    tiers: [
+      { count: 50,  reward: { speed: 0.03 } },
+      { count: 150, reward: { dex: 6 } },
+      { count: 400, reward: { maxHp: 60 } },
+      { count: 900, reward: { special: 'wolfsbane' } },
+    ],
+  },
+  {
+    id: 'outlaw', name: 'Outlaw Hunter', glyph: '⚖️', cat: 'Combat', counter: 'kill_grunt', noun: 'bandits brought to justice',
+    tiers: [
+      { count: 50,  reward: { maxSp: 40 } },
+      { count: 150, reward: { damage: 16 } },
+      { count: 400, reward: { crit: 0.04 } },
+      { count: 900, reward: { special: 'lawbringer' } },
+    ],
+  },
+  {
+    id: 'knightsbane', name: 'Knightsbane', glyph: '⚔️', cat: 'Combat', counter: 'kill_knight', noun: 'Fallen Knights laid to rest',
+    tiers: [
+      { count: 50,  reward: { armor: 18 } },
+      { count: 150, reward: { maxHp: 70 } },
+      { count: 400, reward: { str: 8 } },
+      { count: 900, reward: { special: 'vanguard' } },
+    ],
+  },
+  {
+    id: 'ogreslayer', name: 'Ogreslayer', glyph: '🪓', cat: 'Combat', counter: 'kill_brute', noun: 'Ogre Brutes broken',
+    tiers: [
+      { count: 40,  reward: { str: 5 } },
+      { count: 120, reward: { damage: 20 } },
+      { count: 300, reward: { maxHp: 80 } },
+      { count: 700, reward: { special: 'berserker' } },
+    ],
+  },
+  {
+    id: 'skyhunter', name: 'Skyhunter', glyph: '🦅', cat: 'Combat', counter: 'kill_wraith', noun: 'Sky Wraiths downed',
+    tiers: [
+      { count: 30,  reward: { dex: 5 } },
+      { count: 90,  reward: { speed: 0.04 } },
+      { count: 240, reward: { crit: 0.04 } },
+      { count: 600, reward: { special: 'skywarden' } },
+    ],
+  },
+  {
+    id: 'heroofaethelgard', name: 'Hero of Aethelgard', glyph: '🏅', cat: 'Mastery', counter: 'quests', noun: 'quests completed',
+    tiers: [
+      { count: 4,  reward: { maxHp: 50 } },
+      { count: 9,  reward: { damage: 22 } },
+      { count: 15, reward: { str: 6, dex: 6, int: 6 } },
+      { count: 22, reward: { special: 'champion' } },
+    ],
+  },
+  {
+    id: 'wayfarer', name: 'Wayfarer', glyph: '🏕️', cat: 'Exploration', counter: 'rest', noun: 'times rested at an Ember',
+    tiers: [
+      { count: 5,   reward: { maxSp: 30 } },
+      { count: 20,  reward: { maxHp: 50 } },
+      { count: 60,  reward: { maxMp: 60 } },
+      { count: 150, reward: { special: 'homeward' } },
     ],
   },
   {

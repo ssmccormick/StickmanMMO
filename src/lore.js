@@ -3,7 +3,8 @@
 // quests and the player's role hang from — read in-game via the Codex (L).
 // The central conceit ties directly to the game's mechanics: bonfires are
 // Embers of a great flame, which is *why* the Ashbound (you) return from
-// death, and the four world bosses hold the shards that keep it broken.
+// death; the eight world bosses hold the shards that keep it broken, and the
+// Sky-Tyrant dragon is the end-boss that descends once all eight have fallen.
 // ============================================================
 
 export const WORLD_NAME = 'Aethelgard';
@@ -14,9 +15,10 @@ export const PROLOGUE =
   'Aethelgard and kindled the Emberheart — a flame that bound the world together ' +
   'and remembered the names of the brave. While it burned, no hero who fell beside ' +
   'its embers stayed dead for long.\n\n' +
-  'Then came the Sundering. The Emberheart cracked, the land tore into four wild and ' +
-  'warring reaches, and into the wounds crept the Blight — a corruption that raises the ' +
-  'dead, maddens the beasts, and crowns monsters as kings.\n\n' +
+  'Then came the Sundering. The Emberheart shattered into eight shards, the land tore into ' +
+  'eight wild and warring reaches, and into the wounds crept the Blight — a corruption that ' +
+  'raises the dead, maddens the beasts, and crowns monsters as kings. And high above it all, ' +
+  'a dragon tore loose from the breaking sky, and has circled ever since — waiting.\n\n' +
   'The embers are guttering now. But the flame still remembers a few. It has remembered you.';
 
 // The codex: categorized lore the player can browse. Each section is a list of
@@ -24,7 +26,7 @@ export const PROLOGUE =
 export const CODEX = [
   {
     id: 'world', title: 'The World', icon: '🌍', entries: [
-      { title: 'Aethelgard', body: 'A broken world of green meadows, deep wood, frozen peaks, burning dunes and drowned mire — all of it spun out from one central refuge, the Nexus. The roads still remember when it was whole.' },
+      { title: 'Aethelgard', body: 'A broken world of green meadows, deep wood, frozen peaks, burning dunes and drowned mire — and, beyond the old maps, the stranger Outer reaches of ash, jungle, crystal and rust. All of it spun out from one central refuge, the Nexus. The roads still remember when it was whole.' },
       { title: 'The Nexus', body: 'The first and last refuge: a great walled city raised by the First Heroes upon an island at the heart of the world, ringed by the Sundered Sea. Long stone causeways bridge the water to the eight reaches beyond, and the small Waking Vale across the first bridge is where the newly-Ashbound take their first steps onto the mainland. No Blight may enter while the flame burns — which is why every town remains a haven.' },
       { title: 'The Sundered Sea', body: 'When the world cracked, the waters rushed in to ring the Nexus, drowning the old heartland and leaving the capital an island. Only the First Heroes\' causeways still cross it — to reach any reach you must take a bridge, or brave the cold water.' },
       { title: 'The Emberheart & the Embers', body: 'The great flame at the Nexus is the Emberheart. Every bonfire in the wilds is one of its scattered Embers. Rest at an Ember and it learns your name; fall in battle, and it calls you back. This is why the Ashbound do not stay dead — and why the guttering of the Embers threatens all of Aethelgard.' },
@@ -34,15 +36,16 @@ export const CODEX = [
   },
   {
     id: 'sundering', title: 'The Sundering', icon: '☄️', entries: [
-      { title: 'The Breaking', body: 'No two tales agree on what cracked the Emberheart — a war, a betrayal, a bargain struck with something beneath the world. What is certain is that the land tore apart, and four reaches drifted away into wilderness, each left to rot in its own way.' },
+      { title: 'The Breaking', body: 'No two tales agree on what cracked the Emberheart — a war, a betrayal, a bargain struck with something beneath the world. What is certain is that the land tore apart, and eight reaches drifted away into wilderness, each left to rot in its own way.' },
       { title: 'The Blight', body: 'From the cracks seeped the Blight: a corruption that animates the fallen, maddens beasts, and pools where the strongest monsters crown themselves kings. It cannot abide Ember-light — the one mercy left to the living.' },
-      { title: 'The Shards', body: 'When the Emberheart broke, four shards of its essence were lost into the reaches. Each was seized by a monster the Blight raised into a king. While the shards are held, the flame cannot be made whole — and the world cannot be healed.' },
+      { title: 'The Eight Shards', body: 'When the Emberheart broke, EIGHT shards of its essence were lost into the reaches — the Inner Four (Greenwood, Frostpeaks, Dunes, Mire), close to the Nexus and long known, and the Outer Four (Emberwastes, Verdant Wilds, Shardspire, Scarlands), far beyond the old maps. Each shard was seized by an Archfiend the Blight raised into a king. While even one is held, the flame cannot be made whole.' },
+      { title: 'The Thing in the Sky', body: 'Not everything the Sundering loosed crawled. When the Emberheart cracked, a dragon — Vetharion, the Sky-Tyrant — tore free of the heavens and took to an endless orbit above Aethelgard. The Archfiends are the Blight\'s crowns; Vetharion is its hunger. It waits for the flame to be made whole again, so that it may devour something worth devouring.' },
     ],
   },
   {
     id: 'ashbound', title: 'The Ashbound', icon: '🔥', entries: [
       { title: 'Reborn from Embers', body: 'The Ashbound are heroes the Emberheart refuses to forget. Burned to ash and called back from the embers, they alone can carry living flame into the Blighted reaches. Most of the old Ashbound are gone now. You are among the last.' },
-      { title: 'Your Purpose', body: 'Prove yourself in the meadows, push into each reach, and end the four Archfiends whose stolen shards keep the Emberheart broken. Carry their fall back to the Nexus, and the flame may yet be rekindled — and Aethelgard saved.' },
+      { title: 'Your Purpose', body: 'Prove yourself in the meadows, push into each reach in turn, and end the eight Archfiends whose stolen shards keep the Emberheart broken — the Inner Four first, then the Outer Four beyond the old maps. Carry every shard back to the Nexus, and the flame will be whole again. But beware: when it is, the Sky-Tyrant will descend to claim it, and the last and greatest battle of the age will be yours to fight.' },
     ],
   },
   {
@@ -66,7 +69,14 @@ export const CODEX = [
       { title: 'Pyraxis the Emberwyrm', body: 'A beast born of the Sundering\'s fire, wreathed in the Emberwastes\' ash. The shard in its breast smolders, keeping the volcanic reach forever burning.' },
       { title: 'Mossfang the Ancient', body: 'A primordial thing that woke in the jungle\'s heart when the world broke, vast and root-bound. Its shard pulses beneath layers of bark and moss.' },
       { title: 'Vael the Prism Tyrant', body: 'A being of fractured Ember-light that rules the crystal highlands, splitting the flame into a hundred cruel colors. Its shard is the brightest — and the coldest.' },
-      { title: 'Skarn the Bonelord', body: 'The marshal of the Scarlands\' endless dead, throned in bone at the bottom of Bonechew Canyon. Its shard is the last and most distant of all.' },
+      { title: 'Skarn the Bonelord', body: 'The marshal of the Scarlands\' endless dead, throned in bone at the bottom of Bonechew Canyon. Its shard is the last and most distant of all — and with its fall, the eight are whole.' },
+    ],
+  },
+  {
+    id: 'skytyrant', title: 'The Sky-Tyrant', icon: '🐉', entries: [
+      { title: 'Vetharion', body: 'The dragon that tore loose when the world broke and has circled Aethelgard ever since — vast, patient, and older than any Archfiend. The crowned monsters merely rule the ruin; Vetharion intends to end it. It will not descend until the Emberheart is whole again and worth the taking.' },
+      { title: 'The Dragon\'s Roost', body: 'When all eight shards return to the flame, the Sky-Tyrant breaks its endless orbit and falls upon the far-northern wastes — the Dragon\'s Roost, below the high peaks. There the last battle of the age is fought, beneath a sky that has waited a thousand years to land.' },
+      { title: 'The Final Trial', body: 'No shard, no Archfiend, no death and rebirth was ever the true test — they were the preparation. Vetharion is the trial the Ashbound was kindled for. To fell it is to free Aethelgard not just from the Blight, but from the shadow that hung over the whole broken age.' },
     ],
   },
   {
@@ -76,6 +86,8 @@ export const CODEX = [
       { title: 'Dire Stick', body: 'Wolves maddened and made bold by the Blight, hunting in packs that no longer fear the firelight.' },
       { title: 'Ogre Brute', body: 'Hill-giants the corruption swelled and brutalized. Slow, vast, and strong enough to crush a caravan underfoot.' },
       { title: 'Fallen Knight', body: 'The old dead, raised in their rusted armor to guard the reaches. They were heroes once. Putting them down is the only kindness left them.' },
+      { title: 'Sky Wraith', body: 'Winged horrors born of the Blight\'s reach into the air. They circle high over the wilds and fold their wings to dive the moment a living thing strays too far from the firelight.' },
+      { title: 'Vetharion, the Sky-Tyrant', body: 'Not a beast of the reaches but of the sky itself — the dragon loosed by the Sundering. The largest living thing in Aethelgard, and the last the Ashbound will ever have to face.' },
     ],
   },
   {
@@ -96,8 +108,9 @@ export function ashboundEntry(player) {
     body: `You are ${name}, a ${cls} newly returned from the ash. You woke at the Nexus with the ` +
       `Emberheart's call in your bones and no memory of the life that earned you a place among the ` +
       `Ashbound. Whatever you were, you are now Aethelgard's last ember of hope.\n\n` +
-      `You stand at level ${lvl}. The road begins in the meadows and ends at the heart of the Blight — ` +
-      `with four Archfiends, and four stolen shards, between you and a world made whole.`,
+      `You stand at level ${lvl}. The road begins in the meadows and ends in the far-northern sky — ` +
+      `with eight Archfiends and their eight stolen shards between you and a world made whole, and the ` +
+      `Sky-Tyrant Vetharion waiting beyond them all for the flame to be worth devouring.`,
   };
 }
 
@@ -107,9 +120,13 @@ export const TOWN_CHATTER = [
   'Rest at an Ember, traveller — fall out there, and it\'s the only thing that\'ll call you back.',
   'The further from the roads, the thicker the Blight. Mind yourself.',
   'An Ashbound, here? Then the Emberheart isn\'t done with us yet.',
-  'Four shards, four monsters wearing crowns. That\'s all that stands between us and the end.',
+  'Eight shards, eight monsters wearing crowns. That\'s all that stands between us and the end.',
   'Frostgard\'s walls have never fallen. Long may they stand.',
   'My grandfather swore Frosthelm helped raise the Nexus. Now look at him.',
   'The Mirelord was here before the Sundering, they say. Before everything.',
   'Gold buys gear, but it won\'t buy back a guttered Ember.',
+  'The Inner Four are bad enough — but folk who\'ve come back from the Outer reaches don\'t talk much.',
+  'They say Cinderhold\'s air is hot enough to cook bread on the wind. And Rustmarket\'s worse.',
+  'Look up some clear night and you\'ll see it — that shadow that circles and circles. Best pray it stays up there.',
+  'When the last shard comes home, they say the sky itself will come down for it. Gives me chills.',
 ];

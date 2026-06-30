@@ -240,6 +240,8 @@ export class Player {
     let p = attackPower(this.classId, effStats) + (this.bonus.damage || 0);
     if (this.buffs.until > this._clock) p *= this.buffs.dmg;
     p *= this._tm('dmgMult'); // potion damage buffs
+    // Berserker (Ogreslayer reward): hits harder while badly wounded.
+    if (this.passives.has('berserker') && this.stats.hp < this.effMaxHp * 0.35) p *= 1.25;
     return p;
   }
 
@@ -738,6 +740,7 @@ export class Player {
   restAtBonfire(pos) {
     this.respawn = pos.clone();
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;
+    this.counters.rest = (this.counters.rest || 0) + 1; // Wayfarer achievement
   }
 
   // ---- Persistence ----

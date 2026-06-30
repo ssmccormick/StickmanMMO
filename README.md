@@ -180,10 +180,12 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
     **`C`** character sheet.
 - **Emotes** — press **`T`** for an emote wheel (wave, dance, cheer, flex, laugh, bow, cry,
   sit). Your stickman acts it out and a little bubble pops above your head.
-- **Achievements** (**`B`**) — long-horizon milestone trees for everything you do: slaying
-  slimes, total kills, walking, riding, climbing, swimming, fishing, and discovering areas.
-  Each chain has four tiers — the first three grant **small permanent stat boosts**, and the
-  **final node is a unique passive or ability**, e.g.:
+- **Achievements** (**`B`**) — **22** long-horizon milestone trees for everything you do:
+  slaying slimes (and wolves, bandits, knights, ogres, and sky wraiths), total kills, walking,
+  riding, climbing, swimming, fishing, discovering areas, opening chests, earning gold,
+  leveling, praying at shrines, resting, emoting, and completing quests. Each chain has four
+  tiers — the first three grant **small permanent stat boosts**, and the **final node is a
+  unique passive or ability**, e.g.:
   - **Slime Slayer** (100 → 250 → 500 → 1000 slimes): +Move Speed ×2, +Max HP, then a
     bouncy **🟢 Slime Mount** you can summon with **`R`**.
   - **Windwalker** (walk far enough): +12% speed and sprinting barely costs stamina.
@@ -195,6 +197,9 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
     **Treasure Sense** (chests yield far better loot); **Tycoon** → **Midas** (+50% gold from
     kills); **Ascendant** (reach Lv 50) → **Veteran**; **Pilgrim** → **Blessed** (shrine
     blessings last 50% longer); **Performer** → **Showman**.
+  - **Ogreslayer** → **Berserker** (+25% damage while below 35% HP); **Hero of Aethelgard**
+    (complete 22 quests) → **Champion**; plus **Wolfsbane**, **Outlaw Hunter**, **Knightsbane**,
+    **Skyhunter**, and **Wayfarer** (rest at Embers).
   Unlocks pop a toast, stack permanently, and persist with your character.
 - **🐉 The end boss — Vetharion, the Sky-Tyrant.** The great dragon that circles high above
   is the **final challenge at the end of everything**: complete **every other achievement**
@@ -245,20 +250,24 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
   bonfires. Rested bonfires become **fast-travel** points — open the map at a bonfire/town
   and click one to teleport.
 - **A world with a story** — **Aethelgard** is a world shattered by *the Sundering*, its
-  binding flame (the **Emberheart**) broken and its four reaches overrun by the **Blight**.
-  Bonfires are *Embers* of that flame — which is the in-world reason you respawn — and **you
-  are one of the Ashbound**, a hero called back from the ash to reclaim the four shards held
-  by the four world bosses. Read the whole lore-board in the **Codex (`L`)**: prologue, the
-  world, the Sundering, the Ashbound (with a **personalized entry written from your own
-  character**), the four reaches, the Archfiends, a bestiary, and the deep places.
-- **Story-driven quests** — quest-giver NPCs across all towns (look for the ❗ marker) offer
-  **multi-step quest chains** and **boss-slaying quests**, each framed by the overarching
-  story: every kill thins the Blight, every Archfiend returns a shard, and the chain builds
-  toward rekindling the Emberheart. The **quest-giver popup** is a roomy dialog where the
-  giver's words **type out letter by letter** (click to fill instantly), then reveal the
-  objective and reward. Track quests on the HUD and in the **quest log (`J`)**; turn them in
-  for **XP, gold, gear, and potions** (boss quests reward epics/legendaries). Saved with
-  your character.
+  binding flame (the **Emberheart**) broken into **eight shards** and its **eight reaches**
+  overrun by the **Blight**. Bonfires are *Embers* of that flame — which is the in-world
+  reason you respawn — and **you are one of the Ashbound**, a hero called back from the ash to
+  reclaim the eight shards held by the eight **Archfiends** (the Inner Four, then the Outer
+  Four beyond the old maps). And when the flame is whole again, the **Sky-Tyrant Vetharion**
+  descends for the final battle. Read the whole lore-board in the **Codex (`L`)**: prologue,
+  the world, the Sundering, the Ashbound (with a **personalized entry written from your own
+  character**), the eight reaches, the Archfiends, the Sky-Tyrant, a bestiary, and the deep places.
+- **Story-driven quests (24 of them)** — quest-giver NPCs in **every town** (look for the ❗
+  marker) offer **multi-step quest chains** and **boss-slaying quests**, each framed by the
+  overarching story: clear each reach in turn, fell its Archfiend to return a shard, and march
+  from the meadows all the way to the **Dragon's Roost** finale against Vetharion. There are
+  side quests too — a **fishing** request and a **level-up "Proving"** — plus **Keeper Aelith**
+  at the Nexus, who only appears for the final trial. The **quest-giver popup** is a roomy
+  dialog where the giver's words **type out letter by letter** (click to fill instantly), then
+  reveal the objective and reward. Track quests on the HUD and in the **quest log (`J`)**; turn
+  them in for **XP, gold, gear, and potions** (boss quests reward epics/legendaries). Saved
+  with your character.
 - **Gear sets** — some gear belongs to a **set** (Warden's Vigil, Nightstalker, Archmage
   Regalia, Bloodrage Plate). Wearing 2 or 4 pieces grants escalating bonuses, shown on the
   item tooltip and the **character sheet (`C`)**, which breaks down all your stats.
