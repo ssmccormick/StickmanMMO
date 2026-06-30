@@ -24,6 +24,8 @@ export const MAX_RANK = 3;
 //
 // Common fields: id, name, kind, glyph, cost, costType('mp'|'sp'),
 // cooldown, reqLevel, desc, color (FX tint). Plus kind-specific params.
+// Optional `castTime` (seconds): the ability charges up before it fires —
+// movement is slowed while casting and a cast bar shows progress.
 
 export const CLASSES = {
   fighter: {
@@ -89,12 +91,12 @@ export const CLASSES = {
     growth: { hp: 8, mp: 12, sp: 5 },
     baseDamage: 9, attackSpeed: 0.5, range: 16,
     abilities: [
-      { id: 'firebolt', name: 'Fireball', kind: 'projectile', glyph: '🔥', cost: 18, costType: 'mp', cooldown: 2.5, reqLevel: 1, speed: 22, mult: 2.4, aoe: 3, color: 0xff6a2a, shape: 'orb', desc: 'Explosive fireball.' },
+      { id: 'firebolt', name: 'Fireball', kind: 'projectile', glyph: '🔥', cost: 18, costType: 'mp', cooldown: 2.5, reqLevel: 1, speed: 22, mult: 2.4, aoe: 3, color: 0xff6a2a, shape: 'orb', castTime: 0.7, desc: 'Explosive fireball.' },
       { id: 'frost', name: 'Frost Nova', kind: 'buff', glyph: '❄️', cost: 24, costType: 'mp', cooldown: 9, reqLevel: 3, nova: { radius: 6, mult: 1.4, slow: 3 }, color: 0x9fe0ff, desc: 'Freeze nearby foes, slowing them.' },
       { id: 'blink', name: 'Blink', kind: 'dash', glyph: '✨', cost: 16, costType: 'mp', cooldown: 7, reqLevel: 4, range: 9, arc: 0, mult: 0, color: 0xb79aff, desc: 'Teleport in your facing direction.' },
-      { id: 'chain', name: 'Chain Lightning', kind: 'chain', glyph: '⚡', cost: 22, costType: 'mp', cooldown: 5, reqLevel: 6, jumps: 4, range: 9, mult: 1.8, color: 0x9fe0ff, desc: 'Lightning arcs between enemies.' },
-      { id: 'meteor', name: 'Meteor', kind: 'groundaoe', glyph: '☄️', cost: 34, costType: 'mp', cooldown: 11, reqLevel: 9, range: 12, aoe: 5, mult: 3.4, delay: 0.9, color: 0xff5a2a, desc: 'Call a meteor onto a distant point.' },
-      { id: 'arcaneorb', name: 'Arcane Orb', kind: 'projectile', glyph: '🟣', cost: 28, costType: 'mp', cooldown: 6, reqLevel: 12, speed: 12, mult: 1.4, pierce: true, aoe: 2, color: 0xb05aff, shape: 'orb', desc: 'Slow piercing orb that detonates repeatedly.' },
+      { id: 'chain', name: 'Chain Lightning', kind: 'chain', glyph: '⚡', cost: 22, costType: 'mp', cooldown: 5, reqLevel: 6, jumps: 4, range: 9, mult: 1.8, color: 0x9fe0ff, castTime: 0.5, desc: 'Lightning arcs between enemies.' },
+      { id: 'meteor', name: 'Meteor', kind: 'groundaoe', glyph: '☄️', cost: 34, costType: 'mp', cooldown: 11, reqLevel: 9, range: 12, aoe: 5, mult: 3.4, delay: 0.9, color: 0xff5a2a, castTime: 1.4, desc: 'Call a meteor onto a distant point.' },
+      { id: 'arcaneorb', name: 'Arcane Orb', kind: 'projectile', glyph: '🟣', cost: 28, costType: 'mp', cooldown: 6, reqLevel: 12, speed: 12, mult: 1.4, pierce: true, aoe: 2, color: 0xb05aff, shape: 'orb', castTime: 0.9, desc: 'Slow piercing orb that detonates repeatedly.' },
     ],
   },
 
@@ -107,12 +109,12 @@ export const CLASSES = {
     growth: { hp: 12, mp: 10, sp: 6 },
     baseDamage: 11, attackSpeed: 0.5, range: 12,
     abilities: [
-      { id: 'smite', name: 'Smite', kind: 'projectile', glyph: '⚡', cost: 14, costType: 'mp', cooldown: 1.8, reqLevel: 1, speed: 30, mult: 2.0, color: 0xffe27a, shape: 'orb', holy: true, desc: 'A bolt of holy light.' },
-      { id: 'heal', name: 'Heal', kind: 'heal', glyph: '💚', cost: 22, costType: 'mp', cooldown: 3, reqLevel: 2, amount: 0.32, color: 0x7bf08a, desc: 'Restore a chunk of health.' },
+      { id: 'smite', name: 'Smite', kind: 'projectile', glyph: '⚡', cost: 14, costType: 'mp', cooldown: 1.8, reqLevel: 1, speed: 30, mult: 2.0, color: 0xffe27a, shape: 'orb', holy: true, castTime: 0.4, desc: 'A bolt of holy light.' },
+      { id: 'heal', name: 'Heal', kind: 'heal', glyph: '💚', cost: 22, costType: 'mp', cooldown: 3, reqLevel: 2, amount: 0.32, color: 0x7bf08a, castTime: 1.0, desc: 'Restore a chunk of health.' },
       { id: 'sanctuary', name: 'Sanctuary', kind: 'buff', glyph: '🛡️', cost: 28, costType: 'mp', cooldown: 20, reqLevel: 4, buff: { shield: 0.5, dur: 8 }, color: 0xffe27a, desc: 'Shield absorbing damage for 8s.' },
       { id: 'holynova', name: 'Holy Nova', kind: 'buff', glyph: '🌟', cost: 26, costType: 'mp', cooldown: 8, reqLevel: 6, nova: { radius: 6, mult: 1.6 }, selfHeal: 0.18, color: 0xfff2c0, desc: 'Burst of light: damages foes, heals you.' },
       { id: 'consecrate', name: 'Consecrate', kind: 'dot', glyph: '🔆', cost: 24, costType: 'mp', cooldown: 9, reqLevel: 9, radius: 4, dotDps: 14, dotDur: 6, holy: true, color: 0xffe27a, desc: 'Sanctify the ground, burning foes on it.' },
-      { id: 'judgement', name: 'Judgement', kind: 'groundaoe', glyph: '⚖️', cost: 32, costType: 'mp', cooldown: 10, reqLevel: 12, range: 11, aoe: 4.5, mult: 3.2, delay: 0.7, holy: true, color: 0xfff2c0, desc: 'Pillar of light strikes a point.' },
+      { id: 'judgement', name: 'Judgement', kind: 'groundaoe', glyph: '⚖️', cost: 32, costType: 'mp', cooldown: 10, reqLevel: 12, range: 11, aoe: 4.5, mult: 3.2, delay: 0.7, holy: true, color: 0xfff2c0, castTime: 0.8, desc: 'Pillar of light strikes a point.' },
     ],
   },
 
@@ -130,7 +132,7 @@ export const CLASSES = {
       { id: 'rollr', name: 'Roll', kind: 'dash', glyph: '🤸', cost: 12, costType: 'sp', cooldown: 4, reqLevel: 4, range: 6, arc: 0, mult: 0, iframes: 0.5, color: 0xffffff, desc: 'Dodge roll with brief invulnerability.' },
       { id: 'poisonarrow', name: 'Serpent Arrow', kind: 'dot', glyph: '🐍', cost: 16, costType: 'sp', cooldown: 7, reqLevel: 6, radius: 2.6, dotDps: 13, dotDur: 6, color: 0x6fae54, desc: 'Venomous arrow poisons the area.' },
       { id: 'hawk', name: 'Hawk Companion', kind: 'summon', glyph: '🦅', cost: 24, costType: 'sp', cooldown: 16, reqLevel: 9, dur: 12, atkEvery: 1.0, mult: 1.1, color: 0xcfa46a, desc: 'Summon a hawk that dives at foes.' },
-      { id: 'rain', name: 'Arrow Rain', kind: 'groundaoe', glyph: '🌧️', cost: 28, costType: 'sp', cooldown: 10, reqLevel: 12, range: 14, aoe: 5, mult: 2.6, delay: 0.7, color: 0xbfe0a0, desc: 'Volley of arrows rains on a point.' },
+      { id: 'rain', name: 'Arrow Rain', kind: 'groundaoe', glyph: '🌧️', cost: 28, costType: 'sp', cooldown: 10, reqLevel: 12, range: 14, aoe: 5, mult: 2.6, delay: 0.7, color: 0xbfe0a0, castTime: 0.7, desc: 'Volley of arrows rains on a point.' },
     ],
   },
 
@@ -145,8 +147,8 @@ export const CLASSES = {
     abilities: [
       { id: 'crusader', name: 'Crusader Strike', kind: 'lifesteal', glyph: '⚔️', cost: 10, costType: 'sp', cooldown: 4, reqLevel: 1, arc: 1.4, range: 2.8, mult: 2.0, leech: 0.3, color: 0xffd24a, desc: 'Holy strike that heals you.' },
       { id: 'shieldp', name: 'Sacred Shield', kind: 'buff', glyph: '🛡️', cost: 22, costType: 'mp', cooldown: 16, reqLevel: 3, buff: { shield: 0.55, dur: 8 }, color: 0xfff2c0, desc: 'Holy barrier absorbs damage.' },
-      { id: 'hammer', name: 'Hammer of Justice', kind: 'projectile', glyph: '🔨', cost: 18, costType: 'mp', cooldown: 6, reqLevel: 5, speed: 20, mult: 2.0, aoe: 2.5, stunOnHit: 1.2, color: 0xffe27a, shape: 'orb', holy: true, desc: 'Hurl a stunning holy hammer.' },
-      { id: 'layhands', name: 'Lay on Hands', kind: 'heal', glyph: '🙌', cost: 30, costType: 'mp', cooldown: 12, reqLevel: 7, amount: 0.5, color: 0x7bf08a, desc: 'A powerful self-heal.' },
+      { id: 'hammer', name: 'Hammer of Justice', kind: 'projectile', glyph: '🔨', cost: 18, costType: 'mp', cooldown: 6, reqLevel: 5, speed: 20, mult: 2.0, aoe: 2.5, stunOnHit: 1.2, color: 0xffe27a, shape: 'orb', holy: true, castTime: 0.5, desc: 'Hurl a stunning holy hammer.' },
+      { id: 'layhands', name: 'Lay on Hands', kind: 'heal', glyph: '🙌', cost: 30, costType: 'mp', cooldown: 12, reqLevel: 7, amount: 0.5, color: 0x7bf08a, castTime: 1.0, desc: 'A powerful self-heal.' },
       { id: 'consecratep', name: 'Consecration', kind: 'dot', glyph: '🔆', cost: 24, costType: 'mp', cooldown: 9, reqLevel: 9, radius: 4, dotDps: 13, dotDur: 6, holy: true, color: 0xffe27a, desc: 'Holy ground burns nearby foes.' },
       { id: 'avenging', name: 'Avenging Wrath', kind: 'buff', glyph: '😇', cost: 30, costType: 'mp', cooldown: 24, reqLevel: 12, buff: { dmg: 1.7, dur: 10 }, selfHeal: 0.25, color: 0xffd24a, desc: 'Wings of light: +70% dmg, heals you.' },
     ],
@@ -161,12 +163,12 @@ export const CLASSES = {
     growth: { hp: 10, mp: 11, sp: 5 },
     baseDamage: 10, attackSpeed: 0.5, range: 15,
     abilities: [
-      { id: 'shadowbolt', name: 'Shadow Bolt', kind: 'projectile', glyph: '🟣', cost: 14, costType: 'mp', cooldown: 1.6, reqLevel: 1, speed: 24, mult: 2.0, color: 0xb05aff, shape: 'orb', desc: 'A bolt of dark energy.' },
+      { id: 'shadowbolt', name: 'Shadow Bolt', kind: 'projectile', glyph: '🟣', cost: 14, costType: 'mp', cooldown: 1.6, reqLevel: 1, speed: 24, mult: 2.0, color: 0xb05aff, shape: 'orb', castTime: 0.5, desc: 'A bolt of dark energy.' },
       { id: 'drain', name: 'Drain Life', kind: 'lifesteal', glyph: '🩸', cost: 18, costType: 'mp', cooldown: 4, reqLevel: 2, arc: 1.0, range: 11, ranged: true, mult: 1.8, leech: 0.6, color: 0xcc4488, desc: 'Siphon a foe\'s life into yours (ranged).' },
       { id: 'corruption', name: 'Corruption', kind: 'dot', glyph: '🟢', cost: 16, costType: 'mp', cooldown: 6, reqLevel: 4, radius: 3, dotDps: 16, dotDur: 8, color: 0x6fae54, desc: 'Rot spreads through an area.' },
       { id: 'fear', name: 'Howl of Fear', kind: 'buff', glyph: '👻', cost: 22, costType: 'mp', cooldown: 12, reqLevel: 6, nova: { radius: 6, mult: 0.6, fear: 3 }, color: 0xb79aff, desc: 'Terrify nearby foes, sending them fleeing.' },
-      { id: 'imp', name: 'Summon Imp', kind: 'summon', glyph: '👹', cost: 26, costType: 'mp', cooldown: 16, reqLevel: 9, dur: 14, atkEvery: 1.2, mult: 1.2, color: 0xff5a3c, desc: 'A cackling imp flings fire at your foes.' },
-      { id: 'doom', name: 'Doom', kind: 'groundaoe', glyph: '💀', cost: 34, costType: 'mp', cooldown: 11, reqLevel: 12, range: 12, aoe: 5, mult: 3.2, delay: 0.8, color: 0x8a2abf, desc: 'A column of shadow annihilates a point.' },
+      { id: 'imp', name: 'Summon Imp', kind: 'summon', glyph: '👹', cost: 26, costType: 'mp', cooldown: 16, reqLevel: 9, dur: 14, atkEvery: 1.2, mult: 1.2, color: 0xff5a3c, castTime: 0.9, desc: 'A cackling imp flings fire at your foes.' },
+      { id: 'doom', name: 'Doom', kind: 'groundaoe', glyph: '💀', cost: 34, costType: 'mp', cooldown: 11, reqLevel: 12, range: 12, aoe: 5, mult: 3.2, delay: 0.8, color: 0x8a2abf, castTime: 1.0, desc: 'A column of shadow annihilates a point.' },
     ],
   },
 
@@ -183,7 +185,7 @@ export const CLASSES = {
       { id: 'flyingkick', name: 'Flying Kick', kind: 'dash', glyph: '🦵', cost: 12, costType: 'sp', cooldown: 4, reqLevel: 2, range: 8, arc: 1.6, mult: 1.8, color: 0xffe27a, desc: 'Dash-kick through enemies.' },
       { id: 'palm', name: 'Wave Palm', kind: 'projectile', glyph: '🌊', cost: 14, costType: 'sp', cooldown: 4, reqLevel: 4, speed: 18, mult: 1.6, aoe: 2.5, color: 0x6fc8ff, shape: 'orb', desc: 'A blast of chi energy.' },
       { id: 'spinkick', name: 'Spinning Crane', kind: 'melee', glyph: '🌀', cost: 18, costType: 'sp', cooldown: 5, reqLevel: 6, arc: 6.3, range: 3.0, mult: 1.5, color: 0xcfe8ff, desc: 'Whirl, striking all around.' },
-      { id: 'meditate', name: 'Meditate', kind: 'heal', glyph: '🧘', cost: 16, costType: 'mp', cooldown: 8, reqLevel: 8, amount: 0.28, color: 0x7bf08a, desc: 'Channel inner peace to heal.' },
+      { id: 'meditate', name: 'Meditate', kind: 'heal', glyph: '🧘', cost: 16, costType: 'mp', cooldown: 8, reqLevel: 8, amount: 0.28, color: 0x7bf08a, castTime: 0.8, desc: 'Channel inner peace to heal.' },
       { id: 'thousand', name: 'Thousand Fists', kind: 'melee', glyph: '✊', cost: 24, costType: 'sp', cooldown: 8, reqLevel: 11, arc: 0.7, range: 3.2, mult: 4.6, color: 0xffd24a, desc: 'A blinding focused flurry of blows straight ahead.' },
     ],
   },
@@ -197,12 +199,12 @@ export const CLASSES = {
     growth: { hp: 12, mp: 9, sp: 7 },
     baseDamage: 11, attackSpeed: 0.5, range: 13,
     abilities: [
-      { id: 'moonfire', name: 'Moonfire', kind: 'projectile', glyph: '🌙', cost: 14, costType: 'mp', cooldown: 1.8, reqLevel: 1, speed: 26, mult: 1.9, color: 0x9bd86a, shape: 'orb', desc: 'A bolt of lunar fire.' },
+      { id: 'moonfire', name: 'Moonfire', kind: 'projectile', glyph: '🌙', cost: 14, costType: 'mp', cooldown: 1.8, reqLevel: 1, speed: 26, mult: 1.9, color: 0x9bd86a, shape: 'orb', castTime: 0.4, desc: 'A bolt of lunar fire.' },
       { id: 'thorns', name: 'Thornfield', kind: 'dot', glyph: '🌵', cost: 16, costType: 'mp', cooldown: 6, reqLevel: 3, radius: 3.5, dotDps: 14, dotDur: 7, color: 0x6fae54, desc: 'Brambles erupt, shredding foes.' },
-      { id: 'rejuv', name: 'Rejuvenation', kind: 'heal', glyph: '🌱', cost: 20, costType: 'mp', cooldown: 4, reqLevel: 4, amount: 0.3, color: 0x7bf08a, desc: 'Restore health with living energy.' },
+      { id: 'rejuv', name: 'Rejuvenation', kind: 'heal', glyph: '🌱', cost: 20, costType: 'mp', cooldown: 4, reqLevel: 4, amount: 0.3, color: 0x7bf08a, castTime: 0.8, desc: 'Restore health with living energy.' },
       { id: 'cyclone', name: 'Cyclone', kind: 'dash', glyph: '🌪️', cost: 16, costType: 'mp', cooldown: 6, reqLevel: 6, range: 8, arc: 2.0, mult: 1.6, color: 0xcfe8ff, desc: 'Become wind, blowing through foes.' },
-      { id: 'treant', name: 'Summon Treant', kind: 'summon', glyph: '🌳', cost: 26, costType: 'mp', cooldown: 16, reqLevel: 9, dur: 14, atkEvery: 1.4, mult: 1.4, color: 0x4a7a3a, desc: 'A walking tree pummels your foes.' },
-      { id: 'hurricane', name: 'Hurricane', kind: 'groundaoe', glyph: '🌀', cost: 32, costType: 'mp', cooldown: 11, reqLevel: 12, range: 12, aoe: 5.5, mult: 3.0, delay: 0.8, color: 0x6fc8ff, desc: 'A roaring storm batters a point.' },
+      { id: 'treant', name: 'Summon Treant', kind: 'summon', glyph: '🌳', cost: 26, costType: 'mp', cooldown: 16, reqLevel: 9, dur: 14, atkEvery: 1.4, mult: 1.4, color: 0x4a7a3a, castTime: 0.9, desc: 'A walking tree pummels your foes.' },
+      { id: 'hurricane', name: 'Hurricane', kind: 'groundaoe', glyph: '🌀', cost: 32, costType: 'mp', cooldown: 11, reqLevel: 12, range: 12, aoe: 5.5, mult: 3.0, delay: 0.8, color: 0x6fc8ff, castTime: 1.0, desc: 'A roaring storm batters a point.' },
     ],
   },
 
@@ -220,11 +222,11 @@ export const CLASSES = {
     baseDamage: 15, attackSpeed: 0.42, range: 2.6,
     abilities: [
       { id: 'kiblast', name: 'Ki Blast', kind: 'projectile', glyph: '🟡', cost: 10, costType: 'mp', cooldown: 1.2, reqLevel: 1, count: 1, speed: 34, mult: 2.2, aoe: 1.6, color: 0xffe24a, shape: 'orb', desc: 'A quick bolt of golden ki hurled at your foe.' },
-      { id: 'kamehameha', name: 'Kamehameha', kind: 'beam', glyph: '🌊', cost: 34, costType: 'mp', cooldown: 8, reqLevel: 2, range: 24, width: 2.4, mult: 5.6, stunOnHit: 0.6, color: 0x3aa0ff, desc: 'Channel a massive blue beam that scorches everything in a line ahead.' },
+      { id: 'kamehameha', name: 'Kamehameha', kind: 'beam', glyph: '🌊', cost: 34, costType: 'mp', cooldown: 8, reqLevel: 2, range: 24, width: 2.4, mult: 5.6, stunOnHit: 0.6, color: 0x3aa0ff, castTime: 1.2, desc: 'Channel a massive blue beam that scorches everything in a line ahead.' },
       { id: 'instantstep', name: 'Instant Step', kind: 'instantstep', glyph: '💫', cost: 18, costType: 'mp', cooldown: 6, reqLevel: 3, range: 36, mult: 2.6, color: 0xfff2a0, desc: 'Vanish and reappear behind your target, facing them — the view snaps around with you.' },
       { id: 'supersaiyan', name: 'Super Saiyan', kind: 'transform', glyph: '✨', cost: 0, costType: 'mp', cooldown: 1.5, reqLevel: 4, dur: 30, color: 0xffe24a, desc: 'Spend a FULL Ki gauge to ascend (SSJ1→2→3): +100% to all attributes per tier for 30s. Ascend again before it fades to climb higher.' },
       { id: 'afterimage', name: 'After-Image', kind: 'dash', glyph: '💨', cost: 14, costType: 'sp', cooldown: 5, reqLevel: 6, range: 9, arc: 1.6, mult: 1.8, iframes: 0.45, color: 0xbff0ff, desc: 'Blur forward through foes, cutting them while you dodge.' },
-      { id: 'spiritbomb', name: 'Spirit Bomb', kind: 'groundaoe', glyph: '🔵', cost: 42, costType: 'mp', cooldown: 14, reqLevel: 9, range: 16, aoe: 6, mult: 4.8, delay: 1.2, color: 0x6fc8ff, desc: 'Gather energy into a colossal orb that crashes down on a point.' },
+      { id: 'spiritbomb', name: 'Spirit Bomb', kind: 'groundaoe', glyph: '🔵', cost: 42, costType: 'mp', cooldown: 14, reqLevel: 9, range: 16, aoe: 6, mult: 4.8, delay: 1.2, color: 0x6fc8ff, castTime: 1.3, desc: 'Gather energy into a colossal orb that crashes down on a point.' },
     ],
   },
 };
@@ -255,6 +257,7 @@ export function effectiveAbility(classId, id, rank) {
   const e = { ...a, rank: r };
   if (a.mult != null) e.mult = +(a.mult * (1 + 0.28 * k)).toFixed(3);
   if (a.cooldown != null) e.cooldown = +(a.cooldown * (1 - 0.12 * k)).toFixed(3);
+  if (a.castTime != null) e.castTime = +(a.castTime * (1 - 0.1 * k)).toFixed(3); // ranks cast faster
   if (a.count != null) e.count = a.count + k;            // +1 projectile per rank
   if (a.aoe != null) e.aoe = +(a.aoe * (1 + 0.12 * k)).toFixed(3);
   if (a.radius != null) e.radius = +(a.radius * (1 + 0.12 * k)).toFixed(3);

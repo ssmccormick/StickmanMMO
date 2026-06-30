@@ -85,6 +85,14 @@ export class UI {
     this.kiFill = this.kiBar.querySelector('.ki-fill');
     this.kiForm = this.kiBar.querySelector('.ki-form');
 
+    // Cast bar (spells with a cast time): name + a filling progress bar.
+    this.castBar = document.createElement('div');
+    this.castBar.className = 'cast-bar hidden';
+    this.castBar.innerHTML = '<span class="cast-name"></span><div class="cast-track"><div class="cast-fill"></div></div>';
+    this.el.hud.appendChild(this.castBar);
+    this.castName = this.castBar.querySelector('.cast-name');
+    this.castFill = this.castBar.querySelector('.cast-fill');
+
     // Area name banner.
     this.areaBanner = document.createElement('div');
     this.areaBanner.className = 'area-banner hidden';
@@ -365,6 +373,17 @@ export class UI {
     fill.style.width = `${Math.max(0, (val / max) * 100)}%`;
     text.textContent = `${Math.max(0, Math.round(val))} / ${Math.round(max)}`;
   }
+
+  // ---- Cast bar (charged spells) ----
+  showCastBar(name, glyph) {
+    this.castName.textContent = `${glyph || ''} ${name}`.trim();
+    this.castFill.style.width = '0%';
+    this.castBar.classList.remove('hidden');
+  }
+  setCastProgress(frac) {
+    this.castFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+  }
+  hideCastBar() { this.castBar.classList.add('hidden'); }
 
   setTarget(enemy) {
     if (!enemy || !enemy.alive) { this.el.targetFrame.classList.add('hidden'); return; }

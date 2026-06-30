@@ -97,6 +97,7 @@ export class Player {
     this.ki = 0; this.kiMax = 100;
     this.ssjLevel = 0;   // 0 = base, 1..3 = SSJ tiers
     this.ssjUntil = 0;   // clock time the current form fades
+    this.casting = false; // true while charging a cast-time spell (slows movement)
     this._buildSsjFx();
 
     this.recomputeGear();
@@ -349,6 +350,7 @@ export class Player {
       if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
       if (this.mounted) speed *= 2.6; // gallop
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt; }
+      if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
 
       this.vel.x = move.x * speed;
       this.vel.z = move.z * speed;

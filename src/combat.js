@@ -26,6 +26,7 @@ export class Combat {
     this.summons = [];   // temporary helpers
     this.drops = [];     // world loot pickups
     this._fx = [];
+    this.casting = null; // in-progress spell cast: { slot, ab, until, total }
     this.target = null;
     this.onLoot = null;     // (item) => void, set by main for logging
     this.onPartyXp = null;  // (xp) => void, set by main to share kill XP with partymates
@@ -35,11 +36,17 @@ export class Combat {
     const p = this.player;
     if (this.target && !this.target.alive) this.target = null;
 
+    // Resolve any in-progress spell cast first (it may fire this frame).
+    this._updateCast(dt);
+
     if (p.alive && !this.suppressInput) {
       if (input.just('Tab')) this.cycleTarget();
-      if (input.lmb && p.attackTimer <= 0) this.autoAttack();
-      const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
-      for (let i = 0; i < keys.length; i++) if (input.just(keys[i])) this.useAbility(i);
+      // Auto-attacks and new abilities are locked out while charging a spell.
+      if (!this.casting) {
+        if (input.lmb && p.attackTimer <= 0) this.autoAttack();
+        const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
+        for (let i = 0; i < keys.length; i++) if (input.just(keys[i])) this.useAbility(i);
+      }
     }
 
     this._updateProjectiles(dt);
@@ -60,8 +67,12 @@ export class Combat {
     this.target = inRange[(idx + 1) % inRange.length];
   }
 
-  _aimEnemy(range, arc = 1.2) {
-    if (this.target && this.target.alive && this.target.pos.distanceTo(this.player.pos) <= range) return this.target;
+  // Acquire the enemy you're aiming at. A locked target always wins (with a
+  // little extra reach, so it doesn't slip out of assist range). Otherwise pick
+  // the best foe within `arc` of the crosshair — the angle penalty is gentle so
+  // generous off-centre aim still snaps onto what you clearly mean.
+  _aimEnemy(range, arc = 1.4) {
+    if (this.target && this.target.alive && this.target.pos.distanceTo(this.player.pos) <= range * 1.25) return this.target;
     const fwd = this.cam.forward();
     let best = null, bestScore = Infinity;
     for (const e of this.enemies) {
@@ -72,7 +83,7 @@ export class Combat {
       to.y = 0; to.normalize();
       const ang = Math.acos(THREE.MathUtils.clamp(to.dot(fwd), -1, 1));
       if (ang > arc) continue;
-      const score = d + ang * 4;
+      const score = d + ang * 2;
       if (score < bestScore) { bestScore = score; best = e; }
     }
     return best;
@@ -84,7 +95,7 @@ export class Combat {
   // The direction offensive skills should travel: toward the locked target
   // (or the enemy nearest the crosshair within `arc`), else straight ahead.
   // This is what makes projectiles "go where you're aiming".
-  _aimDir(range, arc = 0.42) {
+  _aimDir(range, arc = 0.7) {
     const e = this._aimEnemy(range, arc);
     if (e) {
       const d = new THREE.Vector3().subVectors(e.pos, this.player.pos);
@@ -97,7 +108,7 @@ export class Combat {
   // A point in front of the player, clamped to a max range (for ground AoE).
   _aimPoint(maxRange) {
     const fwd = this.cam.forward();
-    const aimed = this._aimEnemy(maxRange, 0.6);
+    const aimed = this._aimEnemy(maxRange, 0.9);
     if (aimed) return aimed.pos.clone();
     return this.player.pos.clone().addScaledVector(fwd, Math.min(maxRange, 8));
   }
@@ -109,7 +120,7 @@ export class Combat {
     p.attackAnim = 1;
     if (this.audio) this.audio.play('swing');
     if (this.def.ranged) {
-      const dir = this._aimDir(this.def.range, 0.5);
+      const dir = this._aimDir(this.def.range, 0.8);
       this._face(dir);
       this.spawnProjectile(p.pos, dir, {
         speed: 24, mult: 1, color: this.def.projColor || 0xffffff,
@@ -117,7 +128,7 @@ export class Combat {
       });
     } else {
       this._faceCam();
-      const e = this._aimEnemy(this.def.range, 1.0);
+      const e = this._aimEnemy(this.def.range, 1.3);
       if (e) this._strike(e, p.apower, { crit: this.def.critBonus || 0 });
     }
   }
@@ -137,12 +148,30 @@ export class Combat {
       return;
     }
 
+    // Resources & cooldown commit up front (a cast is committed, not refunded).
     p.stats[pool] -= ab.cost;
     p.cooldowns[i] = ab.cooldown;
     p.attackAnim = 1;
     this._faceCam();
     if (this.audio) this.audio.play('cast');
 
+    // Spells with a cast time charge up first — movement slows and a cast bar
+    // fills — then the effect fires on completion (re-aimed at that moment).
+    if (ab.castTime > 0) {
+      this.casting = { slot: i, ab, until: p.clock + ab.castTime, total: ab.castTime };
+      p.casting = true;
+      if (this.ui.showCastBar) this.ui.showCastBar(ab.name, ab.glyph);
+      this._chargeFx(ab.color || 0xffffff);
+      return;
+    }
+
+    this._fireAbility(ab);
+    this.ui.flashSlot(i);
+  }
+
+  // Dispatch an ability's effect by kind (shared by instant casts and the
+  // completion of a charged cast).
+  _fireAbility(ab) {
     switch (ab.kind) {
       case 'melee': this._kMelee(ab); break;
       case 'projectile': this._kProjectile(ab); break;
@@ -158,7 +187,33 @@ export class Combat {
       case 'instantstep': this._kInstantStep(ab); break;
       case 'transform': this._kTransform(ab); break;
     }
-    this.ui.flashSlot(i);
+  }
+
+  // Advance an in-progress cast; fire it (or cancel on death) when due.
+  _updateCast(dt) {
+    const c = this.casting;
+    if (!c) return;
+    const p = this.player;
+    if (!p.alive) { this._cancelCast(); return; }
+    // Keep aiming where the camera looks; a charging caster pivots to track.
+    this._faceCam();
+    p.attackAnim = Math.max(p.attackAnim, 0.5); // hold a charging pose
+    if (p.clock >= c.until) {
+      const ab = c.ab, slot = c.slot;
+      this.casting = null; p.casting = false;
+      if (this.ui.hideCastBar) this.ui.hideCastBar();
+      this._fireAbility(ab);
+      this.ui.flashSlot(slot);
+    } else if (this.ui.setCastProgress) {
+      this.ui.setCastProgress(1 - (c.until - p.clock) / c.total);
+    }
+  }
+
+  _cancelCast() {
+    if (!this.casting) return;
+    this.casting = null;
+    this.player.casting = false;
+    if (this.ui.hideCastBar) this.ui.hideCastBar();
   }
 
   _kMelee(ab) {
@@ -177,7 +232,7 @@ export class Combat {
     const count = ab.count || 1;
     const spread = ab.spread || 0;
     // Aim the volley at the target/enemy under the crosshair (else forward).
-    const baseDir = this._aimDir(34, 0.5);
+    const baseDir = this._aimDir(36, 0.85);
     this._face(baseDir);
     for (let k = 0; k < count; k++) {
       const t = count === 1 ? 0 : (k / (count - 1) - 0.5);
@@ -301,8 +356,9 @@ export class Combat {
   }
 
   // Kamehameha-style beam: a channelled line that hits every foe in its path.
+  // Bends toward the target/aimed foe so it's easy to land down a lane.
   _kBeam(ab) {
-    const dir = this.cam.forward();
+    const dir = this._aimDir(ab.range, 0.55);
     this._face(dir);
     const origin = this.player.pos.clone();
     const halfW = (ab.width || 2) * 0.5 + 0.6; // a little forgiving on the edges
@@ -674,6 +730,17 @@ export class Combat {
     const m = new THREE.Mesh(new THREE.SphereGeometry(r * 0.5, 16, 16), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 }));
     m.position.copy(pos); m.userData.grow = 3; m.userData.baseOpacity = 0.7;
     this._tempMesh(m, 0.32);
+  }
+  // A gathering glow at the caster's hands while a spell charges up.
+  _chargeFx(color = 0xffffff) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+    const o = this.player.pos.clone(); o.y += 1.3;
+    o.addScaledVector(this.cam.forward(), 0.5);
+    m.position.copy(o);
+    m.add(new THREE.PointLight(color, 2, 6));
+    m.userData.grow = 1.6; m.userData.baseOpacity = 0.85;
+    this._tempMesh(m, 0.6);
   }
   _dashFx(pos, color = 0xffffff) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4 }));
