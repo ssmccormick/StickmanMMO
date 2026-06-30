@@ -177,7 +177,15 @@ setInterval(() => {
   if (players.size === 0) return; // idle: no players, no simulation (free-tier friendly)
 
   const { active, events } = world.tick(dt, playerList());
-  broadcast({ type: 'enemies', e: active });
+  // Per-client area-of-interest: each client receives only the enemies near
+  // ITSELF, not the whole active union. Cuts bandwidth and stops a client from
+  // spawning meshes for monsters it can't see (important on the free tier).
+  const AOI2 = 140 * 140;
+  for (const [ws, p] of players) {
+    if (ws.readyState !== 1) continue;
+    const near = active.filter((s) => { const dx = s.x - p.x, dz = s.z - p.z; return dx * dx + dz * dz < AOI2; });
+    ws.send(JSON.stringify({ type: 'enemies', e: near }));
+  }
   for (const ev of events) {
     if (ev.kind === 'hit') {
       const ws = findWsById(ev.playerId);

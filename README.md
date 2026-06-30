@@ -388,10 +388,25 @@ npm install          # installs the single dependency: ws
 npm start            # → ws://localhost:8080
 ```
 
-The server is a thin presence/relay: each client simulates its own world (terrain
-is deterministic, enemies are local), and the server only broadcasts player
-positions, chat, and party/shared-XP events. This keeps it tiny while letting you
-wander the same world together.
+The server is **authoritative over the enemies** — when you join a server, everyone
+fights the *same* monsters: shared positions, shared HP, shared deaths. It also relays
+player positions, chat, and party/shared-XP. Terrain is deterministic (a shared
+`src/sim/` core both client and server import), so no map data is ever exchanged.
+
+### How synced encounters work (and why they're free-tier friendly)
+
+- The server spawns the world's enemies and runs their AI **only within an
+  area-of-interest of a connected player** — so the simulation cost scales with
+  *players online*, not world size. A handful of friends keeps it tiny.
+- Each client is streamed just the enemies near **itself**, renders them, and reports
+  its hits; the server owns HP, decides deaths, and credits the killer with XP & loot.
+- Your own HP stays client-side (responsive combat); enemy attacks arrive as events
+  you can still dodge. Solo play and a plain relay both still work unchanged — the
+  client only switches to server enemies when the server advertises authority.
+
+Known limits (future polish): loot drops are visible to the killer only; the
+end-dragon is always present in a shared world rather than achievement-gated; and if
+the server sleeps/drops mid-session you'll want to rejoin (refresh).
 
 ### Hosting it online
 
@@ -412,9 +427,9 @@ Render's free tier sleeps when idle and cold-starts (~30s) on the next join; a p
 instance (or Railway / Fly.io / a small VPS behind Caddy for TLS) stays always-on.
 `server.js` honours `process.env.PORT`, so it runs on any of them unchanged.
 
-> **Scope:** this is a shared-**presence** model — you see each other move, chat, party,
-> and share kill-XP, but enemies/loot are simulated per-client (no synced boss HP). A
-> fully authoritative server (shared mobs/combat) is a larger future step.
+> **Scope:** enemies are **server-authoritative** (shared positions/HP/deaths). The
+> relay only does work when players are connected and simulates just the enemies near
+> them, so it stays light enough for a free instance at friends scale.
 
 ## 📁 Project layout
 
@@ -432,14 +447,20 @@ src/
   stickman.js          # articulated stickman mesh + animator + hair/appearance
   appearance.js        # customisation model + unlockable cosmetics catalogue
   preview.js           # live 3D character preview (creation + wardrobe)
-  enemies.js           # monster types, AI FSM, spawning
+  enemies.js           # monster types, AI FSM, spawning (client meshes/anim)
+  netenemies.js        # renders/fights server enemies in shared worlds
   combat.js            # attacks, abilities, projectiles, targeting, FX
   ui.js                # HUD, class select, hotbar, minimap, floaters, chat
   network.js           # WebSocket client (graceful offline → solo)
   audio.js             # tiny WebAudio SFX synth (no asset files)
+  sim/                 # Three-free shared core (runs in browser AND server)
+    terrain.js         #   deterministic terrain height + world layout
+    enemyTypes.js      #   enemy archetypes + level-scaling
+    enemySim.js        #   authoritative enemy world (area-of-interest)
 server/
-  server.js            # optional multiplayer relay (ws)
+  server.js            # multiplayer server: relay + authoritative enemy sim
   package.json
+render.yaml            # one-click Render deploy for the server
 ```
 
 ## 🧩 Design notes
