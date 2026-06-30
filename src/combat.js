@@ -449,6 +449,8 @@ export class Combat {
 
   // ---- Damage application ----
   _strike(enemy, amount, { crit = 0 }) {
+    // Giantslayer (Boss Slayer reward): extra punishment against bosses.
+    if (enemy.boss && this.player.passives && this.player.passives.has('giantslayer')) amount *= 1.25;
     const isCrit = Math.random() < (0.05 + crit + this.player.gearCrit);
     let dmg = amount * (0.9 + Math.random() * 0.2);
     if (isCrit) dmg *= 1.8;
@@ -464,13 +466,17 @@ export class Combat {
       this.ui.floater(`+${res.xp} XP`, 'xp', enemy.pos);
       this.ui.log(`Slain ${enemy.type.name} (+${res.xp} XP)`, 'xp');
       if (this.audio) this.audio.play('kill');
-      // Gold drop (elites and especially bosses pay out far more).
-      const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1));
+      // Gold drop (elites and especially bosses pay out far more; Midas adds 50%).
+      const midas = this.player.passives && this.player.passives.has('midas') ? 1.5 : 1;
+      const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1) * midas);
       this.player.gold += gold;
       this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
       // Quest progress for kills (and boss-slaying).
       Quests.onKill(this.player, enemy.typeId);
+      // recordKill credits kill_total and kill_<typeId> (so a dragon kill already
+      // feeds the kill_dragon Dragonslayer counter); bosses also bump kill_boss.
       if (this.player.recordKill) this.player.recordKill(enemy.typeId);
+      if (enemy.boss) this.player.counters.kill_boss = (this.player.counters.kill_boss || 0) + 1;
       if (enemy.boss) Quests.onBossKill(this.player, enemy.bossName);
       if (this.onKillEvent) this.onKillEvent(enemy);
       if (this.onPartyXp) this.onPartyXp(res.xp);
@@ -506,9 +512,11 @@ export class Combat {
 
   // Open a cleared camp's chest: spawn a burst of high-rarity loot + gold.
   openChest(camp) {
+    if (this.player.counters) this.player.counters.treasure = (this.player.counters.treasure || 0) + 1; // Treasure Hunter
+    const seek = this.player.passives && this.player.passives.has('treasureseeker') ? 0.6 : 0; // Treasure Sense
     const lvl = camp.level + 2;
     for (let i = 0; i < 3; i++) {
-      let item = generateItem({ level: lvl, rarityBoost: 1.8 });
+      let item = generateItem({ level: lvl, rarityBoost: 1.8 + seek });
       if (item.rarity === 'legendary' && Math.random() < 0.7) item = makeUnique(item.ilvl);
       const off = new THREE.Vector3((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
       this._spawnDrop(item, camp.pos.clone().add(off));

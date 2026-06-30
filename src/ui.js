@@ -1283,7 +1283,8 @@ export class UI {
 
   // ---- Area banner ----
   showAreaBanner(area) {
-    this.areaBanner.innerHTML = `<div class="ab-name">${area.name}</div><div class="ab-sub">${area.safe ? 'Safe Haven' : 'Recommended Level ' + area.level + '+'}</div>`;
+    const sub = area.sub != null ? area.sub : (area.safe ? 'Safe Haven' : 'Recommended Level ' + area.level + '+');
+    this.areaBanner.innerHTML = `<div class="ab-name">${area.name}</div><div class="ab-sub">${sub}</div>`;
     this.areaBanner.classList.remove('hidden', 'show');
     void this.areaBanner.offsetWidth;
     this.areaBanner.classList.add('show');
@@ -1497,8 +1498,10 @@ export class UI {
   closeAchievements() { this.achievementsOpen = false; if (this.achOverlay) this.achOverlay.classList.add('hidden'); }
   renderAchievements(player) {
     const fmtNum = (n) => n >= 1000 ? (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k' : Math.floor(n);
+    const endgame = Achievements.endgameReady(player);
     const rows = Achievements.ACHIEVEMENTS.map((a) => {
       const pr = Achievements.progress(player, a);
+      const locked = a.capstone && !endgame && pr.claimed === 0;
       const nodes = a.tiers.map((tier, i) => {
         const got = i < pr.claimed;
         const unique = Achievements.isUnique(tier);
@@ -1510,16 +1513,18 @@ export class UI {
       }).join('<div class="ach-link"></div>');
       const bar = pr.done
         ? `<span class="ach-complete">COMPLETE</span>`
-        : `<div class="ach-bar"><div class="ach-fill" style="width:${Math.round(pr.frac * 100)}%"></div></div>
-           <span class="ach-count">${fmtNum(pr.val)} / ${fmtNum(pr.next.count)} ${a.noun}</span>`;
-      return `<div class="ach-row">
+        : locked
+          ? `<span class="ach-locked">🔒 Complete every other achievement to make the dragon descend.</span>`
+          : `<div class="ach-bar"><div class="ach-fill" style="width:${Math.round(pr.frac * 100)}%"></div></div>
+             <span class="ach-count">${fmtNum(pr.val)} / ${fmtNum(pr.next.count)} ${a.noun}</span>`;
+      return `<div class="ach-row${a.capstone ? ' capstone' : ''}">
           <div class="ach-head"><span class="ach-glyph">${a.glyph}</span>
             <span class="ach-name">${a.name}</span><span class="ach-cat">${a.cat}</span></div>
           ${bar}
           <div class="ach-track">${nodes}</div>
         </div>`;
     }).join('');
-    this.achBody.innerHTML = `<div class="ach-intro">Earn lifetime milestones for everything you do. Each chain ends in a <b>unique reward</b>.</div>${rows}`;
+    this.achBody.innerHTML = `<div class="ach-intro">Earn lifetime milestones for everything you do. Each chain ends in a <b>unique reward</b> — and finishing them all summons the <b>🐉 end-boss dragon</b>.</div>${rows}`;
   }
   // A toast when a tier is earned (mid-tier = stat boost, final = unique).
   achievementToast(ach, idx, tier) {

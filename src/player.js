@@ -272,6 +272,7 @@ export class Player {
   doEmote(id) {
     const e = EMOTES.find((x) => x.id === id) || EMOTES[0];
     this.emote = { id: e.id, glyph: e.glyph, until: this._clock + 3.2 };
+    this.counters.emote = (this.counters.emote || 0) + 1; // Performer achievement
     return e;
   }
 
@@ -543,13 +544,46 @@ export class Player {
     g.userData.legs = []; g.userData.phase = 0; g.userData.slime = true; g.userData.body = body;
     return g;
   }
-  // Swap the steed model (e.g. to the unlocked Slime Mount).
+  // A rideable dragon (the Dragonslayer capstone reward).
+  _buildDragonSteed() {
+    const g = new THREE.Group();
+    const scaleMat = new THREE.MeshLambertMaterial({ color: 0x4a2030 });
+    const bellyMat = new THREE.MeshLambertMaterial({ color: 0x73402c });
+    const membrane = new THREE.MeshLambertMaterial({ color: 0x2a1020, side: THREE.DoubleSide });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.0, 4, 8), scaleMat);
+    body.rotation.z = Math.PI / 2; body.position.set(0, 1.0, 0);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.8, 6), scaleMat); neck.position.set(0, 1.4, 0.7); neck.rotation.x = 0.7;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.5), scaleMat); head.position.set(0, 1.75, 1.0);
+    for (const s of [1, -1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb13c })); eye.position.set(s * 0.13, 1.82, 1.18); g.add(eye);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.3, 5), bellyMat); horn.position.set(s * 0.12, 1.98, 0.86); horn.rotation.x = -0.5; g.add(horn);
+    }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 1.1, 5), scaleMat); tail.position.set(0, 1.0, -1.0); tail.rotation.x = -Math.PI / 2;
+    g.add(body, neck, head, tail);
+    const wings = [];
+    for (const s of [1, -1]) {
+      const wing = new THREE.Group(); wing.position.set(s * 0.3, 1.25, -0.1);
+      const mem = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, 1.2), membrane); mem.position.set(s * 0.85, 0, -0.3); wing.add(mem);
+      const spar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.02, 1.7, 5), bellyMat); spar.rotation.z = Math.PI / 2; spar.position.x = s * 0.85; wing.add(spar);
+      g.add(wing); wings.push(wing);
+    }
+    const legs = [];
+    for (const [lx, lz] of [[0.25, 0.45], [-0.25, 0.45], [0.25, -0.45], [-0.25, -0.45]]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.9, 5), scaleMat); leg.position.set(lx, 0.45, lz); g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = legs; g.userData.phase = 0; g.userData.dragon = true; g.userData.wings = wings;
+    return g;
+  }
+  // Swap the steed model (e.g. to the unlocked Slime or Dragon mount).
   setMountSkin(skin) {
     if (this.mountSkin === skin && this.steed) return;
     this.mountSkin = skin;
     const wasMounted = this.mounted;
     if (this.steed) this.scene.remove(this.steed);
-    this.steed = skin === 'slime' ? this._buildSlimeSteed() : this._buildSteed();
+    this.steed = skin === 'slime' ? this._buildSlimeSteed()
+      : skin === 'dragon' ? this._buildDragonSteed()
+      : this._buildSteed();
     this.steed.visible = wasMounted;
     this.scene.add(this.steed);
   }
@@ -642,6 +676,12 @@ export class Player {
         sd.body.scale.set(1 + b * 0.5, 0.72 - b, 1 + b * 0.5);
         this.steed.position.y += b * 0.4;
         this.mesh.position.y += b * 0.4;
+      } else if (sd.dragon) {
+        // Beat the wings and ride a little higher off the ground.
+        const flap = Math.sin(sd.phase * 1.6) * 0.6 + 0.15;
+        sd.wings[0].rotation.z = -flap; sd.wings[1].rotation.z = flap;
+        this.steed.position.y += 0.4 + Math.sin(sd.phase) * 0.08;
+        this.mesh.position.y += 0.5;
       }
     }
   }

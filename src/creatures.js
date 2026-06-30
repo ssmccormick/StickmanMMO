@@ -19,6 +19,7 @@ export function createCreature(typeId, opts = {}) {
     case 'knight': return makeKnight(opts);
     case 'brute':  return makeOgre(opts);
     case 'wraith': return makeWraith(opts);
+    case 'dragon': return makeDragon(opts);
     default:       return createStickman(opts);
   }
 }
@@ -222,4 +223,63 @@ function animateWraith(group, dt, { speed01 = 0, attack = 0, dead = false } = {}
   p.wings[0].rotation.z = -flap; p.wings[1].rotation.z = flap;
   p.body.position.y = Math.sin(a.phase) * 0.06;
   p.body.rotation.x = attack > 0 ? Math.sin((1 - attack) * Math.PI) * 0.5 : THREE.MathUtils.lerp(p.body.rotation.x, 0, Math.min(1, dt * 8));
+}
+
+// ---- Dragon: the great sky-tyrant — a serpentine body, broad flapping
+// wings, horned head with glowing eyes. Used for the end boss (and mount). ----
+function makeDragon({ color = 0x4a2030, accent = 0x73402c, scale = 1 } = {}) {
+  const root = new THREE.Group();
+  const body = new THREE.Group(); root.add(body);
+  const scaleMat = new THREE.MeshLambertMaterial({ color });
+  const bellyMat = new THREE.MeshLambertMaterial({ color: accent });
+  const membrane = new THREE.MeshLambertMaterial({ color: 0x2a1020, side: THREE.DoubleSide });
+
+  // Serpentine spine (head at +Z).
+  const segs = []; const N = 7;
+  for (let i = 0; i < N; i++) {
+    const r = 0.5 * (1 - i / (N + 4));
+    const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 7), scaleMat);
+    seg.position.z = -i * 0.5; body.add(seg); segs.push(seg);
+  }
+  // Head.
+  const head = new THREE.Group(); head.position.z = 0.65; body.add(head);
+  head.add(new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.66), scaleMat));
+  const snout = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.42), scaleMat); snout.position.set(0, -0.06, 0.5); head.add(snout);
+  for (const s of [1, -1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.4, 5), bellyMat); horn.position.set(s * 0.16, 0.32, -0.16); horn.rotation.x = -0.5; head.add(horn);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffb13c })); eye.position.set(s * 0.2, 0.1, 0.3); head.add(eye);
+  }
+  // Wings.
+  const wings = [];
+  for (const s of [1, -1]) {
+    const wing = new THREE.Group(); wing.position.set(s * 0.32, 0.18, -0.55);
+    const spar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.02, 1.9, 5), bellyMat); spar.rotation.z = Math.PI / 2; spar.position.x = s * 0.95; wing.add(spar);
+    const mem = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.03, 1.35), membrane); mem.position.set(s * 0.95, 0, -0.4); wing.add(mem);
+    body.add(wing); wings.push(wing);
+  }
+  // Tail spike + hind legs.
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.8, 5), scaleMat); tail.position.z = -N * 0.5 - 0.3; tail.rotation.x = -Math.PI / 2; body.add(tail);
+  for (const s of [1, -1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.05, 0.4, 5), scaleMat); leg.position.set(s * 0.22, -0.32, 0.1); body.add(leg);
+  }
+  root.scale.setScalar(scale);
+  root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  root.userData.anim = { phase: Math.random() * Math.PI * 2 };
+  root.userData.parts = { body, wings, segs };
+  root.userData.animate = animateDragon;
+  return root;
+}
+
+function animateDragon(group, dt, { speed01 = 0, attack = 0, dead = false } = {}) {
+  const p = group.userData.parts, a = group.userData.anim;
+  if (dead) { group.rotation.z = THREE.MathUtils.lerp(group.rotation.z, Math.PI / 2, Math.min(1, dt * 4)); return; }
+  group.rotation.z = THREE.MathUtils.lerp(group.rotation.z, 0, Math.min(1, dt * 8));
+  a.phase += dt * (3 + speed01 * 4);
+  const flap = Math.sin(a.phase * 2.4) * 0.6 + 0.2;
+  p.wings[0].rotation.z = -flap; p.wings[1].rotation.z = flap;
+  for (let i = 0; i < p.segs.length; i++) {
+    p.segs[i].position.y = Math.sin(a.phase * 1.6 + i * 0.5) * 0.16;
+    p.segs[i].position.x = Math.sin(a.phase * 1.2 + i * 0.6) * 0.18;
+  }
+  p.body.rotation.x = attack > 0 ? Math.sin((1 - attack) * Math.PI) * 0.4 : THREE.MathUtils.lerp(p.body.rotation.x, 0, Math.min(1, dt * 8));
 }

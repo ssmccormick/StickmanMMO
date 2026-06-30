@@ -20,6 +20,13 @@ export const SPECIALS = {
   anglerlord: { name: "Angler's Mastery",  glyph: '🎣', passive: 'anglerlord', stat: { fishing: 25 }, desc: '+25 Fishing, always.' },
   warlord:    { name: 'Warlord',           glyph: '⚔️', passive: 'warlord', stat: { damage: 80, str: 24 }, desc: '+80 Damage & +24 STR — a living weapon.' },
   pathfinder: { name: 'Pathfinder',        glyph: '🧭', passive: 'pathfinder', stat: { speed: 0.06 }, desc: '+6% move speed; you reveal far more of the map as you travel.' },
+  giantslayer:{ name: 'Giantslayer',       glyph: '🗡️', passive: 'giantslayer', stat: { crit: 0.05 }, desc: '+25% damage to bosses; +5% crit.' },
+  treasurer:  { name: 'Treasure Sense',    glyph: '💎', passive: 'treasureseeker', stat: { maxHp: 80 }, desc: 'Chests yield far better loot; +80 Max HP.' },
+  midas:      { name: 'Midas Touch',       glyph: '🪙', passive: 'midas', stat: { maxHp: 80, maxMp: 60 }, desc: 'Slain foes drop +50% gold.' },
+  veteran:    { name: 'Veteran',           glyph: '🎖️', stat: { str: 10, dex: 10, int: 10 }, desc: '+10 to all attributes.' },
+  blessed:    { name: 'Blessed',           glyph: '🙏', passive: 'blessed', stat: { maxMp: 60 }, desc: 'Shrine blessings last 50% longer; +60 Max MP.' },
+  showman:    { name: 'Showman',           glyph: '🎭', passive: 'showman', stat: { speed: 0.05 }, desc: '+5% move speed and a flair for the dramatic.' },
+  dragonlord: { name: 'Dragonlord',        glyph: '🐉', passive: 'dragonmount', stat: { damage: 120, maxHp: 220, str: 20 }, desc: 'Ride a DRAGON (press R), and wield a sky-tyrant’s might.' },
 };
 
 // Each achievement: a counter it watches + four ascending tiers.
@@ -96,6 +103,69 @@ export const ACHIEVEMENTS = [
       { count: 16, reward: { special: 'pathfinder' } },
     ],
   },
+  {
+    id: 'bossslayer', name: 'Boss Slayer', glyph: '☠️', cat: 'Combat', counter: 'kill_boss', noun: 'bosses felled',
+    tiers: [
+      { count: 5,   reward: { damage: 18 } },
+      { count: 15,  reward: { maxHp: 80 } },
+      { count: 40,  reward: { armor: 30 } },
+      { count: 100, reward: { special: 'giantslayer' } },
+    ],
+  },
+  {
+    id: 'treasurehunter', name: 'Treasure Hunter', glyph: '💰', cat: 'Exploration', counter: 'treasure', noun: 'chests opened',
+    tiers: [
+      { count: 10,  reward: { maxSp: 40 } },
+      { count: 30,  reward: { crit: 0.04 } },
+      { count: 75,  reward: { maxHp: 70 } },
+      { count: 150, reward: { special: 'treasurer' } },
+    ],
+  },
+  {
+    id: 'tycoon', name: 'Tycoon', glyph: '🪙', cat: 'Fortune', counter: 'gold_earned', noun: 'gold earned',
+    tiers: [
+      { count: 5000,   reward: { maxHp: 50 } },
+      { count: 25000,  reward: { armor: 25 } },
+      { count: 100000, reward: { damage: 24 } },
+      { count: 500000, reward: { special: 'midas' } },
+    ],
+  },
+  {
+    id: 'ascendant', name: 'Ascendant', glyph: '⭐', cat: 'Mastery', counter: 'level', noun: 'character level',
+    tiers: [
+      { count: 10, reward: { str: 4, dex: 4, int: 4 } },
+      { count: 20, reward: { maxHp: 90 } },
+      { count: 35, reward: { damage: 30 } },
+      { count: 50, reward: { special: 'veteran' } },
+    ],
+  },
+  {
+    id: 'pilgrim', name: 'Pilgrim', glyph: '🙏', cat: 'Exploration', counter: 'shrine', noun: 'shrines prayed at',
+    tiers: [
+      { count: 5,   reward: { maxMp: 40 } },
+      { count: 15,  reward: { int: 5 } },
+      { count: 40,  reward: { maxMp: 70 } },
+      { count: 100, reward: { special: 'blessed' } },
+    ],
+  },
+  {
+    id: 'performer', name: 'Performer', glyph: '🎭', cat: 'Social', counter: 'emote', noun: 'emotes performed',
+    tiers: [
+      { count: 25,  reward: { maxSp: 30 } },
+      { count: 75,  reward: { speed: 0.03 } },
+      { count: 200, reward: { maxHp: 50 } },
+      { count: 500, reward: { special: 'showman' } },
+    ],
+  },
+  {
+    id: 'dragonslayer', name: 'Dragonslayer', glyph: '🐉', cat: 'Legend', counter: 'kill_dragon', noun: 'dragons slain', capstone: true,
+    tiers: [
+      { count: 1,  reward: { damage: 50 } },
+      { count: 3,  reward: { maxHp: 150 } },
+      { count: 5,  reward: { str: 12, dex: 12, int: 12 } },
+      { count: 10, reward: { special: 'dragonlord' } },
+    ],
+  },
 ];
 
 // ---- Reward labelling ----
@@ -114,9 +184,10 @@ function addStat(player, stat) { for (const k in stat) player.achBonus[k] = (pla
 
 function applySpecial(player, id) {
   const sp = SPECIALS[id]; if (!sp) return;
-  player.passives.add(sp.passive || id);
+  if (sp.passive) player.passives.add(sp.passive);
   if (sp.stat) addStat(player, sp.stat);
-  if ((sp.passive || id) === 'slimemount' && player.setMountSkin) player.setMountSkin('slime');
+  if (sp.passive === 'slimemount' && player.setMountSkin) player.setMountSkin('slime');
+  if (sp.passive === 'dragonmount' && player.setMountSkin) player.setMountSkin('dragon');
 }
 function applyReward(player, reward) {
   if (reward.special) applySpecial(player, reward.special);
@@ -136,7 +207,18 @@ export function reapply(player) {
     for (let i = 0; i < claimed && i < a.tiers.length; i++) applyReward(player, a.tiers[i].reward);
   }
   if (player.recomputeGear) player.recomputeGear();
-  if (player.passives.has('slimemount') && player.setMountSkin) player.setMountSkin('slime');
+  // Restore the unlocked mount skin (the Dragon outranks the Slime).
+  if (player.setMountSkin) {
+    if (player.passives.has('dragonmount')) player.setMountSkin('dragon');
+    else if (player.passives.has('slimemount')) player.setMountSkin('slime');
+  }
+}
+
+// "The end of everything": every achievement except the Dragonslayer chain is
+// fully complete. When true, the great dragon descends to be challenged.
+export function endgameReady(player) {
+  if (!player.achievements) return false;
+  return ACHIEVEMENTS.every((a) => a.capstone || (player.achievements[a.id] || 0) >= a.tiers.length);
 }
 
 // Award any newly-earned tiers; calls onUnlock(ach, tierIndex, tier) for each.

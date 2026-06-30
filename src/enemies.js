@@ -15,7 +15,11 @@ const TYPES = {
   brute:    { name: 'Ogre Brute',    color: 0x7a5a8a, accent: 0xb04a3a, scale: 1.5, hp: 140, dmg: 22, speed: 2.8, range: 2.8, xp: 60, aggro: 14 },
   knight:   { name: 'Fallen Knight', color: 0x3a3f4a, accent: 0x9aa4ef, scale: 1.1, hp: 95,  dmg: 16, speed: 3.8, range: 2.4, xp: 44, aggro: 18 },
   wraith:   { name: 'Sky Wraith',    color: 0x5a3a6a, accent: 0xc07bff, scale: 1.0, hp: 52,  dmg: 13, speed: 6.0, range: 2.2, xp: 34, aggro: 24, fly: true },
+  dragon:   { name: 'Vetharion',     color: 0x4a2030, accent: 0x73402c, scale: 1.7, hp: 400, dmg: 18, speed: 5.6, range: 3.4, xp: 1200, aggro: 46, fly: true },
 };
+
+// Where the great dragon roosts — a far-north open expanse below the high peaks.
+export const DRAGON_ROOST = { x: -150, z: 210 };
 const TYPE_BY_LEVEL = (lvl) => {
   if (lvl <= 1) return ['slime', 'slime', 'grunt'];
   if (lvl <= 3) return ['grunt', 'wolf', 'slime'];
@@ -394,6 +398,16 @@ export function spawnFlyers(scene, world) {
     }
   }
   return out;
+}
+
+// The end boss: the great dragon, descended to be challenged once the player
+// has accomplished everything else. Scales to the hero but stays formidable.
+export function spawnDragon(scene, world, level) {
+  const home = new THREE.Vector3(DRAGON_ROOST.x, 0, DRAGON_ROOST.z);
+  const lvl = Math.min(28, Math.max(18, level || 18));
+  const e = new Enemy(scene, world, 'dragon', lvl, home, { boss: true, bossName: 'Vetharion, the Sky-Tyrant' });
+  e.isDragon = true;
+  return e;
 }
 
 // Spawn a handful of minions around a boss when it enrages.

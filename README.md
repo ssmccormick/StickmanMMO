@@ -168,7 +168,17 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
     swim faster. **Trailblazer** (ride): your mount gallops 25% faster.
   - **Angler's Mastery** (fish): +25 Fishing forever. **Pathfinder** (discover areas):
     +speed and you reveal far more of the map as you travel.
+  - **Boss Slayer** → **Giantslayer** (+25% damage to bosses); **Treasure Hunter** →
+    **Treasure Sense** (chests yield far better loot); **Tycoon** → **Midas** (+50% gold from
+    kills); **Ascendant** (reach Lv 50) → **Veteran**; **Pilgrim** → **Blessed** (shrine
+    blessings last 50% longer); **Performer** → **Showman**.
   Unlocks pop a toast, stack permanently, and persist with your character.
+- **🐉 The end boss — Vetharion, the Sky-Tyrant.** The great dragon that circles high above
+  is the **final challenge at the end of everything**: complete **every other achievement**
+  and it **descends** from its endless orbit to the **Dragon's Roost** in the far north.
+  It's a flying boss with swoops, breath-slams, and a colossal health pool — fell it to begin
+  the **Dragonslayer** chain, whose capstone (10 dragons slain) grants a **rideable Dragon
+  Mount** (summon with **`R`**) and a sky-tyrant's might.
 - **Fog-of-war world map** (**`M`**) — the map now renders the **actual continent**: a
   shaded heightfield with blended biome colours, hill-shading, water depth, snow-capped
   peaks, and roads. Land you haven't visited stays **shrouded in fog** — explore to reveal

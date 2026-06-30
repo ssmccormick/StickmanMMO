@@ -668,3 +668,8 @@ html, body {
 
 /* Detailed world map */
 .wm-canvas { image-rendering: auto; background: #0a0d13; }
+
+/* Capstone (dragon) achievement + locked state */
+.ach-row.capstone { border-color: rgba(255,90,60,0.55); background: linear-gradient(160deg, rgba(255,90,60,0.08), rgba(120,40,30,0.05)); }
+.ach-row.capstone .ach-name { color: #ff8a5a; }
+.ach-locked { font-size: 11px; color: #ffae8a; opacity: 0.85; }

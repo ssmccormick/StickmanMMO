@@ -7,7 +7,7 @@ import { World, areaAt, WATER_LEVEL } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST } from './enemies.js';
 import { Combat } from './combat.js';
 import { UI } from './ui.js';
 import { Audio } from './audio.js';
@@ -40,6 +40,8 @@ let enemies = [];
 let combat = null;
 let started = false;
 let deathHandled = false;
+let dragonAwoken = false;   // has the end-boss dragon descended?
+let lastGold = 0;           // for crediting gold earned to the Tycoon achievement
 let lastHp = 0;
 let restCooldown = 0;
 let currentArea = null;
@@ -118,6 +120,8 @@ function beginGame(classId, name, server, save) {
   if (player.stoneSwordPulled) world.setSwordStonePulled();
 
   lastHp = player.stats.hp;
+  lastGold = player.gold;
+  dragonAwoken = false;
   enemies = spawnEnemies(scene, world);
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
   enemies.push(...spawnBosses(scene, world)); // world bosses
@@ -471,9 +475,11 @@ function animate() {
         const mins = Math.round(s.type.dur / 60);
         ui.showPrompt(`Press <b>E</b> to pray at the <b>${s.type.name}</b><br><span style="opacity:.8">${s.type.desc} for ${mins} min</span>`);
         if (input.just('KeyE')) {
-          player.applyTimedBuff(s.type.buff, s.type.dur, { label: s.type.name, glyph: s.type.glyph, color: '#' + s.type.color.toString(16).padStart(6, '0') });
+          const dur = s.type.dur * (player.passives.has('blessed') ? 1.5 : 1); // Blessed: longer blessings
+          player.applyTimedBuff(s.type.buff, dur, { label: s.type.name, glyph: s.type.glyph, color: '#' + s.type.color.toString(16).padStart(6, '0') });
+          player.counters.shrine = (player.counters.shrine || 0) + 1; // Pilgrim achievement
           s.cooldownUntil = t + 120;
-          ui.log(`Blessed by the ${s.type.name}: ${s.type.desc} for ${mins} minutes.`, 'xp');
+          ui.log(`Blessed by the ${s.type.name}: ${s.type.desc} for ${Math.round(dur / 60)} minutes.`, 'xp');
           ui.floater(`${s.type.glyph} Blessed`, 'heal', player.pos);
           audio.play('rest');
         }
@@ -545,8 +551,26 @@ function animate() {
     // Camera follows the player.
     followCam.update(player.pos, dt);
 
+    // Keep level/gold counters live for their achievements (gold = total earned).
+    if (player.gold > lastGold) player.counters.gold_earned = (player.counters.gold_earned || 0) + (player.gold - lastGold);
+    lastGold = player.gold;
+    player.counters.level = player.stats.level;
+
     // Award any newly-earned achievement tiers (toasts the unlock).
     Achievements.check(player, (ach, idx, tier) => ui.achievementToast(ach, idx, tier));
+
+    // The end of everything: once all other achievements are complete, the
+    // great dragon descends from its endless orbit to be challenged.
+    if (!dragonAwoken && Achievements.endgameReady(player)) {
+      dragonAwoken = true;
+      const dragon = spawnDragon(scene, world, player.stats.level);
+      enemies.push(dragon);
+      if (world.dragon) world.dragon.group.visible = false; // it has landed to fight
+      player.discoverArea && player.discoverArea('Dragon’s Roost');
+      ui.log('The sky darkens. <b>Vetharion, the Sky-Tyrant</b> descends to the far north — your final trial awaits at the Dragon’s Roost!', 'death');
+      ui.showAreaBanner({ name: 'Vetharion Descends', sub: `The Sky-Tyrant roosts at (${DRAGON_ROOST.x}, ${DRAGON_ROOST.z})` });
+      audio.play('level');
+    }
 
     // HUD + minimap + party frames (live HP).
     ui.updateHud(player, network.count);
