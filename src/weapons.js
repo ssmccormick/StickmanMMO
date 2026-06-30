@@ -19,6 +19,10 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
     g.add(m); return m;
   };
 
+  // Local position of each weapon's "business end" — where attacks emanate from
+  // (blade point / mace head / staff orb / bow front). Filled per kind below.
+  let tip = [0, 0.9, 0];
+
   switch (kind) {
     case 'axe': {
       add(new THREE.CylinderGeometry(0.035, 0.04, 0.85, 6), wood, 0, 0.32, 0);
@@ -26,6 +30,7 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
       const head = add(new THREE.BoxGeometry(0.05, 0.3, 0.36), steel, 0, 0.66, 0.13);
       head.geometry.translate(0, 0, 0);
       add(new THREE.BoxGeometry(0.05, 0.3, 0.05), steel, 0, 0.66, -0.05); // back spike
+      tip = [0, 0.7, 0.28];
       break;
     }
     case 'mace': {
@@ -35,12 +40,14 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
         const r = x ? [0, 0, Math.PI / 2] : z ? [Math.PI / 2, 0, 0] : [0, 0, 0];
         add(new THREE.ConeGeometry(0.045, 0.12, 4), steel, x, y, z, r);
       }
+      tip = [0, 0.9, 0];
       break;
     }
     case 'dagger': {
       add(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 6), dark, 0, 0.08, 0);
       add(new THREE.BoxGeometry(0.16, 0.035, 0.05), gold, 0, 0.17, 0);
       add(new THREE.ConeGeometry(0.05, 0.38, 4), steel, 0, 0.38, 0); // short blade
+      tip = [0, 0.57, 0];
       break;
     }
     case 'bow': {
@@ -48,6 +55,7 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
       const limb = add(new THREE.TorusGeometry(0.42, 0.022, 6, 16, Math.PI * 1.05), wood, 0, 0.34, 0, [0, 0, -Math.PI * 0.52]);
       limb.scale.z = 0.6;
       add(new THREE.CylinderGeometry(0.006, 0.006, 0.72, 4), dark, 0.0, 0.34, 0); // string
+      tip = [0, 0.34, 0.12]; // arrow leaves from the front of the bow
       break;
     }
     case 'staff': {
@@ -58,11 +66,13 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
         add(new THREE.CylinderGeometry(0.012, 0.012, 0.18, 4), gold, Math.cos(ang) * 0.07, 1.05, Math.sin(ang) * 0.07, [Math.sin(ang) * 0.6, 0, -Math.cos(ang) * 0.6]);
       }
       add(new THREE.IcosahedronGeometry(0.11, 0), glow, 0, 1.13, 0);
+      tip = [0, 1.2, 0]; // the glowing orb at the head of the staff
       break;
     }
     case 'wand': {
       add(new THREE.CylinderGeometry(0.022, 0.03, 0.5, 6), dark, 0, 0.22, 0);
       add(new THREE.IcosahedronGeometry(0.07, 0), glow, 0, 0.5, 0);
+      tip = [0, 0.56, 0]; // the gem at the wand's tip
       break;
     }
     case 'sword':
@@ -72,9 +82,11 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
       add(new THREE.BoxGeometry(0.24, 0.045, 0.05), gold, 0, 0.2, 0);            // crossguard
       add(new THREE.BoxGeometry(0.075, 0.6, 0.022), steel, 0, 0.52, 0);          // blade
       add(new THREE.ConeGeometry(0.038, 0.12, 4), steel, 0, 0.88, 0);            // tip
+      tip = [0, 0.96, 0];
       break;
     }
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.userData.tip = tip;
   return g;
 }

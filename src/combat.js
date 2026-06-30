@@ -93,6 +93,12 @@ export class Combat {
   _faceCam() { const f = this.cam.forward(); this.player.facing = Math.atan2(f.x, f.z); }
   _face(dir) { this.player.facing = Math.atan2(dir.x, dir.z); }
 
+  // Where attacks emanate from — the held weapon's tip (else the chest).
+  _muzzle() {
+    if (this.player.weaponMuzzle) return this.player.weaponMuzzle();
+    const c = this.player.pos.clone(); c.y += 1.3; return c;
+  }
+
   // The direction offensive skills should travel: toward the locked target
   // (or the enemy nearest the crosshair within `arc`), else where the camera
   // points. Now fully 3D — aiming at a foe tracks its HEIGHT (so flying enemies
@@ -126,7 +132,7 @@ export class Combat {
     if (this.def.ranged) {
       const dir = this._aimDir(this.def.range, 0.8);
       this._face(dir);
-      this.spawnProjectile(p.pos, dir, {
+      this.spawnProjectile(this._muzzle(), dir, {
         speed: 24, mult: 1, color: this.def.projColor || 0xffffff,
         shape: this.def.projGlyph === 'arrow' ? 'arrow' : 'orb', range: this.def.range,
       });
@@ -238,10 +244,11 @@ export class Combat {
     // Aim the volley at the target/enemy under the crosshair (else forward).
     const baseDir = this._aimDir(36, 0.85);
     this._face(baseDir);
+    const muzzle = this._muzzle();
     for (let k = 0; k < count; k++) {
       const t = count === 1 ? 0 : (k / (count - 1) - 0.5);
       const dir = baseDir.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), t * spread);
-      this.spawnProjectile(this.player.pos, dir, {
+      this.spawnProjectile(muzzle, dir, {
         speed: ab.speed, mult: ab.mult, color: ab.color, shape: ab.shape || 'orb',
         range: 32, pierce: ab.pierce, aoe: ab.aoe, holy: ab.holy, stunOnHit: ab.stunOnHit,
       });
@@ -259,7 +266,7 @@ export class Combat {
     const first = this._aimEnemy(ab.range, 1.4) || this._nearest(this.player.pos, ab.range);
     if (!first) { this.ui.log('No target in range', 'sys'); return; }
     const hit = new Set();
-    let cur = first, from = this.player.pos.clone(); from.y += 1.2;
+    let cur = first, from = this._muzzle();
     for (let j = 0; j < ab.jumps && cur; j++) {
       this._strike(cur, this.player.apower * ab.mult * Math.pow(0.85, j), {});
       hit.add(cur.id);
@@ -279,7 +286,7 @@ export class Combat {
     let dealt = 0;
     if (ab.ranged) {
       const e = this._aimEnemy(ab.range, 1.0);
-      if (e) { const r = this._strike(e, this.player.apower * ab.mult, {}); dealt += r; this._boltFx(this.player.pos.clone().setY(this.player.pos.y + 1.2), e.pos.clone().setY(e.pos.y + 1), ab.color); }
+      if (e) { const r = this._strike(e, this.player.apower * ab.mult, {}); dealt += r; this._boltFx(this._muzzle(), e.pos.clone().setY(e.pos.y + 1), ab.color); }
     } else {
       const dir = this.cam.forward();
       for (const e of this._inArc(this.player.pos, dir, ab.range, ab.arc)) {
@@ -579,7 +586,7 @@ export class Combat {
     else if (shape === 'blade') geo = new THREE.BoxGeometry(0.08, 0.5, 0.22);
     else geo = new THREE.SphereGeometry(0.3, 10, 10);
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
-    const start = originPos.clone(); start.y += 1.3;
+    const start = originPos.clone(); // already at the weapon muzzle
     mesh.position.copy(start);
     if (shape === 'arrow') { mesh.rotation.x = Math.PI / 2; mesh.lookAt(start.clone().add(dir)); }
     if (shape === 'orb' || holy) mesh.add(new THREE.PointLight(color, 1.4, 6));

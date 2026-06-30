@@ -38,6 +38,16 @@ export const EMOTES = [
 export const MAP_GRID = 64;
 const MAP_SPAN = 760, MAP_HALF = 380;
 
+// How each weapon kind sits in the hand (local to the right arm). Poles run
+// straight up & down; the wand points forward; blades sit angled, ready.
+const WEAPON_HOLD = {
+  staff:  { pos: [0.04, -1.0, 0], rot: [0, 0, 0] },             // upright quarterstaff
+  bow:    { pos: [0.05, -0.66, 0.06], rot: [0, 0, 0] },          // held vertical
+  wand:   { pos: [0, -0.6, 0.04], rot: [-Math.PI / 2.3, 0, 0] }, // pointed forward
+  dagger: { pos: [0, -0.56, 0], rot: [0, 0, Math.PI / 2.4] },
+  default: { pos: [0, -0.62, 0], rot: [0, 0, Math.PI / 2.5] },   // sword/axe/mace
+};
+
 const GRAVITY = 26;
 const JUMP_VEL = 9.5;
 const WALK_SPEED = 7.0;
@@ -328,8 +338,12 @@ export class Player {
       if (j.weapon) j.weapon.visible = false; // hide the generic stick
       if (kind) {
         const wm = buildWeaponMesh(kind, color);
-        wm.position.set(0, -0.62, 0);
-        wm.rotation.z = Math.PI / 2.5; // mount it in the hand like the old stick
+        // Each weapon kind is held in its own natural pose: poles (staff/bow)
+        // run straight up & down in the grip, the wand points forward like a
+        // focus, and blades sit angled in a ready stance.
+        const h = WEAPON_HOLD[kind] || WEAPON_HOLD.default;
+        wm.position.set(h.pos[0], h.pos[1], h.pos[2]);
+        wm.rotation.set(h.rot[0], h.rot[1], h.rot[2]);
         const tier = 1 + Object.keys(RARITY).indexOf(w.rarity) * 0.06;
         wm.scale.setScalar(tier);
         j.armR.add(wm);
@@ -337,6 +351,17 @@ export class Player {
       }
       this._heldKey = key;
     }
+  }
+
+  // World position of the held weapon's tip — where attacks/projectiles emanate
+  // from. Falls back to the chest if unarmed (or the weapon has no tip tag).
+  weaponMuzzle() {
+    const w = this._heldWeapon;
+    const chest = this.pos.clone(); chest.y += 1.3;
+    if (!w || !w.userData.tip) return chest;
+    w.updateWorldMatrix(true, false);
+    const t = w.userData.tip;
+    return w.localToWorld(new THREE.Vector3(t[0], t[1], t[2]));
   }
 
   // The rank-scaled ability in hotbar slot i (or null).
