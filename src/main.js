@@ -15,6 +15,7 @@ import { Network } from './network.js';
 import { Saves } from './save.js';
 import { starterWeapon, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
 import * as Quests from './quests.js';
+import * as Achievements from './achievements.js';
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -28,6 +29,7 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 
 const ui = new UI();
 const audio = new Audio();
+ui.audio = audio; // lets the UI play a sting on achievement unlocks
 const input = new Input(canvas);
 const followCam = new FollowCamera(camera);
 const world = new World(scene);
@@ -210,6 +212,7 @@ function updateFishing(t) {
       // over a plain fish. You can hook almost anything down there.
       const loot = rollFishingCatch(lvl, player.fishingStat);
       if (player.addItem(loot)) {
+        player.counters.fish = (player.counters.fish || 0) + 1; // Master Angler progress
         const rar = RARITY[loot.rarity];
         if (loot.type === 'consumable') {
           ui.log(`You reel in a <b>${loot.name}</b>! (${loot.rarity}, worth ${loot.value}g)`, 'xp');
@@ -282,7 +285,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen;
 
     // Crosshair shows while mouse-look is active (aiming), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.locked);
@@ -300,13 +303,14 @@ function animate() {
     if (input.just('KeyC')) ui.toggleCharSheet(player);
     if (input.just('KeyM')) ui.toggleWorldMap(player, enemies);
     if (input.just('KeyL')) ui.toggleCodex(player);
+    if (input.just('KeyB')) ui.toggleAchievements(player);
     if (input.just('KeyT')) ui.toggleEmotes(player);
     if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
     if (input.just('KeyQ')) quickHeal();
 
-    // Area banner when entering a new named area.
+    // Area banner when entering a new named area; first visit reveals it on the map.
     const area = areaAt(player.pos.x, player.pos.z);
-    if (area && area !== currentArea) { currentArea = area; ui.showAreaBanner(area); }
+    if (area && area !== currentArea) { currentArea = area; ui.showAreaBanner(area); player.discoverArea(area.name); }
     else if (!area) currentArea = null;
     if (input.just('Enter') && !ui.chatActive) ui.openChat(input);
     if (input.just('KeyH')) ui.toggleHint();
@@ -540,6 +544,9 @@ function animate() {
 
     // Camera follows the player.
     followCam.update(player.pos, dt);
+
+    // Award any newly-earned achievement tiers (toasts the unlock).
+    Achievements.check(player, (ach, idx, tier) => ui.achievementToast(ach, idx, tier));
 
     // HUD + minimap + party frames (live HP).
     ui.updateHud(player, network.count);

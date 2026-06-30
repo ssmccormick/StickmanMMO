@@ -7,9 +7,11 @@ import { CLASSES, CLASS_ORDER } from './classes.js';
 import { Saves } from './save.js';
 import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import * as Quests from './quests.js';
-import { TOWNS, AREAS } from './world.js';
+import { TOWNS, AREAS, MOUNTAINS, WATER_LEVEL, heightAt, biomeColorAt } from './world.js';
+import { MAP_GRID } from './player.js';
 import { CODEX, PROLOGUE, WORLD_NAME, ashboundEntry, TOWN_CHATTER } from './lore.js';
 import { EMOTES } from './player.js';
+import * as Achievements from './achievements.js';
 
 const LORE_LINES = TOWN_CHATTER;
 
@@ -1329,6 +1331,7 @@ export class UI {
             <div><span class="lg" style="background:#cc8844"></span> Elite camp</div>
             <div><span class="lg" style="background:#5aa9ff"></span> Area</div>
             <div><span class="lg" style="background:#7be38a"></span> You</div>
+            <div><span class="lg" style="background:#0a0d13;border:1px solid #333"></span> Unexplored (fog)</div>
             <div class="wm-hint"></div>
           </div>
         </div>
@@ -1350,44 +1353,104 @@ export class UI {
   closeWorldMap() { this.worldMapOpen = false; if (this.wmOverlay) this.wmOverlay.classList.add('hidden'); }
 
   _wmScale() { const S = 600, span = 760; return { S, k: (v) => (v + 380) / span * S }; }
+
+  // Build (once) a shaded terrain image of the whole continent by sampling the
+  // heightfield + blended biome colours, with hill-shading, water, and snow
+  // caps. Cached — it's static, so only the fog overlay changes per render.
+  _buildWmTerrain() {
+    if (this._wmTerrain) return this._wmTerrain;
+    const TS = 256, span = 760, half = 380;
+    const cv = document.createElement('canvas'); cv.width = TS; cv.height = TS;
+    const cx = cv.getContext('2d');
+    const img = cx.createImageData(TS, TS); const d = img.data;
+    const W = WATER_LEVEL;
+    for (let py = 0; py < TS; py++) {
+      const wz = py / TS * span - half;
+      for (let px = 0; px < TS; px++) {
+        const wx = px / TS * span - half;
+        const h = heightAt(wx, wz);
+        let r, g, b;
+        if (h < W) {
+          const t = Math.max(0, Math.min(1, (W - h) / 16)); // deeper = darker
+          r = 36 * (1 - t) + 8 * t; g = 104 * (1 - t) + 34 * t; b = 150 * (1 - t) + 86 * t;
+        } else {
+          const col = biomeColorAt(wx, wz, h); // shared THREE.Color (read immediately)
+          // Hill-shade from the local slope toward the NW "sun".
+          const slope = (heightAt(wx + 3, wz) - heightAt(wx - 3, wz)) + (heightAt(wx, wz + 3) - heightAt(wx, wz - 3));
+          const shade = Math.max(0.6, Math.min(1.4, 1 - slope * 0.04 + h * 0.006));
+          r = Math.min(255, col.r * 255 * shade); g = Math.min(255, col.g * 255 * shade); b = Math.min(255, col.b * 255 * shade);
+        }
+        const i = (py * TS + px) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;
+      }
+    }
+    cx.putImageData(img, 0, 0);
+    // Snow caps on the big mountains.
+    for (const m of MOUNTAINS) {
+      const mx = (m.x + half) / span * TS, mz = (m.z + half) / span * TS, mr = m.r / span * TS;
+      const grad = cx.createRadialGradient(mx, mz, 0, mx, mz, mr);
+      grad.addColorStop(0, 'rgba(255,255,255,0.9)'); grad.addColorStop(0.6, 'rgba(230,238,250,0.5)'); grad.addColorStop(1, 'rgba(200,210,230,0)');
+      cx.fillStyle = grad; cx.beginPath(); cx.arc(mx, mz, mr, 0, 7); cx.fill();
+    }
+    this._wmTerrain = cv; return cv;
+  }
+  _wmExplored(player, x, z) {
+    const gx = Math.floor((x + 380) / 760 * MAP_GRID), gz = Math.floor((z + 380) / 760 * MAP_GRID);
+    return player.explored.has(gz * MAP_GRID + gx);
+  }
   renderWorldMap() {
     const w = this._world, player = this._wmPlayer, enemies = this._wmEnemies || [];
     if (!w) return;
     const ctx = this.wmCanvas.getContext('2d');
     const { S, k } = this._wmScale();
-    ctx.fillStyle = '#10141c'; ctx.fillRect(0, 0, S, S);
 
-    // Roads (Nexus → towns).
-    ctx.strokeStyle = 'rgba(180,150,110,0.5)'; ctx.lineWidth = 3;
+    // Fog of war: start dark, then paint in only the explored cells of the
+    // cached terrain image. Undiscovered land stays shrouded.
+    ctx.fillStyle = '#0a0d13'; ctx.fillRect(0, 0, S, S);
+    const terr = this._buildWmTerrain();
+    const TS = terr.width, GRID = MAP_GRID;
+    const cellS = S / GRID, cellT = TS / GRID;
+    ctx.imageSmoothingEnabled = true;
+    for (const idx of player.explored) {
+      const gx = idx % GRID, gz = Math.floor(idx / GRID);
+      ctx.drawImage(terr, gx * cellT, gz * cellT, cellT, cellT, gx * cellS, gz * cellS, cellS + 1, cellS + 1);
+    }
+    // Soft vignette where fog meets the revealed land.
+    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1;
+
+    // Roads (Nexus → towns) — faint, drawn over the revealed terrain.
+    ctx.strokeStyle = 'rgba(60,46,30,0.55)'; ctx.lineWidth = 3;
     for (const t of TOWNS) { if (t.nexus) continue; ctx.beginPath(); ctx.moveTo(k(0), k(0)); ctx.lineTo(k(t.x), k(t.z)); ctx.stroke(); }
 
-    // Areas.
+    // Areas — ONLY those the player has discovered.
     for (const a of AREAS) {
-      if (a.safe) continue;
-      ctx.fillStyle = 'rgba(90,169,255,0.08)'; ctx.strokeStyle = 'rgba(90,169,255,0.35)'; ctx.lineWidth = 1;
+      if (a.safe || !player.discoveredAreas.has(a.name)) continue;
+      ctx.fillStyle = 'rgba(90,169,255,0.10)'; ctx.strokeStyle = 'rgba(120,190,255,0.5)'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.arc(k(a.x), k(a.z), a.r / 760 * S, 0, 7); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = '#9bd0ff'; ctx.font = '10px Trebuchet MS'; ctx.textAlign = 'center';
+      ctx.fillStyle = '#cfe7ff'; ctx.font = 'bold 10px Trebuchet MS'; ctx.textAlign = 'center';
       ctx.fillText(`${a.name} (Lv${a.level})`, k(a.x), k(a.z) - a.r / 760 * S - 3);
     }
-    // Camps.
+    // Camps & bosses — only where you've explored.
     ctx.fillStyle = '#cc8844';
-    for (const c of w.camps) { ctx.beginPath(); ctx.arc(k(c.pos.x), k(c.pos.z), 4, 0, 7); ctx.fill(); }
-    // Bosses (alive).
+    for (const c of w.camps) { if (!this._wmExplored(player, c.pos.x, c.pos.z)) continue; ctx.beginPath(); ctx.arc(k(c.pos.x), k(c.pos.z), 4, 0, 7); ctx.fill(); }
     ctx.font = 'bold 11px Trebuchet MS';
     for (const e of enemies) {
-      if (!e.boss || !e.alive) continue;
+      if (!e.boss || !e.alive || !this._wmExplored(player, e.pos.x, e.pos.z)) continue;
       ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(k(e.pos.x), k(e.pos.z), 5, 0, 7); ctx.fill();
       ctx.fillStyle = '#ffb0b0'; ctx.textAlign = 'center'; ctx.fillText('☠ ' + e.bossName, k(e.pos.x), k(e.pos.z) - 8);
     }
-    // Bonfires.
+    // Bonfires — discovered ones are travel points; others stay hidden in fog.
     this._wmBonfires = w.bonfires.map((b) => ({ b, cx: k(b.pos.x), cy: k(b.pos.z), found: player.discovered.includes(b.name) }));
     for (const m of this._wmBonfires) {
-      ctx.fillStyle = m.found ? '#ff8a2a' : 'rgba(150,120,90,0.5)';
+      if (!m.found && !this._wmExplored(player, m.b.pos.x, m.b.pos.z)) continue;
+      ctx.fillStyle = m.found ? '#ff8a2a' : 'rgba(150,120,90,0.6)';
       ctx.beginPath(); ctx.arc(m.cx, m.cy, 5, 0, 7); ctx.fill();
+      if (m.found) { ctx.strokeStyle = '#ffd0a0'; ctx.lineWidth = 1; ctx.stroke(); }
     }
-    // Towns.
+    // Towns — major landmarks; shown once their ground has been explored.
     for (const t of TOWNS) {
+      if (!t.nexus && !this._wmExplored(player, t.x, t.z)) continue;
       ctx.fillStyle = '#d8b24a'; ctx.fillRect(k(t.x) - 4, k(t.z) - 4, 8, 8);
+      ctx.strokeStyle = '#3a2c14'; ctx.lineWidth = 1; ctx.strokeRect(k(t.x) - 4, k(t.z) - 4, 8, 8);
       ctx.fillStyle = '#ffe9a8'; ctx.font = 'bold 11px Trebuchet MS'; ctx.textAlign = 'center';
       ctx.fillText(t.name, k(t.x), k(t.z) + 16);
     }
@@ -1411,6 +1474,72 @@ export class UI {
       if (d < bd) { bd = d; best = m; }
     }
     if (best && this.onFastTravel) { this.onFastTravel(best.b); this.closeWorldMap(); }
+  }
+
+  // ---- Achievements ----
+  _ensureAchievements() {
+    if (this.achOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel skills-panel"><div class="inv-header"><span>🏆 Achievements</span><button class="inv-close">✕</button></div><div class="skills-body ach-body"></div></div>`;
+    document.body.appendChild(ov);
+    this.achOverlay = ov;
+    this.achBody = ov.querySelector('.ach-body');
+    ov.querySelector('.inv-close').onclick = () => this.closeAchievements();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeAchievements(); });
+  }
+  toggleAchievements(player) {
+    this._ensureAchievements();
+    this._achPlayer = player;
+    if (this.achievementsOpen) this.closeAchievements();
+    else { this.achievementsOpen = true; this.achOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this.renderAchievements(player); }
+  }
+  closeAchievements() { this.achievementsOpen = false; if (this.achOverlay) this.achOverlay.classList.add('hidden'); }
+  renderAchievements(player) {
+    const fmtNum = (n) => n >= 1000 ? (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'k' : Math.floor(n);
+    const rows = Achievements.ACHIEVEMENTS.map((a) => {
+      const pr = Achievements.progress(player, a);
+      const nodes = a.tiers.map((tier, i) => {
+        const got = i < pr.claimed;
+        const unique = Achievements.isUnique(tier);
+        const cls = `ach-node${got ? ' got' : ''}${unique ? ' unique' : ''}`;
+        return `<div class="${cls}" title="${Achievements.rewardLabel(tier.reward)}">
+            <div class="ach-tier">${got ? '✓' : fmtNum(tier.count)}</div>
+            <div class="ach-rew">${Achievements.rewardLabel(tier.reward)}</div>
+          </div>`;
+      }).join('<div class="ach-link"></div>');
+      const bar = pr.done
+        ? `<span class="ach-complete">COMPLETE</span>`
+        : `<div class="ach-bar"><div class="ach-fill" style="width:${Math.round(pr.frac * 100)}%"></div></div>
+           <span class="ach-count">${fmtNum(pr.val)} / ${fmtNum(pr.next.count)} ${a.noun}</span>`;
+      return `<div class="ach-row">
+          <div class="ach-head"><span class="ach-glyph">${a.glyph}</span>
+            <span class="ach-name">${a.name}</span><span class="ach-cat">${a.cat}</span></div>
+          ${bar}
+          <div class="ach-track">${nodes}</div>
+        </div>`;
+    }).join('');
+    this.achBody.innerHTML = `<div class="ach-intro">Earn lifetime milestones for everything you do. Each chain ends in a <b>unique reward</b>.</div>${rows}`;
+  }
+  // A toast when a tier is earned (mid-tier = stat boost, final = unique).
+  achievementToast(ach, idx, tier) {
+    if (!this._toastWrap) {
+      this._toastWrap = document.createElement('div');
+      this._toastWrap.className = 'ach-toasts';
+      this.el.hud.appendChild(this._toastWrap);
+    }
+    const unique = Achievements.isUnique(tier);
+    const t = document.createElement('div');
+    t.className = 'ach-toast' + (unique ? ' unique' : '');
+    t.innerHTML = `<div class="at-glyph">${ach.glyph}</div><div class="at-text">
+        <div class="at-title">${unique ? 'UNIQUE REWARD!' : 'Achievement!'} ${ach.name}</div>
+        <div class="at-rew">${Achievements.rewardLabel(tier.reward)}</div></div>`;
+    this._toastWrap.appendChild(t);
+    this.log(`🏆 ${ach.name} — ${Achievements.rewardLabel(tier.reward)}`, 'xp');
+    if (this.audio) this.audio.play('level');
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 500); }, 4200);
+    // Keep the panel fresh if it's open.
+    if (this.achievementsOpen && this._achPlayer) this.renderAchievements(this._achPlayer);
   }
 
   // ---- Chat ----

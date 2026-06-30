@@ -470,6 +470,7 @@ export class Combat {
       this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
       // Quest progress for kills (and boss-slaying).
       Quests.onKill(this.player, enemy.typeId);
+      if (this.player.recordKill) this.player.recordKill(enemy.typeId);
       if (enemy.boss) Quests.onBossKill(this.player, enemy.bossName);
       if (this.onKillEvent) this.onKillEvent(enemy);
       if (this.onPartyXp) this.onPartyXp(res.xp);

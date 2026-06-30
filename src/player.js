@@ -13,6 +13,7 @@ import {
 } from './classes.js';
 import { heightAt, WATER_LEVEL } from './world.js';
 import { sumStats, SLOTS, RARITY, SETS } from './items.js';
+import * as Achievements from './achievements.js';
 
 function emptyGear() {
   const g = {};
@@ -31,6 +32,11 @@ export const EMOTES = [
   { id: 'cry', name: 'Cry', glyph: '😢' },
   { id: 'sit', name: 'Sit', glyph: '🪑' },
 ];
+
+// Map fog-of-war grid: the world (-380..380, span 760) is divided into a
+// MAP_GRID × MAP_GRID lattice; cells the player has stood near are "explored".
+export const MAP_GRID = 64;
+const MAP_SPAN = 760, MAP_HALF = 380;
 
 const GRAVITY = 26;
 const JUMP_VEL = 9.5;
@@ -98,6 +104,15 @@ export class Player {
     this.ssjLevel = 0;   // 0 = base, 1..3 = SSJ tiers
     this.ssjUntil = 0;   // clock time the current form fades
     this.casting = false; // true while charging a cast-time spell (slows movement)
+
+    // ---- Achievements: lifetime counters, claimed tiers, derived rewards ----
+    this.counters = {};        // walk/ride/climb/swim/fish/discover/kill_* totals
+    this.achievements = {};    // achievement id -> tiers claimed
+    this.achBonus = {};        // permanent stat bonuses earned (summed into gear bonus)
+    this.passives = new Set(); // unlocked behaviour flags (windwalker, amphibious…)
+    this.discoveredAreas = new Set(); // named areas seen (for the map + Cartographer)
+    this.explored = new Set(); // explored map cells (z*MAP_GRID + x)
+    this.mountSkin = 'horse';
     this._buildSsjFx();
 
     this.recomputeGear();
@@ -194,6 +209,8 @@ export class Player {
       }
       this.activeSets.push({ id: sid, name: set.name, color: set.color, count: c, tiers });
     }
+    // Permanent achievement rewards stack on top of gear/set bonuses.
+    if (this.achBonus) for (const k in this.achBonus) this.bonus[k] = (this.bonus[k] || 0) + this.achBonus[k];
     // Re-clamp current pools to the new effective maxima.
     this.stats.hp = Math.min(this.stats.hp, this.effMaxHp);
     this.stats.mp = Math.min(this.stats.mp, this.effMaxMp);
@@ -331,6 +348,9 @@ export class Player {
     this._clock += dt;
     if (!this.alive) { animateStickman(this.mesh, dt, { dead: true }); return; }
 
+    // Remember where we started so we can credit distance to the right counter.
+    const sx = this.pos.x, sy = this.pos.y, sz = this.pos.z;
+
     const axis = input.moveAxis();
     const fwd = cam.forward(), right = cam.right();
     const move = new THREE.Vector3().addScaledVector(fwd, axis.z).addScaledVector(right, axis.x);
@@ -350,8 +370,8 @@ export class Player {
     } else {
       let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
-      if (this.mounted) speed *= 2.6; // gallop
-      if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt; }
+      if (this.mounted) speed *= 2.6 * (this.passives.has('trailblazer') ? 1.25 : 1); // gallop
+      if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1); }
       if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
 
       this.vel.x = move.x * speed;
@@ -381,6 +401,47 @@ export class Player {
 
     this._applyTransform(dt);
     this._regen(dt, sprinting);
+    this._trackDistance(sx, sy, sz);
+    this._markExplored();
+  }
+
+  // Credit distance travelled this frame to the matching achievement counter.
+  _trackDistance(sx, sy, sz) {
+    const dxz = Math.hypot(this.pos.x - sx, this.pos.z - sz);
+    const dy = Math.abs(this.pos.y - sy);
+    if (dxz < 1e-4 && dy < 1e-4) return;
+    if (dxz > 30) return; // ignore teleports (fast-travel, Instant Step)
+    const c = this.counters;
+    if (this.state === 'climb') c.climb = (c.climb || 0) + dxz + dy;
+    else if (this.state === 'swim') c.swim = (c.swim || 0) + dxz + dy * 0.5;
+    else if (this.mounted) c.ride = (c.ride || 0) + dxz;
+    else c.walk = (c.walk || 0) + dxz;
+  }
+
+  // Reveal the fog-of-war cells around the player (wider with Pathfinder).
+  _markExplored() {
+    const gx = Math.floor((this.pos.x + MAP_HALF) / MAP_SPAN * MAP_GRID);
+    const gz = Math.floor((this.pos.z + MAP_HALF) / MAP_SPAN * MAP_GRID);
+    const R = this.passives.has('pathfinder') ? 4 : 2;
+    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+      if (dx * dx + dz * dz > R * R + 1) continue;
+      const x = gx + dx, z = gz + dz;
+      if (x < 0 || x >= MAP_GRID || z < 0 || z >= MAP_GRID) continue;
+      this.explored.add(z * MAP_GRID + x);
+    }
+  }
+
+  // Record a kill for achievements (per-type + total).
+  recordKill(typeId) {
+    this.counters.kill_total = (this.counters.kill_total || 0) + 1;
+    if (typeId) this.counters['kill_' + typeId] = (this.counters['kill_' + typeId] || 0) + 1;
+  }
+  // Note a newly-entered named area (for the map + Cartographer).
+  discoverArea(name) {
+    if (!name || this.discoveredAreas.has(name)) return false;
+    this.discoveredAreas.add(name);
+    this.counters.discover = (this.counters.discover || 0) + 1;
+    return true;
   }
 
   _startClimb(collider, move) {
@@ -397,7 +458,7 @@ export class Player {
 
   _updateClimb(dt, input, move, moving) {
     const c = this.climbCollider;
-    this.stats.sp -= 9 * dt;
+    if (!this.passives.has('spiderclimb')) this.stats.sp -= 9 * dt; // Spider-Climb: free climbing
     if (this.stats.sp <= 0) { this.stats.sp = 0; this._dropClimb(); return; }
 
     if (input.just('Space')) {
@@ -464,6 +525,34 @@ export class Player {
     g.userData.legs = legs; g.userData.phase = 0;
     return g;
   }
+  // A bouncy slime steed (the Slime Slayer achievement reward).
+  _buildSlimeSteed() {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12),
+      new THREE.MeshLambertMaterial({ color: 0x5fd35f, transparent: true, opacity: 0.85 }));
+    body.scale.y = 0.72; body.position.y = 0.66;
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x10240f });
+    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), eyeMat); e1.position.set(0.26, 0.85, 0.7);
+    const e2 = e1.clone(); e2.position.x = -0.26;
+    // A little nucleus so it reads as a slime.
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10),
+      new THREE.MeshBasicMaterial({ color: 0x9bef9b, transparent: true, opacity: 0.5 }));
+    core.position.y = 0.55;
+    g.add(body, core, e1, e2);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = []; g.userData.phase = 0; g.userData.slime = true; g.userData.body = body;
+    return g;
+  }
+  // Swap the steed model (e.g. to the unlocked Slime Mount).
+  setMountSkin(skin) {
+    if (this.mountSkin === skin && this.steed) return;
+    this.mountSkin = skin;
+    const wasMounted = this.mounted;
+    if (this.steed) this.scene.remove(this.steed);
+    this.steed = skin === 'slime' ? this._buildSlimeSteed() : this._buildSteed();
+    this.steed.visible = wasMounted;
+    this.scene.add(this.steed);
+  }
   canMount() { return this.alive && (this.state === 'ground' || this.state === 'air'); }
   toggleMount() {
     if (this.mounted) { this.dismount(); return false; }
@@ -477,7 +566,8 @@ export class Player {
   _updateSwim(dt, input, move, moving) {
     this.state = 'swim';
     if (this.mounted) this.dismount(); // can't ride in deep water
-    const SWIM = 5.5;
+    const amphibious = this.passives.has('amphibious');
+    const SWIM = amphibious ? 8.0 : 5.5; // Amphibious: faster swimming
     this.vel.x = move.x * SWIM;
     this.vel.z = move.z * SWIM;
     const up = input.down('Space');
@@ -502,9 +592,9 @@ export class Player {
     this.moveDir = moving ? move.clone() : null;
     this._speed01 = moving ? 0.7 : 0;
 
-    // Air / drowning.
+    // Air / drowning. Amphibious never runs out of breath.
     const headUnder = this.pos.y < WATER_LEVEL - 0.6;
-    if (headUnder) {
+    if (headUnder && !amphibious) {
       this.air -= dt;
       if (this.air <= 0) {
         this.air = 0; this._drownAcc += dt;
@@ -546,6 +636,13 @@ export class Player {
       const sd = this.steed.userData;
       sd.phase += dt * (4 + this._speed01 * 14);
       sd.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(sd.phase + (i % 2) * Math.PI) * 0.5 * (0.3 + this._speed01); });
+      if (sd.slime) {
+        // Squash-and-stretch hop instead of a trot.
+        const b = Math.abs(Math.sin(sd.phase)) * (0.12 + this._speed01 * 0.2);
+        sd.body.scale.set(1 + b * 0.5, 0.72 - b, 1 + b * 0.5);
+        this.steed.position.y += b * 0.4;
+        this.mesh.position.y += b * 0.4;
+      }
     }
   }
 
@@ -622,6 +719,11 @@ export class Player {
       questLog: this.questLog,
       discovered: this.discovered,
       stoneSword: this.stoneSwordPulled,
+      counters: this.counters,
+      achievements: this.achievements,
+      discoveredAreas: [...this.discoveredAreas],
+      explored: [...this.explored],
+      mountSkin: this.mountSkin,
     };
   }
 
@@ -648,7 +750,12 @@ export class Player {
     if (save.questLog && typeof save.questLog === 'object') this.questLog = save.questLog;
     if (Array.isArray(save.discovered)) this.discovered = save.discovered;
     this.stoneSwordPulled = !!save.stoneSword;
-    this.recomputeGear();
+    // Achievements: restore counters & claimed tiers, then re-derive rewards.
+    if (save.counters && typeof save.counters === 'object') this.counters = { ...save.counters };
+    if (save.achievements && typeof save.achievements === 'object') this.achievements = { ...save.achievements };
+    if (Array.isArray(save.discoveredAreas)) this.discoveredAreas = new Set(save.discoveredAreas);
+    if (Array.isArray(save.explored)) this.explored = new Set(save.explored);
+    Achievements.reapply(this); // rebuilds achBonus/passives, recomputes gear, restores mount skin
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;
   }

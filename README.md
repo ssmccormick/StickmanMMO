@@ -53,6 +53,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **M** | World map (click a discovered bonfire to fast-travel) |
 | **J** | Quest log |
 | **L** | Codex / lore-board |
+| **B** | Achievements |
 | **T** | Emote wheel (wave, dance, cheer, flex…) |
 | **E** (near water) | Cast a line and fish |
 | **Q** | Quaff a health potion |
@@ -156,6 +157,22 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
     **`C`** character sheet.
 - **Emotes** — press **`T`** for an emote wheel (wave, dance, cheer, flex, laugh, bow, cry,
   sit). Your stickman acts it out and a little bubble pops above your head.
+- **Achievements** (**`B`**) — long-horizon milestone trees for everything you do: slaying
+  slimes, total kills, walking, riding, climbing, swimming, fishing, and discovering areas.
+  Each chain has four tiers — the first three grant **small permanent stat boosts**, and the
+  **final node is a unique passive or ability**, e.g.:
+  - **Slime Slayer** (100 → 250 → 500 → 1000 slimes): +Move Speed ×2, +Max HP, then a
+    bouncy **🟢 Slime Mount** you can summon with **`R`**.
+  - **Windwalker** (walk far enough): +12% speed and sprinting barely costs stamina.
+  - **Spider-Climb** (climb): walls cost no stamina. **Amphibious** (swim): never drown &
+    swim faster. **Trailblazer** (ride): your mount gallops 25% faster.
+  - **Angler's Mastery** (fish): +25 Fishing forever. **Pathfinder** (discover areas):
+    +speed and you reveal far more of the map as you travel.
+  Unlocks pop a toast, stack permanently, and persist with your character.
+- **Fog-of-war world map** (**`M`**) — the map now renders the **actual continent**: a
+  shaded heightfield with blended biome colours, hill-shading, water depth, snow-capped
+  peaks, and roads. Land you haven't visited stays **shrouded in fog** — explore to reveal
+  it — and **area names, camps, bosses, and bonfires only appear once you've found them**.
 - **Hidden treasure & shrines** — **30 treasure chests** are tucked off the roads across
   the wild (loot scales with how far out they sit), and **buff shrines** in each region
   grant a long blessing (30–60 min) — Might (+25% dmg), Swiftness (+20% speed), Titan (+14
