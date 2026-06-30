@@ -54,19 +54,36 @@ export class FollowCamera {
     this.target.lerp(new THREE.Vector3(targetPos.x, targetPos.y + 1.6, targetPos.z), Math.min(1, dt * 12));
 
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
-    const offset = new THREE.Vector3(
-      Math.sin(this.yaw) * cp,
-      sp,
-      Math.cos(this.yaw) * cp
-    ).multiplyScalar(this.dist);
+    // Unit vector from the focus out to the camera: behind by yaw, raised or
+    // (when looking up) LOWERED by pitch.
+    const back = new THREE.Vector3(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
 
-    this._pos.copy(this.target).add(offset);
-
-    // Keep the camera above the terrain.
-    const ground = heightAt(this._pos.x, this._pos.z) + 1.2;
-    if (this._pos.y < ground) this._pos.y = ground;
+    // Place the camera `dist` behind the focus, then — if that would clip into
+    // the ground (which happens when you look up and the camera dips low) — pull
+    // it IN toward the player along the same ray until it clears the terrain.
+    // Sliding inward keeps the view DIRECTION (so it stays tilted skyward) and
+    // brings the camera toward the player, instead of shoving it straight up and
+    // flattening the view.
+    const clear = 0.9;
+    const lo = this.minDist * 0.4;
+    let dist = this.dist;
+    let pos = this.target.clone().addScaledVector(back, dist);
+    let g = heightAt(pos.x, pos.z) + clear;
+    let guard = 12;
+    while (pos.y < g && dist > lo && guard-- > 0) {
+      dist = Math.max(lo, dist - this.dist * 0.1);
+      pos = this.target.clone().addScaledVector(back, dist);
+      g = heightAt(pos.x, pos.z) + clear;
+    }
+    if (pos.y < g) pos.y = g; // still buried (steep terrain) — ride just above it
+    this._pos.copy(pos);
 
     this.cam.position.lerp(this._pos, Math.min(1, dt * 14));
-    this.cam.lookAt(this.target);
+    // Look along the orbit's view direction (-back) rather than straight at the
+    // player. On the ideal ray this is identical to looking at the focus, but if
+    // terrain pushed the camera off the ray it still aims where the pitch points
+    // (up at the sky when you look up) instead of flattening back onto the player.
+    const viewDir = back.clone().multiplyScalar(-1);
+    this.cam.lookAt(this.cam.position.clone().add(viewDir));
   }
 }
