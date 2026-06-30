@@ -215,6 +215,8 @@ export class Player {
   get gearArmor() { return this.bonus.armor || 0; }
   get gearSpeed() { return (this.bonus.speed || 0) + (this._tm('speedMult') - 1); }
   get gearLifesteal() { return this.bonus.lifesteal || 0; }
+  // Fishing power from gear + set bonuses: better fish tiers & loot when fishing.
+  get fishingStat() { return this.bonus.fishing || 0; }
 
   get apower() {
     const effStats = { ...this.stats, str: this.effStr, dex: this.effDex, int: this.effInt };

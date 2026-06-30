@@ -142,6 +142,18 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
   window to reel in your catch. Fish range from a humble **Minnow** up to a **Leviathan Fry**
   — better/farther water yields rarer fish — and they're **edible** (a small heal) or
   **sellable**. (Quaffing with **`Q`** prefers real potions, so it never eats your catch.)
+- **You can fish up *anything*.** The line doesn't just pull fish — it can surface real **gear
+  and treasure**, up to legendaries and named uniques. A new **🎣 Fishing** stat (rolls on
+  ordinary gear, and granted in bulk by fishing sets) raises the odds of reeling **loot over
+  fish**, **higher-tier fish**, and **better-quality gear** — invest in it and the deep pays
+  out. Some rewards are **fishing-exclusive** and can be found *no other way*:
+  - **Fishing uniques** — *Stormhook, the Tide-Render* (rod), *Pearl of the Abyss*, *Crown of
+    Coral*, *Scales of the Leviathan*, and more, each loaded with the Fishing stat.
+  - **Tidecaller's Regalia** — a rare fishing-**only** set with a powerful combat package
+    (INT/damage/lifesteal) *and* heavy Fishing, dredged up a piece at a time.
+  - **Angler's Garb** — the dedicated fishing set (found anywhere or fished up); its 2/4-piece
+    bonuses are pure fishing power (plus stamina/speed/health). Check your Fishing total on the
+    **`C`** character sheet.
 - **Emotes** — press **`T`** for an emote wheel (wave, dance, cheer, flex, laugh, bow, cry,
   sit). Your stickman acts it out and a little bubble pops above your head.
 - **Hidden treasure & shrines** — **30 treasure chests** are tucked off the roads across

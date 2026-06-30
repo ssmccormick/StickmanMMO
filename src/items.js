@@ -19,13 +19,21 @@ export const RARITY = {
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
 // Gear sets — wearing multiple pieces grants escalating bonuses.
+//   `angler` is the fishing set: its bonuses are pure fishing utility, and its
+//   pieces can be found anywhere (and reeled up while fishing).
+//   `tidecaller` is fishing-ONLY: its pieces drop solely from fishing, rarely,
+//   and reward a strong combat package on top of fishing power.
 export const SETS = {
   warden:    { name: "Warden's Vigil",   color: '#7be38a', bonuses: { 2: { armor: 25, maxHp: 60 }, 4: { armor: 60, maxHp: 170, lifesteal: 0.06 } } },
   nightstalker: { name: 'Nightstalker',  color: '#9be0ff', bonuses: { 2: { crit: 0.06, speed: 0.06 }, 4: { crit: 0.15, dex: 16 } } },
   archmage:  { name: 'Archmage Regalia', color: '#c07bff', bonuses: { 2: { int: 12, maxMp: 80 }, 4: { int: 32, damage: 34 } } },
   bloodrage: { name: 'Bloodrage Plate',  color: '#ff7b6a', bonuses: { 2: { str: 12, damage: 18 }, 4: { str: 30, lifesteal: 0.08, speed: 0.05 } } },
+  angler:    { name: "Angler's Garb",    color: '#4fc3e8', fishing: true, bonuses: { 2: { fishing: 10, maxSp: 45 }, 4: { fishing: 26, speed: 0.08, maxHp: 90 } } },
+  tidecaller:{ name: "Tidecaller's Regalia", color: '#2ec5b6', fishingOnly: true, bonuses: { 2: { fishing: 12, int: 16, maxMp: 90 }, 4: { fishing: 30, int: 38, damage: 42, lifesteal: 0.08 } } },
 };
-const SET_KEYS = Object.keys(SETS);
+// Sets that ordinary drops may roll. Fishing-only sets are excluded — they are
+// reeled up by `rollFishingCatch` and never appear on a slain enemy's loot.
+const SET_KEYS = Object.keys(SETS).filter((k) => !SETS[k].fishingOnly);
 
 // Base templates. Weapons carry a `damage` budget + a stat affinity;
 // armor carries `armor`; accessories are pure stat lines.
@@ -54,7 +62,7 @@ const PREFIX = {
   epic: ['Resplendent', 'Dread', 'Ascendant'],
   legendary: ['Godforged', 'Eternal', 'Mythic'],
 };
-const SUFFIX = { str: 'the Bear', dex: 'the Fox', int: 'the Owl', maxHp: 'the Titan', crit: 'Ruin', maxMp: 'the Sage', maxSp: 'the Wind', armor: 'the Mountain', speed: 'Swiftness', damage: 'Wrath' };
+const SUFFIX = { str: 'the Bear', dex: 'the Fox', int: 'the Owl', maxHp: 'the Titan', crit: 'Ruin', maxMp: 'the Sage', maxSp: 'the Wind', armor: 'the Mountain', speed: 'Swiftness', damage: 'Wrath', fishing: 'the Angler' };
 
 // Named legendary uniques — each rolls as a normal legendary for its slot,
 // then gets a fixed name/glyph/flavour plus a signature bonus (e.g. lifesteal).
@@ -65,6 +73,18 @@ const UNIQUES = [
   { slot: 'ring',   name: 'Bloodthirster Band',  glyph: '💍', bonus: { lifesteal: 0.10, crit: 0.05 }, flavor: 'Hunger, given a circle to wear.' },
   { slot: 'amulet', name: 'Heart of the Phoenix', glyph: '🔥', bonus: { lifesteal: 0.06, maxHp: 70 },  flavor: 'Warmth that will not die.' },
   { slot: 'chest',  name: 'Aegis of the Colossus', glyph: '🛡️', bonus: { armor: 45, maxHp: 90 },        flavor: 'Unbroken for a thousand years.' },
+];
+
+// Fishing-EXCLUSIVE uniques — these can ONLY be reeled up while fishing; they
+// never drop from enemies, chests, or vendors. Each carries a chunk of the
+// `fishing` stat alongside a strong combat package.
+const FISHING_UNIQUES = [
+  { slot: 'weapon', base: 'staff',  name: 'Stormhook, the Tide-Render', glyph: '🎣', bonus: { fishing: 20, int: 12, lifesteal: 0.06 }, flavor: 'Hooked from a storm that never ended.' },
+  { slot: 'amulet', name: 'Pearl of the Abyss',     glyph: '🦪', bonus: { fishing: 16, maxMp: 95, crit: 0.08 },  flavor: 'A glow that remembers the deep.' },
+  { slot: 'ring',   name: "Siren's Coil",           glyph: '💍', bonus: { fishing: 14, dex: 14, speed: 0.06 },   flavor: 'It sings only underwater.' },
+  { slot: 'head',   name: 'Crown of Coral',         glyph: '👑', bonus: { fishing: 18, armor: 42, maxHp: 95 },   flavor: 'Grown, not forged.' },
+  { slot: 'chest',  name: 'Scales of the Leviathan', glyph: '🐲', bonus: { fishing: 16, armor: 72, maxHp: 210, lifesteal: 0.07 }, flavor: 'Shed by something vast and patient.' },
+  { slot: 'feet',   name: 'Treads of the Drowned',  glyph: '🥾', bonus: { fishing: 15, speed: 0.1, maxHp: 70 },  flavor: 'They never quite dried.' },
 ];
 
 // Consumables — potions & elixirs. Heal items restore HP; buff items apply a
@@ -121,6 +141,51 @@ export function makeFish(level = 1) {
   };
 }
 
+// A fishing-exclusive named unique (only reachable via rollFishingCatch).
+export function makeFishingUnique(level = 1) {
+  const u = pick(FISHING_UNIQUES);
+  const it = generateItem({ slot: u.slot, level, forceRarity: 'legendary' });
+  it.name = u.name; it.glyph = u.glyph; it.unique = true; it.flavor = u.flavor;
+  it.fishingOnly = true; it.setId = null; it.setName = null;
+  if (u.base) { const b = BASES.weapon.find((x) => x.id === u.base); if (b) { it.baseId = b.id; it.kind = b.kind; } }
+  for (const k in u.bonus) it.stats[k] = (it.stats[k] || 0) + u.bonus[k];
+  return it;
+}
+
+// A piece of the fishing-ONLY Tidecaller set (only reachable via fishing).
+export function makeTidecallerPiece(level = 1) {
+  const slot = pick(SLOTS);
+  const it = generateItem({ slot, level, forceRarity: Math.random() < 0.5 ? 'epic' : 'legendary', set: 'tidecaller' });
+  it.fishingOnly = true;
+  return it;
+}
+
+// The master fishing roll. Returns either a fish (consumable) or a piece of
+// loot. A higher `fishing` stat raises the odds of loot over fish, sweetens
+// rarity, and improves fish tiers — and unlocks better odds at the
+// fishing-exclusive Tidecaller set and fishing uniques. You can reel up almost
+// anything; only Tidecaller pieces and fishing uniques are fishing-only.
+export function rollFishingCatch(level = 1, fishing = 0) {
+  const lootChance = Math.min(0.55, 0.12 + fishing * 0.01);
+  if (Math.random() < lootChance) {
+    const r = Math.random();
+    const exclusive = Math.min(0.30, 0.05 + fishing * 0.007); // fishing-only pulls
+    if (r < exclusive) {
+      return Math.random() < 0.45 ? makeTidecallerPiece(level + 3) : makeFishingUnique(level + 2);
+    }
+    if (r < exclusive + 0.22) {
+      const rar = Math.random() < 0.5 ? 'rare' : (Math.random() < 0.6 ? 'epic' : 'uncommon');
+      return generateItem({ level: level + 1, forceRarity: rar, set: 'angler' });
+    }
+    // Generic loot — anything can surface. Fishing boosts the rarity roll.
+    const item = generateItem({ level: level + (Math.random() < 0.4 ? 1 : 0), rarityBoost: 0.3 + fishing * 0.03 });
+    if (item.rarity === 'legendary' && Math.random() < 0.5) return makeUnique(item.ilvl);
+    return item;
+  }
+  // A fish — the fishing stat lifts the effective depth/level for better tiers.
+  return makeFish(level + Math.round(fishing * 0.8));
+}
+
 function rollRarity(boost = 0) {
   // boost shifts the weighted roll toward higher tiers.
   const entries = RARITY_ORDER.map((id) => [id, RARITY[id].weight * (1 + (RARITY_ORDER.indexOf(id) * boost))]);
@@ -147,8 +212,8 @@ function rollLine(ilvl, mult, excludeAffinity) {
 
 function addStat(stats, k, v) { stats[k] = (stats[k] || 0) + v; }
 
-// Generate a single item. opts: { slot, level, rarityBoost, forceRarity }
-export function generateItem({ slot, level = 1, rarityBoost = 0, forceRarity } = {}) {
+// Generate a single item. opts: { slot, level, rarityBoost, forceRarity, set }
+export function generateItem({ slot, level = 1, rarityBoost = 0, forceRarity, set } = {}) {
   slot = slot || pick(SLOTS);
   const base = pick(BASES[slot]);
   const rarityId = forceRarity || rollRarity(rarityBoost);
@@ -167,9 +232,14 @@ export function generateItem({ slot, level = 1, rarityBoost = 0, forceRarity } =
   const lines = rar.lines + (slot === 'ring' || slot === 'amulet' ? 1 : 0);
   for (let i = 0; i < lines; i++) { const l = rollLine(ilvl, rar.mult); addStat(stats, l.k, l.v); }
 
-  // Chance (on uncommon+) for this to be a set piece.
-  let setId = null;
-  if (rarityId !== 'common' && Math.random() < 0.24) setId = pick(SET_KEYS);
+  // A minority of gear carries a Fishing line (more common on accessories), so
+  // fishing power can be raised on ordinary gear — not just dedicated sets.
+  const fishChance = (slot === 'ring' || slot === 'amulet') ? 0.18 : 0.10;
+  if (Math.random() < fishChance) addStat(stats, 'fishing', Math.max(1, Math.round((2 + ilvl * 0.35) * rar.mult)));
+
+  // Set piece: forced (e.g. a fished-up set), else a chance on uncommon+.
+  let setId = set || null;
+  if (!setId && rarityId !== 'common' && Math.random() < 0.24) setId = pick(SET_KEYS);
 
   // Name: set name, or rarity prefix + base with a suffix from the top stat.
   const dominant = Object.entries(stats).filter(([k]) => k !== 'damage' && k !== 'armor')
@@ -277,8 +347,8 @@ export function sumStats(items) {
   return t;
 }
 
-const STAT_ORDER = ['damage', 'armor', 'str', 'dex', 'int', 'maxHp', 'maxMp', 'maxSp', 'crit', 'speed', 'lifesteal'];
-const STAT_LABEL = { damage: 'Damage', armor: 'Armor', str: 'STR', dex: 'DEX', int: 'INT', maxHp: 'Max HP', maxMp: 'Max MP', maxSp: 'Max SP', crit: 'Crit', speed: 'Move Speed', lifesteal: 'Lifesteal' };
+const STAT_ORDER = ['damage', 'armor', 'str', 'dex', 'int', 'maxHp', 'maxMp', 'maxSp', 'crit', 'speed', 'lifesteal', 'fishing'];
+const STAT_LABEL = { damage: 'Damage', armor: 'Armor', str: 'STR', dex: 'DEX', int: 'INT', maxHp: 'Max HP', maxMp: 'Max MP', maxSp: 'Max SP', crit: 'Crit', speed: 'Move Speed', lifesteal: 'Lifesteal', fishing: '🎣 Fishing' };
 const PCT_STATS = new Set(['crit', 'speed', 'lifesteal']);
 const fmtStat = (k, v) => (PCT_STATS.has(k) ? `${v > 0 ? '+' : ''}${Math.round(v * 100)}%` : `${v > 0 ? '+' : ''}${v}`);
 

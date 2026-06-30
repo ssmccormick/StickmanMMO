@@ -13,7 +13,7 @@ import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
-import { starterWeapon, makeStoneSword, makeFish } from './items.js';
+import { starterWeapon, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
 import * as Quests from './quests.js';
 
 const canvas = document.getElementById('game-canvas');
@@ -206,13 +206,24 @@ function updateFishing(t) {
     if (input.just('KeyE')) {
       const area = areaAt(player.pos.x, player.pos.z);
       const lvl = (area && area.level) || Math.round(Math.hypot(player.pos.x, player.pos.z) / 9);
-      const fish = makeFish(lvl);
-      if (player.addItem(fish)) {
-        ui.log(`You reel in a <b>${fish.name}</b>! (${fish.rarity}, worth ${fish.value}g)`, 'xp');
-        ui.floater(`${fish.glyph} ${fish.name}`, 'xp', player.pos);
+      // Your Fishing stat raises the chance of reeling up loot (and its quality)
+      // over a plain fish. You can hook almost anything down there.
+      const loot = rollFishingCatch(lvl, player.fishingStat);
+      if (player.addItem(loot)) {
+        const rar = RARITY[loot.rarity];
+        if (loot.type === 'consumable') {
+          ui.log(`You reel in a <b>${loot.name}</b>! (${loot.rarity}, worth ${loot.value}g)`, 'xp');
+          ui.floater(`${loot.glyph} ${loot.name}`, 'xp', player.pos);
+          audio.play(loot.rarity === 'common' ? 'cast' : 'level');
+        } else {
+          const tag = loot.fishingOnly ? ' — a fishing-only treasure!' : '';
+          const cls = loot.rarity === 'common' ? 'sys' : 'xp';
+          ui.log(`You reel up <b style="color:${rar.color}">${loot.glyph} ${loot.name}</b> (${rar.name} ${loot.slot})${tag}`, cls);
+          ui.floater(`${loot.glyph} ${rar.name}`, cls, player.pos);
+          audio.play('level');
+        }
         if (ui.inventoryOpen) ui.renderInventory();
-        audio.play('level');
-      } else ui.log(`A ${fish.name} slipped away — your bag is full.`, 'sys');
+      } else ui.log('Your catch slipped away — your bag is full.', 'sys');
       endFishing();
     } else if (t >= fishing.biteUntil) endFishing('It got away…');
   }
@@ -513,7 +524,7 @@ function animate() {
         audio.play('rest');
       }
     } else if (player.alive && player.state === 'ground' && !player.mounted && (fishSpot = world.nearWater(player.pos.x, player.pos.z))) {
-      ui.showPrompt('Press <b>E</b> to cast a line and fish');
+      ui.showPrompt(`Press <b>E</b> to cast a line and fish${player.fishingStat ? `  <span style="opacity:.7">(🎣 ${player.fishingStat})</span>` : ''}`);
       if (input.just('KeyE')) startFishing(fishSpot, t);
     } else {
       ui.hidePrompt();

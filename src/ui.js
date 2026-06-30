@@ -1019,6 +1019,7 @@ export class UI {
           ${der('Crit Chance', `${Math.round((0.05 + player.gearCrit) * 100)}%`)}
           ${der('Lifesteal', `${Math.round(player.gearLifesteal * 100)}%`)}
           ${der('Move Speed', `+${Math.round(player.gearSpeed * 100)}%`)}
+          ${der('🎣 Fishing', player.fishingStat)}
           ${der('💰 Gold', player.gold)}
           <div class="cs-sub">Set Bonuses</div>
           ${setHtml}
