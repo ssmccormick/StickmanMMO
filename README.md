@@ -55,6 +55,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **J** | Quest log |
 | **L** | Codex / lore-board |
 | **B** | Achievements |
+| **N** | Wardrobe (change your look; apply unlocked cosmetics) |
 | **T** | Emote wheel (wave, dance, cheer, flex…) |
 | **E** (near water) | Cast a line and fish |
 | **Q** | Quaff a health potion |
@@ -84,11 +85,36 @@ A settings panel (saved to your browser) lets you tune **HUD size**, **touch-con
 **look sensitivity**, **invert look (Y)**, and whether the **controls hint** is shown — handy
 for fitting the interface to a small phone screen.
 
+## 🎨 Character customisation & cosmetics
+
+Every hero is **yours to shape**. The creation screen has a live, turntable **3D preview**
+and a full customiser:
+
+- **Colours** — body, accent, and hair, from a wide palette.
+- **Proportions** — sliders for **height, build, head size, and limb thickness**.
+- **Hairstyles** — bald, buzz, short, spiky, mohawk, long, ponytail, afro, braids… and a
+  set of **unlockable** ones.
+
+**Unlockable cosmetics** are earned *in-game* through **achievements** and **boss quest
+lines**, and unlock **account-wide** — once you earn a look on one character, every future
+hero can wear it. Examples:
+
+- 😈 **Demon Horns** — complete the *Ogreslayer* achievement (Berserker).
+- 😇 **Seraph Halo** — complete the *Pilgrim* achievement.
+- 🍃 **Wildcrown** — defeat **Gorath the Wildking** (Thornhollow quest line).
+- ❄️ **Frostcrown** / 🔥 **Emberlocks** — defeat **Frosthelm** / **Pyraxis**.
+- 👑 **Hero’s Crown** — complete the final quest and slay the Sky-Tyrant.
+- 🪙 **Gilded Hide**, 🩸 **Bloodforged**, 🐉 **Dragonscale** body colours, and more.
+
+Change your look any time at a **🪞 Wardrobe (press `N`)** — it applies live and only offers
+what you've unlocked. New unlocks pop a toast as you earn them.
+
 ## 🗡️ Classes (D&D-inspired)
 
 **Eleven** classes — ten D&D archetypes plus one **special hero class** — each with unique
 vitals, a scaling stat, an auto-attack style, and a **pool of six abilities you learn over
-time** (you start with just the first one).
+time** (you start with just the first one). Each class also sets your hero's **default
+colours** at creation — which you're then free to customise.
 
 | Class | Style | Signature kit |
 |-------|-------|---------------|
@@ -380,7 +406,9 @@ src/
   player.js            # local controller: movement FSM, vitals, XP
   camera.js            # orbit-follow camera with terrain collision
   input.js             # keyboard + pointer-lock mouse look
-  stickman.js          # articulated stickman mesh + animator
+  stickman.js          # articulated stickman mesh + animator + hair/appearance
+  appearance.js        # customisation model + unlockable cosmetics catalogue
+  preview.js           # live 3D character preview (creation + wardrobe)
   enemies.js           # monster types, AI FSM, spawning
   combat.js            # attacks, abilities, projectiles, targeting, FX
   ui.js                # HUD, class select, hotbar, minimap, floaters, chat

@@ -20,13 +20,32 @@ function limbMesh(mat, length) {
   m.position.y = -length / 2;
   const pivot = new THREE.Group();
   pivot.add(m);
+  pivot.userData.bar = m;   // the inner bar — scaled in x/z to set limb thickness
+  pivot.userData.len = length;
   return pivot;
 }
 
-export function createStickman({ color = 0x9aa4b2, accent = 0xd8423c, scale = 1 } = {}) {
+// Normalise the various ways createStickman is called into one appearance
+// object. Enemies/other players pass {color, accent, scale}; the player passes
+// a full {appearance}. Either way we end up with the same fields.
+function resolveAppearance({ color, accent, scale, appearance }) {
+  if (appearance) return appearance;
+  return {
+    bodyColor: color != null ? color : 0x9aa4b2,
+    accentColor: accent != null ? accent : 0xd8423c,
+    hairColor: 0x3a2a1a,
+    size: scale != null ? scale : 1,
+    build: 1, headSize: 1, limb: 1,
+    hair: 'none',          // only the player wears hair; enemies stay bald + crest
+  };
+}
+
+export function createStickman(opts = {}) {
+  const app = resolveAppearance(opts);
   const root = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color });
-  const accentMat = new THREE.MeshLambertMaterial({ color: accent });
+  const bodyMat = new THREE.MeshLambertMaterial({ color: app.bodyColor });
+  const accentMat = new THREE.MeshLambertMaterial({ color: app.accentColor });
+  const hairMat = new THREE.MeshLambertMaterial({ color: app.hairColor });
 
   // Hip is the animation root; everything hangs off it.
   const hip = new THREE.Group();
@@ -66,13 +85,192 @@ export function createStickman({ color = 0x9aa4b2, accent = 0xd8423c, scale = 1 
   weapon.position.y = -0.62; weapon.rotation.z = Math.PI / 2.5;
   armR.add(weapon);
 
-  root.scale.setScalar(scale);
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
 
-  // Bundle joint refs + per-instance animation phase on the group.
-  root.userData.joints = { hip, torso, head, crest, armL, armR, legL, legR, weapon };
+  // Bundle joint refs + materials + per-instance animation phase on the group.
+  root.userData.joints = { hip, torso, head, crest, armL, armR, legL, legR, weapon, hair: null };
+  root.userData.mats = { body: bodyMat, accent: accentMat, hair: hairMat };
   root.userData.anim = { phase: Math.random() * Math.PI * 2, attack: 0, climb: 0 };
+
+  applyAppearance(root, app); // colours/proportions/hair from the resolved look
   return root;
+}
+
+// Re-apply an appearance to an EXISTING stickman in place: recolour materials,
+// rescale proportions, and rebuild the hairpiece. Used at creation and whenever
+// the player changes their look at a wardrobe.
+export function applyAppearance(root, app) {
+  const j = root.userData.joints, m = root.userData.mats;
+  if (!j || !m) return;
+  root.userData.appearance = app;
+
+  m.body.color.setHex(app.bodyColor);
+  m.accent.color.setHex(app.accentColor);
+  m.hair.color.setHex(app.hairColor);
+
+  root.scale.setScalar(app.size);
+  j.torso.scale.set(app.build, 0.7, app.build);
+  j.head.scale.setScalar(app.headSize);
+  // Limb thickness: scale only the inner bar's x/z so the held weapon and joint
+  // pivots (which drive animation) keep their normal proportions.
+  for (const limb of [j.armL, j.armR, j.legL, j.legR]) {
+    const bar = limb.userData.bar;
+    if (bar) { bar.scale.x = app.limb; bar.scale.z = app.limb; }
+  }
+
+  // Rebuild hair.
+  if (j.hair) { j.head.remove(j.hair); j.hair = null; }
+  const hair = buildHair(app.hair, m.hair);
+  if (hair) { j.head.add(hair); j.hair = hair; }
+}
+
+// Build a hairpiece Group positioned relative to the HEAD centre (head radius
+// ≈ 0.28, "up" = +y). Most styles tint with the hair material; a few cosmetics
+// carry their own fixed colours (gold halo/crown, etc.).
+export function buildHair(style, mat) {
+  if (!style || style === 'none') return null;
+  const g = new THREE.Group();
+  const HR = 0.28;
+  const gold = () => new THREE.MeshLambertMaterial({ color: 0xffd24a });
+  const dark = () => new THREE.MeshLambertMaterial({ color: 0x1a1a1f });
+  const cap = (rMul, thetaLen, yOff, mtl) => {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(HR * rMul, 14, 9, 0, Math.PI * 2, 0, Math.PI * thetaLen), mtl || mat);
+    c.position.y = yOff; return c;
+  };
+  const spike = (x, y, z, rx, rz, len, r = 0.06, mtl) => {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(r, len, 5), mtl || mat);
+    c.position.set(x, y, z); c.rotation.x = rx; c.rotation.z = rz; return c;
+  };
+
+  switch (style) {
+    case 'buzz':
+      g.add(cap(1.02, 0.5, 0.02));
+      break;
+    case 'short':
+      g.add(cap(1.08, 0.62, 0.02));
+      break;
+    case 'spiky': {
+      g.add(cap(1.04, 0.5, 0.02));
+      const defs = [
+        [0, 0.24, 0, -0.1, 0, 0.34], [0.16, 0.2, 0.02, 0.0, 0.6, 0.3],
+        [-0.16, 0.2, 0.02, 0.0, -0.6, 0.3], [0.1, 0.2, -0.16, 0.6, 0.3, 0.3],
+        [-0.1, 0.2, -0.16, 0.6, -0.3, 0.3], [0.1, 0.2, 0.16, -0.6, 0.3, 0.28],
+        [-0.1, 0.2, 0.16, -0.6, -0.3, 0.28],
+      ];
+      for (const d of defs) g.add(spike(...d));
+      break;
+    }
+    case 'mohawk': {
+      const zs = [-0.18, -0.09, 0, 0.09, 0.18];
+      const hs = [0.26, 0.36, 0.42, 0.36, 0.24];
+      zs.forEach((z, i) => g.add(spike(0, 0.22 + hs[i] * 0.25, z, 0, 0, hs[i], 0.07)));
+      break;
+    }
+    case 'long': {
+      g.add(cap(1.08, 0.7, 0.02));
+      // two locks down the back to shoulder length
+      for (const x of [-0.13, 0.13]) {
+        const lock = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.04, 0.5, 6), mat);
+        lock.position.set(x, -0.22, -0.16); lock.rotation.x = -0.25; g.add(lock);
+      }
+      const back = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.05, 0.55, 7), mat);
+      back.position.set(0, -0.24, -0.2); back.rotation.x = -0.2; g.add(back);
+      break;
+    }
+    case 'ponytail': {
+      g.add(cap(1.06, 0.55, 0.02));
+      const tie = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), mat);
+      tie.position.set(0, 0.12, -0.26); g.add(tie);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.6, 6), mat);
+      tail.position.set(0, -0.05, -0.42); tail.rotation.x = -1.1; g.add(tail);
+      break;
+    }
+    case 'afro': {
+      const a = new THREE.Mesh(new THREE.SphereGeometry(HR * 1.55, 14, 12), mat);
+      a.position.y = 0.12; a.scale.y = 0.95; g.add(a);
+      break;
+    }
+    case 'braids': {
+      g.add(cap(1.06, 0.55, 0.02));
+      for (const x of [-0.2, 0.2]) {
+        for (let i = 0; i < 3; i++) {
+          const bead = new THREE.Mesh(new THREE.SphereGeometry(0.055, 7, 6), mat);
+          bead.position.set(x, 0.02 - i * 0.13, -0.04); g.add(bead);
+        }
+      }
+      break;
+    }
+    // ---- cosmetics ----
+    case 'horns': {
+      g.add(cap(1.03, 0.5, 0.02, dark()));
+      for (const s of [-1, 1]) g.add(spike(0.16 * s, 0.2, -0.02, -0.3, s * 0.7, 0.42, 0.08, dark()));
+      break;
+    }
+    case 'halo': {
+      g.add(cap(1.04, 0.5, 0.02));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.03, 8, 20), gold());
+      ring.position.y = 0.5; ring.rotation.x = Math.PI / 2; g.add(ring);
+      break;
+    }
+    case 'crown': {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(HR * 1.02, HR * 1.02, 0.1, 16, 1, true), gold());
+      band.position.y = 0.18; g.add(band);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        g.add(spike(Math.cos(a) * HR, 0.3, Math.sin(a) * HR, 0, 0, 0.16, 0.04, gold()));
+      }
+      break;
+    }
+    case 'tophat': {
+      const m2 = dark();
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.03, 18), m2);
+      brim.position.y = 0.2; g.add(brim);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.42, 18), m2);
+      top.position.y = 0.42; g.add(top);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.08, 18), new THREE.MeshLambertMaterial({ color: 0xd83c3c }));
+      band.position.y = 0.27; g.add(band);
+      break;
+    }
+    case 'antennae': {
+      for (const s of [-1, 1]) {
+        const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.34, 5), mat);
+        stalk.position.set(0.1 * s, 0.4, 0); stalk.rotation.z = s * 0.3; g.add(stalk);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial({ color: 0x9fe0ff }));
+        bulb.position.set(0.16 * s, 0.55, 0); g.add(bulb);
+      }
+      break;
+    }
+    case 'flame': {
+      const fm = new THREE.MeshBasicMaterial({ color: 0xff6a1a });
+      const defs = [[0, 0.26, 0, 0, 0, 0.5], [0.13, 0.22, -0.02, 0.1, 0.4, 0.4], [-0.13, 0.22, -0.02, 0.1, -0.4, 0.4],
+        [0.07, 0.22, -0.14, 0.5, 0.2, 0.38], [-0.07, 0.22, -0.14, 0.5, -0.2, 0.38]];
+      for (const d of defs) g.add(spike(...d, 0.06, fm));
+      break;
+    }
+    case 'frost': {
+      const fm = new THREE.MeshBasicMaterial({ color: 0xbfeaff });
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        g.add(spike(Math.cos(a) * 0.18, 0.3, Math.sin(a) * 0.18, 0, 0, 0.26 + (i % 2) * 0.12, 0.04, fm));
+      }
+      break;
+    }
+    case 'vines': {
+      const vm = new THREE.MeshLambertMaterial({ color: 0x4a7a3a });
+      const band = new THREE.Mesh(new THREE.TorusGeometry(HR * 1.02, 0.05, 8, 18), vm);
+      band.position.y = 0.16; band.rotation.x = Math.PI / 2; g.add(band);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 5), vm);
+        leaf.position.set(Math.cos(a) * HR, 0.26, Math.sin(a) * HR); leaf.rotation.x = -0.5; g.add(leaf);
+      }
+      break;
+    }
+    default:
+      g.add(cap(1.08, 0.62, 0.02));
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
 }
 
 // Pose a stickman for this frame.

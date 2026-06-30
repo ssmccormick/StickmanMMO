@@ -763,3 +763,60 @@ body.touch-mode .controls-hint { bottom: 70px; font-size: 11px; max-width: 70vw;
 .set-check input { width: 20px; height: 20px; accent-color: var(--gold); }
 .set-reset { margin-top: 4px; padding: 10px; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.06); border: 1px solid var(--panel-edge); color: var(--ink); font-size: 13px; }
 .set-reset:hover { background: rgba(255,255,255,0.12); }
+
+/* ============================================================
+   Character customiser (creation screen + in-game wardrobe)
+   ============================================================ */
+.customize {
+  display: grid; grid-template-columns: 240px 1fr; gap: 16px;
+  margin-bottom: 16px; text-align: left;
+}
+.customize-stage { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.preview-canvas {
+  width: 220px; height: 300px; border-radius: 12px;
+  background: radial-gradient(circle at 50% 35%, rgba(70,90,130,0.25), rgba(8,10,14,0.6));
+  border: 1px solid var(--panel-edge);
+}
+.customize-hint { font-size: 11px; opacity: 0.6; line-height: 1.4; max-width: 220px; }
+.customize-controls { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 320px; padding-right: 4px; }
+
+.cz-row { display: flex; flex-direction: column; gap: 6px; }
+.cz-label { font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.6; }
+.cz-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.cz-chip {
+  display: flex; align-items: center; gap: 5px; cursor: pointer; position: relative;
+  background: rgba(0,0,0,0.35); border: 1px solid var(--panel-edge); border-radius: 8px;
+  color: var(--ink); padding: 5px 9px; font-size: 12px;
+}
+.cz-chip:hover { border-color: var(--gold); }
+.cz-chip.sel { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold) inset; background: rgba(216,178,74,0.14); }
+.cz-chip.locked { opacity: 0.5; cursor: not-allowed; filter: grayscale(0.6); }
+.cz-chip .cz-glyph { font-size: 15px; }
+.cz-chip .cz-lock { font-size: 10px; margin-left: 1px; }
+
+.cz-swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.cz-sw {
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; position: relative;
+  border: 2px solid rgba(0,0,0,0.4); padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.cz-sw:hover { transform: translateY(-2px); }
+.cz-sw.sel { border-color: var(--gold); box-shadow: 0 0 8px rgba(216,178,74,0.6); }
+.cz-sw.locked { cursor: not-allowed; opacity: 0.55; }
+.cz-sw .cz-lock { font-size: 11px; filter: drop-shadow(0 0 2px #000); }
+
+.cz-slider-row { flex-direction: row; align-items: center; gap: 10px; }
+.cz-slider-row .cz-label { width: 56px; flex-shrink: 0; }
+.cz-slider { flex: 1; accent-color: var(--gold); height: 22px; }
+
+/* Wardrobe overlay reuses the customiser layout in a centred panel. */
+.wardrobe-panel { width: min(720px, 95vw); }
+.wardrobe-body { display: grid; grid-template-columns: 240px 1fr; gap: 16px; padding: 16px 18px 20px; overflow: hidden; }
+.wardrobe-stage { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.wardrobe-hint { font-size: 11px; opacity: 0.6; line-height: 1.4; max-width: 220px; text-align: center; }
+
+@media (max-width: 640px) {
+  .customize, .wardrobe-body { grid-template-columns: 1fr; }
+  .customize-stage, .wardrobe-stage { flex-direction: row; }
+  .preview-canvas { width: 150px; height: 210px; }
+}

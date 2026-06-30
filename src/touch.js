@@ -41,7 +41,7 @@ export class TouchControls {
       `<button class="tc-ab" data-press="Digit${n}"><span class="tc-ab-k">${n}</span><span class="tc-ab-g">·</span><span class="tc-ab-cd"></span></button>`).join('');
     const menu = [
       ['KeyI', '🎒'], ['KeyC', '🧍'], ['KeyJ', '📜'], ['KeyM', '🗺️'], ['KeyB', '🏆'],
-      ['KeyK', '✨'], ['KeyL', '📖'], ['KeyT', '👋'], ['KeyH', 'ℹ️'], ['KeyO', '⚙️'],
+      ['KeyK', '✨'], ['KeyL', '📖'], ['KeyN', '🪞'], ['KeyT', '👋'], ['KeyH', 'ℹ️'], ['KeyO', '⚙️'],
     ].map(([c, g]) => `<button class="tc-menu-btn" data-press="${c}">${g}</button>`).join('');
     return `
       <div id="tc-stick" class="tc-stick"><div id="tc-knob" class="tc-knob"></div></div>

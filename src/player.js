@@ -5,7 +5,8 @@
 // and each level-up queues a player choice (attribute + skill).
 // ============================================================
 import * as THREE from 'three';
-import { createStickman, animateStickman } from './stickman.js';
+import { createStickman, animateStickman, applyAppearance } from './stickman.js';
+import { defaultAppearance, normalizeAppearance } from './appearance.js';
 import { buildWeaponMesh, isRangedWeaponKind, WEAPON_PROFILE } from './weapons.js';
 import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
@@ -62,12 +63,18 @@ const RADIUS = 0.5;
 const MAX_SLOTS = 6; // hotbar ability slots (keys 1..6)
 
 export class Player {
-  constructor(scene, world, classId, name) {
+  constructor(scene, world, classId, name, appearance) {
     this.world = world;
     this.name = name;
     this.classId = classId;
     this.def = CLASSES[classId];
     this.stats = makeStats(classId);
+
+    // How this hero looks — colours, proportions, and hairstyle. Defaults to a
+    // class-flavoured look; a custom one comes from creation or a save.
+    this.appearance = appearance
+      ? normalizeAppearance(appearance, classId)
+      : defaultAppearance(classId);
 
     // Abilities you KNOW, in hotbar order. You start with one.
     this.learned = [{ id: startingAbilityId(classId), rank: 1 }];
@@ -86,7 +93,7 @@ export class Player {
     this.discovered = [];   // names of bonfires rested at (fast-travel points)
     this.stoneSwordPulled = false; // has the blade in the stone been drawn?
 
-    this.mesh = createStickman({ color: this.def.color, accent: this.def.accent });
+    this.mesh = createStickman({ appearance: this.appearance });
     scene.add(this.mesh);
     this.scene = scene;
 
@@ -191,8 +198,20 @@ export class Player {
     this.ssjAura = aura;
   }
 
+  // Change the character's look at runtime (wardrobe). Re-applies colours,
+  // proportions and hair to the live mesh, keeping gear/SSJ visuals intact.
+  setAppearance(app) {
+    this.appearance = normalizeAppearance(app, this.classId);
+    applyAppearance(this.mesh, this.appearance);
+    this._updateWeaponVisual && this._updateWeaponVisual(); // re-assert held weapon model
+    this._updateSsjVisual();                                // hide custom hair if mid-transform
+  }
+
   _updateSsjVisual() {
     const on = this.ssjActive;
+    // The golden Super Saiyan mane replaces your normal hairstyle while active.
+    const customHair = this.mesh.userData.joints && this.mesh.userData.joints.hair;
+    if (customHair) customHair.visible = !on;
     if (this.ssjHair) {
       this.ssjHair.visible = on;
       // Taller, more dramatic hair each tier.
@@ -862,6 +881,7 @@ export class Player {
       discoveredAreas: [...this.discoveredAreas],
       explored: [...this.explored],
       mountSkin: this.mountSkin,
+      appearance: this.appearance,
     };
   }
 
@@ -894,6 +914,8 @@ export class Player {
     if (save.achievements && typeof save.achievements === 'object') this.achievements = { ...save.achievements };
     if (Array.isArray(save.discoveredAreas)) this.discoveredAreas = new Set(save.discoveredAreas);
     if (Array.isArray(save.explored)) this.explored = new Set(save.explored);
+    // Restore the saved look (older saves without one keep the class default).
+    if (save.appearance) this.setAppearance(save.appearance);
     Achievements.reapply(this); // rebuilds achBonus/passives, recomputes gear, restores mount skin
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;

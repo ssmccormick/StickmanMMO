@@ -12,6 +12,11 @@ import { MAP_GRID } from './player.js';
 import { CODEX, PROLOGUE, WORLD_NAME, ashboundEntry, TOWN_CHATTER } from './lore.js';
 import { EMOTES } from './player.js';
 import * as Achievements from './achievements.js';
+import { CharacterPreview } from './preview.js';
+import {
+  RANGES, BODY_COLORS, ACCENT_COLORS, HAIR_COLORS, HAIR_STYLES, COSMETICS,
+  defaultAppearance, normalizeAppearance, unlockedCosmetics, isOptionAvailable, hexCss,
+} from './appearance.js';
 
 const LORE_LINES = TOWN_CHATTER;
 
@@ -163,7 +168,19 @@ export class UI {
       const card = document.createElement('div');
       card.className = 'class-card' + (id === this.selectedClass ? ' selected' : '') + (c.hero ? ' hero' : '');
       card.innerHTML = `${c.hero ? '<div class="hero-flag">HERO</div>' : ''}<div class="glyph">${c.glyph}</div><div class="cname">${c.name}</div><div class="ctag">${c.tag}</div>`;
-      card.onclick = () => { this.selectedClass = id; this._buildClassGrid(); this._showClassDetail(id); };
+      card.onclick = () => {
+        this.selectedClass = id;
+        // Following the class's colours until the player customises: re-skin the
+        // in-progress look to the newly chosen class so the preview tracks it.
+        if (!this._appearanceTouched && this.creationAppearance) {
+          const d = defaultAppearance(id);
+          this.creationAppearance.bodyColor = d.bodyColor;   // mutate in place so
+          this.creationAppearance.accentColor = d.accentColor; // the customiser ref holds
+          this._refreshCustomizer();
+        }
+        this._buildClassGrid();
+        this._showClassDetail(id);
+      };
       this.el.classGrid.appendChild(card);
     }
     this._showClassDetail(this.selectedClass);
@@ -200,7 +217,9 @@ export class UI {
     this.el.backRoster.onclick = () => this.showRoster();
     this.el.enter.onclick = () => {
       const name = (this.el.nameInput.value || 'Stickaeryn').slice(0, 16);
-      onCreate({ name, classId: this.selectedClass, server: this._server() });
+      this._stopCreationPreview();
+      const appearance = normalizeAppearance(this.creationAppearance, this.selectedClass);
+      onCreate({ name, classId: this.selectedClass, server: this._server(), appearance });
     };
 
     // Storage availability hint.
@@ -218,6 +237,7 @@ export class UI {
   _server() { return this.el.serverInput.value.trim(); }
 
   showRoster() {
+    this._stopCreationPreview();
     this.refreshRoster();
     this.el.rosterView.classList.remove('hidden');
     this.el.createView.classList.add('hidden');
@@ -228,6 +248,110 @@ export class UI {
     this.el.backRoster.style.display = Saves.list().length ? 'inline-block' : 'none';
     this.el.createView.classList.remove('hidden');
     this.el.rosterView.classList.add('hidden');
+    // Fresh appearance, defaulting to the selected class's colours.
+    this.creationAppearance = defaultAppearance(this.selectedClass);
+    this._appearanceTouched = false;
+    this._initCreationCustomizer();
+  }
+
+  // ---- Appearance customiser (shared by creation & the in-game wardrobe) ----
+  _initCreationCustomizer() {
+    const host = document.getElementById('customize-controls');
+    const canvas = document.getElementById('preview-canvas');
+    if (!host || !canvas) return;
+    this._customizeHost = host;
+    if (!this._creationPreview) this._creationPreview = new CharacterPreview(canvas);
+    this._buildCustomizer(host, this.creationAppearance, () => {
+      this._appearanceTouched = true;
+      if (this._creationPreview) this._creationPreview.setAppearance(this.creationAppearance);
+    });
+    this._creationPreview.setAppearance(this.creationAppearance);
+    this._creationPreview.start();
+  }
+  _refreshCustomizer() {
+    if (this._customizeHost && this._customizeActive === this.creationAppearance) {
+      this._buildCustomizer(this._customizeHost, this.creationAppearance, this._customizeOnChange);
+    }
+    if (this._creationPreview) this._creationPreview.setAppearance(this.creationAppearance);
+  }
+  _stopCreationPreview() { if (this._creationPreview) this._creationPreview.stop(); }
+
+  // Render the full set of controls for `app` into `host`. `onChange` fires
+  // after any tweak (already mutated into `app`). Re-rendered on each change so
+  // selection highlights stay current.
+  _buildCustomizer(host, app, onChange) {
+    this._customizeActive = app;
+    this._customizeOnChange = onChange;
+    const unlocked = unlockedCosmetics();
+    const commit = () => {
+      onChange();
+      this._buildCustomizer(host, app, onChange); // re-render to refresh highlights
+    };
+    host.innerHTML = '';
+
+    host.appendChild(this._hairRow(app, unlocked, commit));
+    host.appendChild(this._colorRow('Body', 'bodyColor', BODY_COLORS, app, unlocked, commit));
+    host.appendChild(this._colorRow('Accent', 'accentColor', ACCENT_COLORS, app, unlocked, commit));
+    host.appendChild(this._colorRow('Hair', 'hairColor', HAIR_COLORS, app, unlocked, commit));
+    // Sliders update live but must NOT trigger a re-render (it would replace the
+    // input element mid-drag), so they call onChange directly.
+    for (const key of ['size', 'build', 'headSize', 'limb']) {
+      host.appendChild(this._sliderRow(key, app, onChange));
+    }
+  }
+
+  _cz(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  _hairRow(app, unlocked, commit) {
+    const row = this._cz('div', 'cz-row');
+    row.appendChild(this._cz('div', 'cz-label', 'Hair Style'));
+    const grid = this._cz('div', 'cz-grid');
+    for (const h of HAIR_STYLES) {
+      const locked = h.cosmetic && !isOptionAvailable('hair', h.id, unlocked);
+      const cos = COSMETICS.find((c) => c.type === 'hair' && c.value === h.id);
+      const btn = this._cz('button', 'cz-chip' + (app.hair === h.id ? ' sel' : '') + (locked ? ' locked' : ''),
+        `<span class="cz-glyph">${h.glyph}</span><span class="cz-name">${h.name}</span>${locked ? '<span class="cz-lock">🔒</span>' : ''}`);
+      btn.title = locked && cos ? `Locked — ${cos.hint}` : h.name;
+      if (!locked) btn.onclick = () => { app.hair = h.id; commit(); };
+      grid.appendChild(btn);
+    }
+    row.appendChild(grid);
+    return row;
+  }
+
+  _colorRow(label, field, palette, app, unlocked, commit) {
+    const row = this._cz('div', 'cz-row');
+    row.appendChild(this._cz('div', 'cz-label', label));
+    const grid = this._cz('div', 'cz-swatches');
+    // Base palette, then any cosmetic colours of this type (locked teasers shown).
+    const cosmetic = COSMETICS.filter((c) => c.type === field);
+    const values = [...palette, ...cosmetic.map((c) => c.value)];
+    const seen = new Set();
+    for (const val of values) {
+      if (seen.has(val)) continue; seen.add(val);
+      const cos = cosmetic.find((c) => c.value === val);
+      const locked = cos && !unlocked.has(cos.id);
+      const sw = this._cz('button', 'cz-sw' + (app[field] === val ? ' sel' : '') + (locked ? ' locked' : ''));
+      sw.style.background = hexCss(val);
+      sw.title = locked ? `${cos.name} — Locked: ${cos.hint}` : (cos ? cos.name : hexCss(val));
+      if (locked) sw.innerHTML = '<span class="cz-lock">🔒</span>';
+      else sw.onclick = () => { app[field] = val; commit(); };
+      grid.appendChild(sw);
+    }
+    row.appendChild(grid);
+    return row;
+  }
+
+  _sliderRow(field, app, onChange) {
+    const r = RANGES[field];
+    const row = this._cz('div', 'cz-row cz-slider-row');
+    row.appendChild(this._cz('div', 'cz-label', r.label));
+    const input = document.createElement('input');
+    input.type = 'range'; input.min = r.min; input.max = r.max; input.step = r.step;
+    input.value = app[field]; input.className = 'cz-slider';
+    input.oninput = () => { app[field] = parseFloat(input.value); onChange(); };
+    row.appendChild(input);
+    return row;
   }
 
   refreshRoster() {
@@ -1566,6 +1690,68 @@ export class UI {
       if (d < bd) { bd = d; best = m; }
     }
     if (best && this.onFastTravel) { this.onFastTravel(best.b); this.closeWorldMap(); }
+  }
+
+  // ---- Wardrobe (in-game appearance change) ----
+  _ensureWardrobe() {
+    if (this.wardrobeOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel wardrobe-panel">
+        <div class="inv-header"><span>🪞 Wardrobe</span><button class="inv-close">✕</button></div>
+        <div class="wardrobe-body">
+          <div class="wardrobe-stage"><canvas id="wardrobe-canvas" class="preview-canvas" width="220" height="300"></canvas>
+            <div class="wardrobe-hint">Unlock more looks by completing achievements &amp; boss quest lines.</div></div>
+          <div id="wardrobe-controls" class="customize-controls"></div>
+        </div></div>`;
+    document.body.appendChild(ov);
+    this.wardrobeOverlay = ov;
+    this.wardrobeControls = ov.querySelector('#wardrobe-controls');
+    ov.querySelector('.inv-close').onclick = () => this.closeWardrobe();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeWardrobe(); });
+  }
+  toggleWardrobe(player) {
+    this._ensureWardrobe();
+    if (this.wardrobeOpen) { this.closeWardrobe(); return; }
+    this.wardrobeOpen = true;
+    this._wardrobePlayer = player;
+    // Edit a copy; apply live to the real character so you see it behind the panel.
+    this._wardrobeApp = normalizeAppearance({ ...player.appearance }, player.classId);
+    this.wardrobeOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    if (!this._wardrobePreview) this._wardrobePreview = new CharacterPreview(this.wardrobeOverlay.querySelector('#wardrobe-canvas'));
+    this._buildCustomizer(this.wardrobeControls, this._wardrobeApp, () => {
+      player.setAppearance(this._wardrobeApp);
+      if (this._wardrobePreview) this._wardrobePreview.setAppearance(this._wardrobeApp);
+    });
+    this._wardrobePreview.setAppearance(this._wardrobeApp);
+    this._wardrobePreview.start();
+  }
+  closeWardrobe() {
+    this.wardrobeOpen = false;
+    if (this._wardrobePreview) this._wardrobePreview.stop();
+    if (this.wardrobeOverlay) this.wardrobeOverlay.classList.add('hidden');
+    // Persist the new look immediately so it survives even before the next rest.
+    const p = this._wardrobePlayer;
+    if (p) { p.setAppearance(this._wardrobeApp); try { Saves.write(p.toSave()); } catch { /* storage blocked */ } }
+  }
+
+  // Pop a toast when a new cosmetic is unlocked (mirrors the achievement toast).
+  cosmeticToast(cos) {
+    if (!this._toastWrap) {
+      this._toastWrap = document.createElement('div');
+      this._toastWrap.className = 'ach-toasts';
+      this.el.hud.appendChild(this._toastWrap);
+    }
+    const t = document.createElement('div');
+    t.className = 'ach-toast unique';
+    t.innerHTML = `<div class="at-glyph">${cos.glyph}</div><div class="at-text">
+        <div class="at-title">COSMETIC UNLOCKED!</div>
+        <div class="at-rew">${cos.name} — try it at a 🪞 Wardrobe (press N)</div></div>`;
+    this._toastWrap.appendChild(t);
+    this.log(`🪞 Cosmetic unlocked: ${cos.glyph} ${cos.name} — change your look with N.`, 'xp');
+    if (this.audio) this.audio.play('level');
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 500); }, 4200);
   }
 
   // ---- Achievements ----

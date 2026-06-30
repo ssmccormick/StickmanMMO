@@ -17,6 +17,7 @@ import { Saves } from './save.js';
 import { starterWeapon, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
 import * as Quests from './quests.js';
 import * as Achievements from './achievements.js';
+import { evaluateUnlocks } from './appearance.js';
 
 const canvas = document.getElementById('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -47,6 +48,7 @@ let combat = null;
 let started = false;
 let deathHandled = false;
 let dragonAwoken = false;   // has the end-boss dragon descended?
+let cosmeticTimer = 0;      // throttle for the cosmetic-unlock scan
 let lastGold = 0;           // for crediting gold earned to the Tycoon achievement
 let lastHp = 0;
 let restCooldown = 0;
@@ -102,12 +104,12 @@ network.onPartyLoot = (item, fromName) => {
 };
 
 // ---- Start the game (shared by "new character" and "continue") ----
-function beginGame(classId, name, server, save) {
+function beginGame(classId, name, server, save, appearance) {
   if (started) return;
   started = true;
   audio.init();
 
-  player = new Player(scene, world, classId, name);
+  player = new Player(scene, world, classId, name, appearance);
   player.world = world;
 
   if (save) {
@@ -174,8 +176,8 @@ function beginGame(classId, name, server, save) {
 }
 
 ui.setupStart({
-  onCreate: ({ name, classId, server }) => beginGame(classId, name, server, null),
-  onContinue: (save, server) => beginGame(save.classId, save.name, server, save),
+  onCreate: ({ name, classId, server, appearance }) => beginGame(classId, name, server, null, appearance),
+  onContinue: (save, server) => beginGame(save.classId, save.name, server, save, save.appearance),
 });
 
 // Quaff the first health potion in the bag (hotkey Q).
@@ -300,7 +302,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen || ui.wardrobeOpen;
 
     // Crosshair shows while aiming (mouse-look, gamepad, or touch), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.aiming);
@@ -321,6 +323,7 @@ function animate() {
     if (input.just('KeyM')) ui.toggleWorldMap(player, enemies);
     if (input.just('KeyL')) ui.toggleCodex(player);
     if (input.just('KeyB')) ui.toggleAchievements(player);
+    if (input.just('KeyN')) ui.toggleWardrobe(player);
     if (input.just('KeyO')) ui.toggleSettings(player);
     if (input.just('KeyT')) ui.toggleEmotes(player);
     if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
@@ -584,7 +587,16 @@ function animate() {
     player.counters.level = player.stats.level;
 
     // Award any newly-earned achievement tiers (toasts the unlock).
-    Achievements.check(player, (ach, idx, tier) => ui.achievementToast(ach, idx, tier));
+    const achChanged = Achievements.check(player, (ach, idx, tier) => ui.achievementToast(ach, idx, tier));
+
+    // Unlock any cosmetics whose achievement/quest/level requirements are now
+    // met (account-wide), toasting each new one. Throttled (it touches
+    // localStorage) and also fired immediately whenever an achievement lands.
+    cosmeticTimer -= dt;
+    if (achChanged || cosmeticTimer <= 0) {
+      cosmeticTimer = 1.5;
+      for (const cos of evaluateUnlocks(player)) ui.cosmeticToast(cos);
+    }
 
     // The end of everything: once all other achievements are complete, the
     // great dragon descends from its endless orbit to be challenged.
