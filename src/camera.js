@@ -24,9 +24,9 @@ export class FollowCamera {
   handleLook(dx, dy) {
     this.yaw -= dx * this.sensitivity;
     this.pitch += (this.invertY ? -dy : dy) * this.sensitivity;
-    // Wide vertical range so you can crane almost straight up at the sky (and
+    // Full vertical range: you can crane essentially straight up at the sky (and
     // flying foes) or look steeply down. Negative = looking up.
-    this.pitch = THREE.MathUtils.clamp(this.pitch, -1.25, 1.45);
+    this.pitch = THREE.MathUtils.clamp(this.pitch, -1.52, 1.45);
   }
   handleZoom(w) {
     this.dist = THREE.MathUtils.clamp(this.dist + w * 1.2, this.minDist, this.maxDist);
@@ -52,7 +52,11 @@ export class FollowCamera {
     // Aim at roughly chest height.
     this.target.lerp(new THREE.Vector3(targetPos.x, targetPos.y + 1.6, targetPos.z), Math.min(1, dt * 12));
 
-    const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
+    // The camera POSITION orbits using a pitch that won't tuck it directly under
+    // the player (so the player never blocks a straight-up view) — but the LOOK
+    // direction below uses the TRUE pitch, so you can still aim fully skyward.
+    const pp = Math.max(this.pitch, -0.85);
+    const cp = Math.cos(pp), sp = Math.sin(pp);
     // Unit vector from the focus out to the camera: behind by yaw, raised or
     // (when looking up) LOWERED by pitch.
     const back = new THREE.Vector3(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
@@ -78,9 +82,10 @@ export class FollowCamera {
     this._pos.copy(pos);
 
     this.cam.position.lerp(this._pos, Math.min(1, dt * 14));
-    // Look along the camera's view direction (= aimForward) so the crosshair and
-    // shots agree, and so the view stays tilted skyward when you look up even if
-    // terrain nudged the camera off the ideal ray.
-    this.cam.lookAt(this.cam.position.clone().add(this.aimForward()));
+    // Orient straight from yaw/pitch (YXZ euler) rather than lookAt — this is
+    // stable even pointing essentially straight up/down (no gimbal flip), and it
+    // matches aimForward() exactly, so the crosshair and shots always agree.
+    this.cam.rotation.order = 'YXZ';
+    this.cam.rotation.set(-this.pitch, this.yaw, 0);
   }
 }
