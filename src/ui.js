@@ -213,6 +213,15 @@ export class UI {
     this._onCreate = onCreate;
     this._onContinue = onContinue;
 
+    // A shareable link can pre-fill the server, e.g.
+    //   .../StickmanMMO/?server=play.example.com
+    // so friends just click and join (the address is auto-secured to wss:// on
+    // the live HTTPS site by the network layer).
+    try {
+      const qp = new URLSearchParams(location.search).get('server');
+      if (qp && this.el.serverInput && !this.el.serverInput.value) this.el.serverInput.value = qp;
+    } catch { /* no URL API — ignore */ }
+
     this.el.newCharBtn.onclick = () => this.showCreate();
     this.el.backRoster.onclick = () => this.showRoster();
     this.el.enter.onclick = () => {

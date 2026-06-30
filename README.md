@@ -390,8 +390,31 @@ npm start            # → ws://localhost:8080
 
 The server is a thin presence/relay: each client simulates its own world (terrain
 is deterministic, enemies are local), and the server only broadcasts player
-positions and chat. This keeps it tiny while letting you wander the same world
-together. Point clients at a public host/port to play over the internet.
+positions, chat, and party/shared-XP events. This keeps it tiny while letting you
+wander the same world together.
+
+### Hosting it online
+
+GitHub Pages can only serve the **static client** — the WebSocket server has to live
+somewhere that gives a secure **`wss://`** URL (the live HTTPS site blocks insecure
+`ws://`; the client auto-upgrades `ws://`→`wss://` for you).
+
+The repo includes a **`render.yaml`** blueprint for a free [Render](https://render.com)
+deploy:
+
+1. On Render → **New → Blueprint** → pick this repo. It builds `server/` and deploys it.
+2. Copy the service URL (e.g. `stickman-mmo-server.onrender.com`).
+3. Share the game with the server pre-filled via a query param:
+   `https://<you>.github.io/StickmanMMO/?server=stickman-mmo-server.onrender.com`
+   — or players can paste the address into the **Server** box on the start screen.
+
+Render's free tier sleeps when idle and cold-starts (~30s) on the next join; a paid
+instance (or Railway / Fly.io / a small VPS behind Caddy for TLS) stays always-on.
+`server.js` honours `process.env.PORT`, so it runs on any of them unchanged.
+
+> **Scope:** this is a shared-**presence** model — you see each other move, chat, party,
+> and share kill-XP, but enemies/loot are simulated per-client (no synced boss HP). A
+> fully authoritative server (shared mobs/combat) is a larger future step.
 
 ## 📁 Project layout
 

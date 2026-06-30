@@ -1,0 +1,29 @@
+# Render.com Blueprint for the Stickman MMO multiplayer relay.
+# ---------------------------------------------------------------
+# Render hosts the WebSocket server (GitHub Pages can only serve the
+# static client). It terminates TLS, so the server is reachable at a
+# secure wss:// URL — which is what the live HTTPS site requires.
+#
+# One-time setup:
+#   1. Push this repo to GitHub (already done).
+#   2. On render.com → "New +" → "Blueprint" → pick this repo.
+#   3. Render reads this file, builds `server/`, and deploys it.
+#   4. Copy the service URL it gives you, e.g.
+#        stickman-mmo-server.onrender.com
+#      and share the game as:
+#        https://<you>.github.io/StickmanMMO/?server=stickman-mmo-server.onrender.com
+#
+# Notes:
+#   - The free plan sleeps after ~15 min idle and cold-starts (~30s) on the
+#     next connection. Bump to a paid instance for always-on play.
+#   - PORT is injected by Render; server.js already honours process.env.PORT.
+services:
+  - type: web
+    name: stickman-mmo-server
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
