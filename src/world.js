@@ -393,6 +393,13 @@ export class World {
       arr.push(obj);
       obj.visible = false;
     }
+    // Compute every prop's world matrix ONCE, then freeze it: culled props are
+    // static, so re-deriving their matrices every frame is pure waste. cull()
+    // re-enables matrix updates only for the cells currently shown — so the
+    // per-frame matrix pass scales with the small area around you, not the whole
+    // continent (this is the big win against the frame spikes / lag).
+    this.group.updateMatrixWorld(true);
+    for (const arr of this._cullBuckets.values()) for (const o of arr) o.matrixWorldAutoUpdate = false;
     this._cullActive = new Set();
     this._cullKey = null;
     this._indexColliders();
@@ -407,8 +414,8 @@ export class World {
     this._cullKey = key;
     const want = new Set();
     for (let dx = -R; dx <= R; dx++) for (let dz = -R; dz <= R; dz++) want.add((pcx + dx) + ',' + (pcz + dz));
-    for (const k of this._cullActive) if (!want.has(k)) { const a = this._cullBuckets.get(k); if (a) for (const o of a) o.visible = false; }
-    for (const k of want) if (!this._cullActive.has(k)) { const a = this._cullBuckets.get(k); if (a) for (const o of a) o.visible = true; }
+    for (const k of this._cullActive) if (!want.has(k)) { const a = this._cullBuckets.get(k); if (a) for (const o of a) { o.visible = false; o.matrixWorldAutoUpdate = false; } }
+    for (const k of want) if (!this._cullActive.has(k)) { const a = this._cullBuckets.get(k); if (a) for (const o of a) { o.visible = true; o.matrixWorldAutoUpdate = true; } }
     this._cullActive = want;
   }
   _indexColliders() {

@@ -40,6 +40,11 @@ let NEXT_ID = 1;
 // Enemy projectiles (the dodgeable shots fired by ranged mobs). Module-level so
 // the main loop can tick them all at once with updateEnemyShots().
 const ENEMY_SHOTS = [];
+// Reused scratch vectors for the per-frame AI hot path — avoids allocating a
+// handful of Vector3s per active enemy per frame, which was driving GC spikes.
+const _toPlayer = new THREE.Vector3();
+const _move = new THREE.Vector3();
+const _scratch = new THREE.Vector3();
 export function updateEnemyShots(dt, player) {
   for (let i = ENEMY_SHOTS.length - 1; i >= 0; i--) {
     const s = ENEMY_SHOTS[i];
@@ -189,7 +194,7 @@ export class Enemy {
     if (this.slow > 0) this.slow -= dt;
     const speedMult = this.slow > 0 ? 0.45 : 1;
 
-    const toPlayer = player.alive ? new THREE.Vector3().subVectors(player.pos, this.pos) : null;
+    const toPlayer = player.alive ? _toPlayer.subVectors(player.pos, this.pos) : null;
     // Flyers judge range by ground distance so their altitude never stops them
     // from noticing you and diving in.
     const dist = !toPlayer ? Infinity : (this.flying ? Math.hypot(toPlayer.x, toPlayer.z) : toPlayer.length());
@@ -200,7 +205,7 @@ export class Enemy {
     if (this.fear > 0) {
       this.fear -= dt;
       if (toPlayer && dist > 0.1) {
-        const flee = toPlayer.clone().setY(0).normalize().multiplyScalar(-1);
+        const flee = _scratch.copy(toPlayer).setY(0).normalize().multiplyScalar(-1);
         this.pos.x += flee.x * this.type.speed * 1.1 * dt;
         this.pos.z += flee.z * this.type.speed * 1.1 * dt;
         this.facing = Math.atan2(flee.x, flee.z);
@@ -223,7 +228,7 @@ export class Enemy {
       this.state = 'return';
     }
 
-    let move = new THREE.Vector3();
+    const move = _move.set(0, 0, 0);
     if (this.state === 'chase' && toPlayer) {
       move.copy(toPlayer).setY(0).normalize();
     } else if (this.state === 'attack' && toPlayer) {
@@ -239,12 +244,12 @@ export class Enemy {
         this.pendingHit = { at: t + 0.35, applied: false };
       }
     } else if (this.state === 'return') {
-      const toHome = new THREE.Vector3().subVectors(this.home, this.pos).setY(0);
+      const toHome = _scratch.subVectors(this.home, this.pos).setY(0);
       if (toHome.length() < 1.5) { this.state = 'idle'; this.wanderTarget = this._randomNear(this.home, 6); }
       else move.copy(toHome).normalize();
     } else {
       // idle wander
-      const toW = new THREE.Vector3().subVectors(this.wanderTarget, this.pos).setY(0);
+      const toW = _scratch.subVectors(this.wanderTarget, this.pos).setY(0);
       if (toW.length() < 1) { this.wanderTarget = this._randomNear(this.home, 7); }
       else if (Math.random() < 0.9) move.copy(toW).normalize().multiplyScalar(0.4);
     }

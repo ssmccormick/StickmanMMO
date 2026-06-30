@@ -346,8 +346,14 @@ function animate() {
     // Saves the per-frame AI/animation/collision cost of the world's ~300 mobs.
     const ACTIVE2 = 130 * 130;
     for (const e of enemies) {
-      const near = e.pos.distanceToSquared(player.pos) < ACTIVE2;
+      // The dragon stays loaded at any distance — it's a visual landmark
+      // circling its far-north roost until the player unlocks the fight.
+      const near = e.isDragon || e.pos.distanceToSquared(player.pos) < ACTIVE2;
       e.mesh.visible = near;
+      // Far mobs skip update AND drop out of scene.updateMatrixWorld — without
+      // this their whole limb hierarchy is still walked every frame even though
+      // they're frozen and invisible, which is most of the world's ~300 mobs.
+      e.mesh.matrixWorldAutoUpdate = near;
       if (near) e.update(dt, player, t);
     }
     // Boss phase reactions: announce enrage and spawn minion adds.

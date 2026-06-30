@@ -19,6 +19,10 @@ export class FollowCamera {
     this.invertY = false;
     this.target = new THREE.Vector3();
     this._pos = new THREE.Vector3();
+    // Scratch vectors reused every frame in update() — no per-frame allocation.
+    this._aimTarget = new THREE.Vector3();
+    this._back = new THREE.Vector3();
+    this._scratchPos = new THREE.Vector3();
   }
 
   handleLook(dx, dy) {
@@ -50,7 +54,8 @@ export class FollowCamera {
 
   update(targetPos, dt) {
     // Aim at roughly chest height.
-    this.target.lerp(new THREE.Vector3(targetPos.x, targetPos.y + 1.6, targetPos.z), Math.min(1, dt * 12));
+    this._aimTarget.set(targetPos.x, targetPos.y + 1.6, targetPos.z);
+    this.target.lerp(this._aimTarget, Math.min(1, dt * 12));
 
     // The camera POSITION orbits using a pitch that won't tuck it directly under
     // the player (so the player never blocks a straight-up view) — but the LOOK
@@ -59,7 +64,7 @@ export class FollowCamera {
     const cp = Math.cos(pp), sp = Math.sin(pp);
     // Unit vector from the focus out to the camera: behind by yaw, raised or
     // (when looking up) LOWERED by pitch.
-    const back = new THREE.Vector3(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
+    const back = this._back.set(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
 
     // Place the camera `dist` behind the focus, then — if that would clip into
     // the ground (which happens when you look up and the camera dips low) — pull
@@ -70,12 +75,12 @@ export class FollowCamera {
     const clear = 0.6;
     const lo = 1.0;              // how close the camera may slide to the player
     let dist = this.dist;
-    let pos = this.target.clone().addScaledVector(back, dist);
+    const pos = this._scratchPos.copy(this.target).addScaledVector(back, dist);
     let g = heightAt(pos.x, pos.z) + clear;
     let guard = 16;
     while (pos.y < g && dist > lo && guard-- > 0) {
       dist = Math.max(lo, dist - this.dist * 0.08);
-      pos = this.target.clone().addScaledVector(back, dist);
+      pos.copy(this.target).addScaledVector(back, dist);
       g = heightAt(pos.x, pos.z) + clear;
     }
     if (pos.y < g) pos.y = g; // still buried (very steep terrain) — ride just above it

@@ -173,7 +173,10 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
   takes their first steps onto the mainland.
 - **Streamed for performance** — the world is large, so **distance fog** fades the horizon
   and only objects and enemies **near the player are drawn and updated** (the rest stream
-  out), keeping the frame rate smooth despite a continent's worth of content.
+  out). Far props and mobs are also **frozen out of the per-frame transform pass**, so the
+  CPU only does work for the small area around you — not the whole continent — keeping the
+  frame rate smooth and free of stutter. (The great dragon is the lone exception: it stays
+  loaded at any range, circling its distant roost until you're ready to challenge it.)
 - **Fishing** — stand at any shoreline (lake, river, or the Sundered Sea) and press **`E`**
   to cast a line. A bobber drops in; wait for the float to dip, then press **`E`** in the
   window to reel in your catch. Fish range from a humble **Minnow** up to a **Leviathan Fry**
