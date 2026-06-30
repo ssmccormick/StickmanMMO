@@ -73,14 +73,15 @@ export class Combat {
   // generous off-centre aim still snaps onto what you clearly mean.
   _aimEnemy(range, arc = 1.4) {
     if (this.target && this.target.alive && this.target.pos.distanceTo(this.player.pos) <= range * 1.25) return this.target;
-    const fwd = this.cam.forward();
+    const fwd = this.cam.aimForward(); // 3D, so looking up/down acquires foes there
+    const origin = this.player.pos.clone(); origin.y += 1.3;
     let best = null, bestScore = Infinity;
     for (const e of this.enemies) {
       if (!e.alive) continue;
-      const to = new THREE.Vector3().subVectors(e.pos, this.player.pos);
+      const to = new THREE.Vector3().subVectors(e.pos.clone().setY(e.pos.y + 1), origin);
       const d = to.length();
       if (d > range) continue;
-      to.y = 0; to.normalize();
+      to.normalize();
       const ang = Math.acos(THREE.MathUtils.clamp(to.dot(fwd), -1, 1));
       if (ang > arc) continue;
       const score = d + ang * 2;
@@ -93,16 +94,19 @@ export class Combat {
   _face(dir) { this.player.facing = Math.atan2(dir.x, dir.z); }
 
   // The direction offensive skills should travel: toward the locked target
-  // (or the enemy nearest the crosshair within `arc`), else straight ahead.
-  // This is what makes projectiles "go where you're aiming".
+  // (or the enemy nearest the crosshair within `arc`), else where the camera
+  // points. Now fully 3D — aiming at a foe tracks its HEIGHT (so flying enemies
+  // and the dragon can be hit), and with no target the shot follows the
+  // camera's vertical tilt, so you can fire up or down.
   _aimDir(range, arc = 0.7) {
     const e = this._aimEnemy(range, arc);
     if (e) {
-      const d = new THREE.Vector3().subVectors(e.pos, this.player.pos);
-      d.y = 0;
+      const origin = this.player.pos.clone(); origin.y += 1.3; // chest / muzzle height
+      const aim = e.pos.clone(); aim.y += 1.0;                 // foe's centre
+      const d = aim.sub(origin);
       if (d.lengthSq() > 0.0001) return d.normalize();
     }
-    return this.cam.forward();
+    return this.cam.aimForward();
   }
 
   // A point in front of the player, clamped to a max range (for ground AoE).
@@ -358,21 +362,21 @@ export class Combat {
   // Kamehameha-style beam: a channelled line that hits every foe in its path.
   // Bends toward the target/aimed foe so it's easy to land down a lane.
   _kBeam(ab) {
-    const dir = this._aimDir(ab.range, 0.55);
+    const dir = this._aimDir(ab.range, 0.55); // 3D — can be angled up or down
     this._face(dir);
-    const origin = this.player.pos.clone();
+    const origin = this.player.pos.clone(); origin.y += 1.3; // chest height
     const halfW = (ab.width || 2) * 0.5 + 0.6; // a little forgiving on the edges
     for (const e of this.enemies) {
       if (!e.alive) continue;
-      const to = new THREE.Vector3().subVectors(e.pos, origin); to.y = 0;
-      const proj = to.x * dir.x + to.z * dir.z;       // distance along the beam
+      const to = new THREE.Vector3().subVectors(e.pos.clone().setY(e.pos.y + 1), origin);
+      const proj = to.dot(dir);                          // distance along the beam (3D)
       if (proj < 0 || proj > ab.range) continue;
-      const perp = Math.hypot(to.x - dir.x * proj, to.z - dir.z * proj);
+      const perp = to.addScaledVector(dir, -proj).length(); // perpendicular distance (3D)
       if (perp > halfW) continue;
       this._strike(e, this.player.apower * ab.mult, { crit: this.def.critBonus || 0 });
       if (ab.stunOnHit) e.applyStun(ab.stunOnHit);
     }
-    this._beamFx(origin, dir, ab.range, ab.width || 2, ab.color || 0x3aa0ff);
+    this._beamFx(this.player.pos.clone(), dir, ab.range, ab.width || 2, ab.color || 0x3aa0ff);
     if (this.audio) this.audio.play('cast');
   }
 

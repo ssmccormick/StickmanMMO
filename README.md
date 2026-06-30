@@ -127,9 +127,11 @@ A ki warrior who powers up *in the fight*. Dealing and taking damage fills a **K
   fire: a **cast bar** fills, your **movement slows to a trudge** while channelling, and the
   spell releases — re-aimed at that moment — when the bar completes. Quick strikes, dashes,
   and instant novas still fire immediately. Higher ranks shave the cast time.
-- **Forgiving aim assist.** Offensive skills snap onto a locked target or the foe nearest your
-  crosshair within a generous cone, so projectiles and beams land where you clearly mean —
-  no pixel-perfect aiming required.
+- **Forgiving aim assist, now in full 3D.** Offensive skills snap onto a locked target or the
+  foe nearest your crosshair within a generous cone, so projectiles and beams land where you
+  clearly mean — no pixel-perfect aiming required. **Look up or down to aim up or down**:
+  attacks, bolts, and beams now angle vertically, so you can shoot a **Sky Wraith** out of the
+  air or blast the **dragon** overhead. The camera's vertical range is wider to match.
 - **Distinct skill kinds**, each with their own feel and visuals: melee arcs, projectiles
   (piercing, multi-shot, exploding), **ground-targeted AoE** (Meteor, Earthquake, Arrow
   Rain), **chain lightning**, **damage-over-time** patches (poison, consecrate, corruption),

@@ -11,6 +11,7 @@ export class FollowCamera {
     this.cam = camera;
     this.yaw = 0;
     this.pitch = 0.42;       // looking slightly down
+    this.neutralPitch = 0.42; // pitch at which aim is level (the resting framing)
     this.dist = 9;
     this.minDist = 4;
     this.maxDist = 18;
@@ -24,7 +25,9 @@ export class FollowCamera {
   handleLook(dx, dy) {
     this.yaw -= dx * this.sensitivity;
     this.pitch += (this.invertY ? -dy : dy) * this.sensitivity;
-    this.pitch = THREE.MathUtils.clamp(this.pitch, -0.25, 1.25);
+    // Wider vertical range so you can look up at the sky (and flying foes) or
+    // steeply down. Negative = looking up, positive = looking down.
+    this.pitch = THREE.MathUtils.clamp(this.pitch, -0.75, 1.45);
   }
   handleZoom(w) {
     this.dist = THREE.MathUtils.clamp(this.dist + w * 1.2, this.minDist, this.maxDist);
@@ -33,6 +36,14 @@ export class FollowCamera {
   // The horizontal forward direction the camera faces (for movement).
   forward() {
     return new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
+  }
+  // The forward direction for AIMING — includes vertical tilt so you can fire
+  // up or down. Level at the resting framing (neutralPitch); looking up/down
+  // angles the shot up/down. Used by ranged attacks, projectiles, and beams.
+  aimForward() {
+    const a = THREE.MathUtils.clamp(this.pitch - this.neutralPitch, -1.25, 1.25);
+    const cp = Math.cos(a), sp = Math.sin(a);
+    return new THREE.Vector3(-Math.sin(this.yaw) * cp, -sp, -Math.cos(this.yaw) * cp).normalize();
   }
   right() {
     return new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).normalize();
