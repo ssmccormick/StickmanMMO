@@ -38,10 +38,10 @@ export class TouchControls {
     //   data-hold="CODE"   → presses while held (sprint)
     //   data-press="CODE"  → a single edge press (tap)
     const abil = [1, 2, 3, 4, 5, 6].map((n) =>
-      `<button class="tc-ab" data-press="Digit${n}">${n}</button>`).join('');
+      `<button class="tc-ab" data-press="Digit${n}"><span class="tc-ab-k">${n}</span><span class="tc-ab-g">·</span><span class="tc-ab-cd"></span></button>`).join('');
     const menu = [
-      ['KeyI', '🎒'], ['KeyC', '🧍'], ['KeyJ', '📜'], ['KeyM', '🗺️'],
-      ['KeyB', '🏆'], ['KeyK', '✨'], ['KeyL', '📖'], ['KeyT', '👋'],
+      ['KeyI', '🎒'], ['KeyC', '🧍'], ['KeyJ', '📜'], ['KeyM', '🗺️'], ['KeyB', '🏆'],
+      ['KeyK', '✨'], ['KeyL', '📖'], ['KeyT', '👋'], ['KeyH', 'ℹ️'], ['KeyO', '⚙️'],
     ].map(([c, g]) => `<button class="tc-menu-btn" data-press="${c}">${g}</button>`).join('');
     return `
       <div id="tc-stick" class="tc-stick"><div id="tc-knob" class="tc-knob"></div></div>
@@ -60,10 +60,30 @@ export class TouchControls {
   }
 
   // Show the controls (called once the player enters the world on a touch device).
-  enable() { this.root.classList.remove('hidden'); }
+  // The body flag lets the stylesheet shrink/hide desktop HUD bits (e.g. the
+  // mouse hotbar, which the touch ability bar replaces).
+  enable() { this.root.classList.remove('hidden'); document.body.classList.add('touch-mode'); }
   // Hide the movement/look/action layer while a full-screen menu is open so it
   // doesn't fight the menu for touches (the menu has its own buttons).
   setPlayVisible(on) { this.root.classList.toggle('tc-menuhidden', !on); }
+
+  // Mirror the player's learned abilities onto the on-screen ability bar:
+  // each button shows its skill glyph and a cooldown sweep; unused slots hide.
+  syncHud(player) {
+    if (!this._abEls) this._abEls = [...this.root.querySelectorAll('.tc-ab')];
+    for (let i = 0; i < this._abEls.length; i++) {
+      const btn = this._abEls[i];
+      const learned = player.learned[i];
+      if (!learned) { btn.style.display = 'none'; continue; }
+      btn.style.display = '';
+      const ab = player.ability(i);
+      const g = btn.querySelector('.tc-ab-g'); if (g && ab) g.textContent = ab.glyph;
+      const cd = player.cooldowns[i] || 0;
+      const cdEl = btn.querySelector('.tc-ab-cd');
+      if (cd > 0.05) { btn.classList.add('tc-cd'); cdEl.textContent = cd.toFixed(cd < 10 ? 1 : 0); }
+      else { btn.classList.remove('tc-cd'); cdEl.textContent = ''; }
+    }
+  }
 
   _wireStick() {
     const rectCenter = () => { const r = this.stick.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };

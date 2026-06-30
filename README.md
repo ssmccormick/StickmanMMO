@@ -58,6 +58,7 @@ Any static file server works too (`npx serve`, `python3 -m http.server`, etc.).
 | **E** (near water) | Cast a line and fish |
 | **Q** | Quaff a health potion |
 | **Enter** | Chat |
+| **O** | Settings (HUD size, look sensitivity, invert Y…) |
 | **H** | Toggle the controls hint |
 
 ### 🎮 Gamepad & 📱 touch
@@ -71,8 +72,16 @@ same input, so all systems work the same.
   map / quests; **Start** = character, **Back** = achievements, **L3** = emotes.
 - **Touch**: on phones/tablets an on-screen layer appears automatically — a **left analog
   joystick** to move, **drag the right side** to look (**pinch** to zoom), a big **attack**
-  button with jump / interact / sprint / target / potion / mount, an **ability bar (1–6)**,
-  and a **menu strip** (bag, character, quests, map, achievements, skills, lore, emotes).
+  button with jump / interact / sprint / target / potion / mount, an **ability bar** that
+  mirrors your real skills with glyphs and cooldowns, and a **menu strip** (bag, character,
+  quests, map, achievements, skills, lore, emotes, plus **ℹ️ hints** and **⚙️ settings**).
+  The desktop HUD shrinks automatically on phones, and the mouse hotbar is replaced by the
+  on-screen ability bar.
+
+### ⚙️ Settings (`O`, or the gear button)
+A settings panel (saved to your browser) lets you tune **HUD size**, **touch-control size**,
+**look sensitivity**, **invert look (Y)**, and whether the **controls hint** is shown — handy
+for fitting the interface to a small phone screen.
 
 ## 🗡️ Classes (D&D-inspired)
 

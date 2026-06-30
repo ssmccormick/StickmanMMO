@@ -14,14 +14,16 @@ export class FollowCamera {
     this.dist = 9;
     this.minDist = 4;
     this.maxDist = 18;
-    this.sensitivity = 0.0024;
+    this.baseSensitivity = 0.0024;
+    this.sensitivity = 0.0024;   // = baseSensitivity * settings.lookSens
+    this.invertY = false;
     this.target = new THREE.Vector3();
     this._pos = new THREE.Vector3();
   }
 
   handleLook(dx, dy) {
     this.yaw -= dx * this.sensitivity;
-    this.pitch += dy * this.sensitivity;
+    this.pitch += (this.invertY ? -dy : dy) * this.sensitivity;
     this.pitch = THREE.MathUtils.clamp(this.pitch, -0.25, 1.25);
   }
   handleZoom(w) {

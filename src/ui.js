@@ -95,6 +95,13 @@ export class UI {
     this.castName = this.castBar.querySelector('.cast-name');
     this.castFill = this.castBar.querySelector('.cast-fill');
 
+    // Player-adjustable settings (UI scale, look sensitivity, etc.). Loaded from
+    // localStorage and applied immediately; smaller HUD by default on touch.
+    this.touchDevice = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches)
+      || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    this._loadSettings();
+    this.applySettings();
+
     // Area name banner.
     this.areaBanner = document.createElement('div');
     this.areaBanner.className = 'area-banner hidden';
@@ -501,7 +508,88 @@ export class UI {
     this.el.serverStatus.textContent = label;
   }
 
-  toggleHint() { this.el.hint.classList.toggle('hidden'); }
+  toggleHint() {
+    this.settings.showHint = !this.settings.showHint;
+    this._saveSettings();
+    this.el.hint.classList.toggle('hidden', !this.settings.showHint);
+  }
+
+  // ---- Settings ----
+  _defaultSettings() {
+    return {
+      uiScale: this.touchDevice ? 0.72 : 1,   // HUD overlay size
+      touchScale: 1,                           // on-screen control size
+      lookSens: 1,                             // camera look multiplier
+      invertY: false,
+      showHint: !this.touchDevice,             // hide the wordy hint on phones
+    };
+  }
+  _loadSettings() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('smmo_settings')) || {}; } catch (e) { saved = {}; }
+    this.settings = Object.assign(this._defaultSettings(), saved);
+  }
+  _saveSettings() {
+    try { localStorage.setItem('smmo_settings', JSON.stringify(this.settings)); } catch (e) { /* ignore */ }
+  }
+  applySettings() {
+    const s = this.settings;
+    const root = document.documentElement;
+    root.style.setProperty('--ui-scale', s.uiScale);
+    root.style.setProperty('--touch-scale', s.touchScale);
+    if (this.el.hint) this.el.hint.classList.toggle('hidden', !s.showHint);
+    if (this.onSettings) this.onSettings(s); // lets main apply camera sensitivity/invert
+  }
+  setSetting(key, value) {
+    this.settings[key] = value;
+    this._saveSettings();
+    this.applySettings();
+  }
+  _ensureSettings() {
+    if (this.setOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `<div class="inv-panel set-panel"><div class="inv-header"><span>⚙️ Settings</span><button class="inv-close">✕</button></div><div class="skills-body set-body"></div></div>`;
+    document.body.appendChild(ov);
+    this.setOverlay = ov;
+    this.setBody = ov.querySelector('.set-body');
+    ov.querySelector('.inv-close').onclick = () => this.closeSettings();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeSettings(); });
+  }
+  toggleSettings() {
+    this._ensureSettings();
+    if (this.settingsOpen) this.closeSettings();
+    else { this.settingsOpen = true; this.setOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this.renderSettings(); }
+  }
+  closeSettings() { this.settingsOpen = false; if (this.setOverlay) this.setOverlay.classList.add('hidden'); }
+  renderSettings() {
+    const s = this.settings;
+    const pct = (v) => Math.round(v * 100) + '%';
+    this.setBody.innerHTML = `
+      <div class="set-row"><label>HUD size <b id="set-ui-v">${pct(s.uiScale)}</b></label>
+        <input id="set-ui" type="range" min="0.55" max="1.4" step="0.05" value="${s.uiScale}"></div>
+      <div class="set-row"><label>Touch control size <b id="set-tc-v">${pct(s.touchScale)}</b></label>
+        <input id="set-tc" type="range" min="0.7" max="1.6" step="0.05" value="${s.touchScale}"></div>
+      <div class="set-row"><label>Look sensitivity <b id="set-ls-v">${pct(s.lookSens)}</b></label>
+        <input id="set-ls" type="range" min="0.3" max="2.5" step="0.05" value="${s.lookSens}"></div>
+      <div class="set-row set-check"><label><input id="set-inv" type="checkbox" ${s.invertY ? 'checked' : ''}> Invert look (Y axis)</label></div>
+      <div class="set-row set-check"><label><input id="set-hint" type="checkbox" ${s.showHint ? 'checked' : ''}> Show controls hint</label></div>
+      <button class="set-reset">Reset to defaults</button>`;
+    const bind = (id, key, vid, fmt) => {
+      const el = this.setBody.querySelector('#' + id);
+      el.addEventListener('input', () => {
+        const v = parseFloat(el.value);
+        if (vid) this.setBody.querySelector('#' + vid).textContent = fmt(v);
+        this.setSetting(key, v);
+      });
+    };
+    bind('set-ui', 'uiScale', 'set-ui-v', pct);
+    bind('set-tc', 'touchScale', 'set-tc-v', pct);
+    bind('set-ls', 'lookSens', 'set-ls-v', pct);
+    this.setBody.querySelector('#set-inv').addEventListener('change', (e) => this.setSetting('invertY', e.target.checked));
+    this.setBody.querySelector('#set-hint').addEventListener('change', (e) => this.setSetting('showHint', e.target.checked));
+    this.setBody.querySelector('.set-reset').addEventListener('click', () => { this.settings = this._defaultSettings(); this._saveSettings(); this.applySettings(); this.renderSettings(); });
+  }
 
   // ---- Minimap ----
   drawMinimap(player, enemies, world, others) {

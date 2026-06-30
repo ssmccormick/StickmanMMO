@@ -34,6 +34,10 @@ ui.audio = audio; // lets the UI play a sting on achievement unlocks
 const input = new Input(canvas);
 const touch = new TouchControls(input);
 const followCam = new FollowCamera(camera);
+// Apply player settings that touch the camera (look sensitivity / invert), and
+// re-apply now that followCam exists (the UI applied CSS-only bits on construct).
+ui.onSettings = (s) => { followCam.sensitivity = followCam.baseSensitivity * s.lookSens; followCam.invertY = !!s.invertY; };
+ui.applySettings();
 const world = new World(scene);
 const network = new Network(scene, ui);
 
@@ -294,7 +298,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen;
 
     // Crosshair shows while aiming (mouse-look, gamepad, or touch), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.aiming);
@@ -315,6 +319,7 @@ function animate() {
     if (input.just('KeyM')) ui.toggleWorldMap(player, enemies);
     if (input.just('KeyL')) ui.toggleCodex(player);
     if (input.just('KeyB')) ui.toggleAchievements(player);
+    if (input.just('KeyO')) ui.toggleSettings(player);
     if (input.just('KeyT')) ui.toggleEmotes(player);
     if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
     if (input.just('KeyQ')) quickHeal();
@@ -583,6 +588,7 @@ function animate() {
     ui.updateHud(player, network.count);
     ui.drawMinimap(player, enemies, world, network.others);
     ui.updateEmoteBubble(player);
+    if (input.touchDevice) touch.syncHud(player); // mirror abilities/cooldowns onto touch bar
     if (network.party.length > 1) ui.updatePartyFrames(player, network);
   }
 
