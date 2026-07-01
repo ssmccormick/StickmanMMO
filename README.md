@@ -418,10 +418,23 @@ The repo includes a **`render.yaml`** blueprint for a free [Render](https://rend
 deploy:
 
 1. On Render → **New → Blueprint** → pick this repo. It builds `server/` and deploys it.
-2. Copy the service URL (e.g. `stickman-mmo-server.onrender.com`).
-3. Share the game with the server pre-filled via a query param:
-   `https://<you>.github.io/StickmanMMO/?server=stickman-mmo-server.onrender.com`
-   — or players can paste the address into the **Server** box on the start screen.
+2. Copy the service URL it gives you (e.g. `stickman-mmo-server.onrender.com`).
+3. **Bake it in so players connect automatically** — set one line in
+   [`src/config.js`](src/config.js):
+
+   ```js
+   export const DEFAULT_SERVER = 'stickman-mmo-server.onrender.com';
+   ```
+
+   Commit & push; the live site now drops everyone onto your server with **zero
+   typing** (hostname only — the client secures it to `wss://` automatically). Leaving
+   it `''` keeps the game solo-by-default.
+
+Alternatives that don't touch code: share a link with the server in the URL —
+`https://<you>.github.io/StickmanMMO/?server=<host>` (overrides the config, great for
+testing) — or players can paste the address into the **Server** box on the start
+screen. If the server is unreachable (a free instance asleep), the game falls back to
+solo automatically, so it's always playable.
 
 Render's free tier sleeps when idle and cold-starts (~30s) on the next join; a paid
 instance (or Railway / Fly.io / a small VPS behind Caddy for TLS) stays always-on.
@@ -452,6 +465,7 @@ src/
   combat.js            # attacks, abilities, projectiles, targeting, FX
   ui.js                # HUD, class select, hotbar, minimap, floaters, chat
   network.js           # WebSocket client (graceful offline → solo)
+  config.js            # DEFAULT_SERVER — set your deployed server here
   audio.js             # tiny WebAudio SFX synth (no asset files)
   sim/                 # Three-free shared core (runs in browser AND server)
     terrain.js         #   deterministic terrain height + world layout

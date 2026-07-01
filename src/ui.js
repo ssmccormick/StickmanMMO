@@ -13,6 +13,7 @@ import { CODEX, PROLOGUE, WORLD_NAME, ashboundEntry, TOWN_CHATTER } from './lore
 import { EMOTES } from './player.js';
 import * as Achievements from './achievements.js';
 import { CharacterPreview } from './preview.js';
+import { DEFAULT_SERVER } from './config.js';
 import {
   RANGES, BODY_COLORS, ACCENT_COLORS, HAIR_COLORS, HAIR_STYLES, COSMETICS,
   defaultAppearance, normalizeAppearance, unlockedCosmetics, isOptionAvailable, hexCss,
@@ -213,13 +214,15 @@ export class UI {
     this._onCreate = onCreate;
     this._onContinue = onContinue;
 
-    // A shareable link can pre-fill the server, e.g.
-    //   .../StickmanMMO/?server=play.example.com
-    // so friends just click and join (the address is auto-secured to wss:// on
-    // the live HTTPS site by the network layer).
+    // Pre-fill the server address so players connect automatically:
+    //   1. a ?server=<host> URL param (shareable links / testing), else
+    //   2. the deployed default from src/config.js.
+    // Either is auto-secured to wss:// on the live HTTPS site by the network
+    // layer, and an unreachable server falls back to solo.
     try {
       const qp = new URLSearchParams(location.search).get('server');
-      if (qp && this.el.serverInput && !this.el.serverInput.value) this.el.serverInput.value = qp;
+      const pre = qp || DEFAULT_SERVER;
+      if (pre && this.el.serverInput && !this.el.serverInput.value) this.el.serverInput.value = pre;
     } catch { /* no URL API — ignore */ }
 
     this.el.newCharBtn.onclick = () => this.showCreate();
