@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { createStickman, animateStickman } from './stickman.js';
 import { CLASSES } from './classes.js';
 import { heightAt } from './world.js';
+import { normalizeAppearance } from './appearance.js';
 
 export class Network {
   constructor(scene, ui) {
@@ -25,6 +26,7 @@ export class Network {
     this.onPartyXp = null;      // (amount, fromName) => void, shared kill XP
     this.onPartyLoot = null;    // (item, fromName) => void, notable partymate loot
     this._sendTimer = 0;
+    this._fx = [];              // transient FX for remote players' attacks/casts
   }
 
   // Normalise a user-entered server address into a usable WebSocket URL.
@@ -69,7 +71,7 @@ export class Network {
       this.ui.setServerStatus('online', 'online');
       this.ui.log(this._everConnected ? 'Reconnected to server.' : 'Connected to server.', 'sys');
       this._everConnected = true;
-      this._send({ type: 'join', name: this.selfInfo.name, classId: this.selfInfo.classId });
+      this._send({ type: 'join', name: this.selfInfo.name, classId: this.selfInfo.classId, appearance: this.selfInfo.appearance || null });
     };
     this.ws.onclose = () => {
       this.connected = false;
@@ -146,12 +148,68 @@ export class Network {
       case 'enemy_death': if (this.onEnemyDeath) this.onEnemyDeath(msg); break;
       case 'enemy_attack':if (this.onEnemyAttack) this.onEnemyAttack(msg.dmg, msg.enemyId); break;
       case 'enemy_shot':  if (this.onEnemyShot) this.onEnemyShot(msg.shot); break;
+      // A remote player attacked or cast — animate them and show a light FX.
+      case 'action':      if (msg.id !== this.id) this._onAction(msg); break;
     }
   }
 
   // Report a hit on a server enemy; the server applies it and broadcasts the
   // resulting HP/death.
   sendEnemyHit(serverId, dmg) { this._send({ type: 'enemy_hit', enemyId: serverId, dmg }); }
+
+  // Broadcast the local player's attack/cast so others can see it.
+  sendAction(info) { if (this.connected) this._send({ type: 'action', ...info }); }
+
+  _onAction(msg) {
+    const o = this.others[msg.id];
+    if (o) o.attackAnim = 1;            // triggers the swing pose in animateStickman
+    this._spawnActionFx(msg);
+  }
+
+  // A short-lived visual for a remote player's attack/ability. `fx` picks the
+  // shape; origin/dir are world-space (already at the caster's muzzle).
+  _spawnActionFx(msg) {
+    const color = msg.color || 0xffffff;
+    const origin = new THREE.Vector3(msg.x || 0, msg.y || 1.3, msg.z || 0);
+    const dir = new THREE.Vector3(msg.dx || 0, msg.dy || 0, msg.dz || -1);
+    if (dir.lengthSq() < 1e-4) dir.set(0, 0, -1); else dir.normalize();
+    if (msg.fx === 'bolt') {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color }));
+      m.add(new THREE.PointLight(color, 1.0, 5));
+      m.position.copy(origin);
+      this.scene.add(m);
+      this._fx.push({ mesh: m, vel: dir.clone().multiplyScalar(26), ttl: 0.55 });
+    } else if (msg.fx === 'beam') {
+      const len = 16, geo = new THREE.CylinderGeometry(0.16, 0.16, len, 8);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75 }));
+      m.position.copy(origin).addScaledVector(dir, len / 2);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      this.scene.add(m);
+      this._fx.push({ mesh: m, ttl: 0.3, fade: true });
+    } else if (msg.fx === 'nova') {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.55, 22), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(origin.x, origin.y - 1.0, origin.z);
+      this.scene.add(ring);
+      this._fx.push({ mesh: ring, ttl: 0.5, grow: true, fade: true });
+    }
+    // 'swing' has no FX mesh — the attack animation is the whole effect.
+  }
+
+  _updateFx(dt) {
+    for (let i = this._fx.length - 1; i >= 0; i--) {
+      const f = this._fx[i];
+      f.ttl -= dt;
+      if (f.vel) f.mesh.position.addScaledVector(f.vel, dt);
+      if (f.grow) f.mesh.scale.multiplyScalar(1 + dt * 7);
+      if (f.fade && f.mesh.material) f.mesh.material.opacity = Math.max(0, f.mesh.material.opacity - dt * 3);
+      if (f.ttl <= 0) {
+        this.scene.remove(f.mesh);
+        if (f.mesh.geometry) f.mesh.geometry.dispose();
+        this._fx.splice(i, 1);
+      }
+    }
+  }
 
   inviteByName(name) { this._send({ type: 'party_invite', targetName: name }); }
   acceptInvite() { if (this.partyInvite) { this._send({ type: 'party_accept', leaderId: this.partyInvite.fromId }); this.partyInvite = null; } }
@@ -167,7 +225,11 @@ export class Network {
   _spawnOther(p) {
     if (this.others[p.id]) return;
     const def = CLASSES[p.classId] || CLASSES.fighter;
-    const mesh = createStickman({ color: def.color, accent: def.accent });
+    // Render other players with THEIR customised look (colours/hair/proportions)
+    // when we received one, else fall back to the class default.
+    const mesh = p.appearance
+      ? createStickman({ appearance: normalizeAppearance(p.appearance, p.classId) })
+      : createStickman({ color: def.color, accent: def.accent });
     mesh.position.set(p.x || 0, p.y || 0, p.z || 0);
     this.scene.add(mesh);
     const plate = this._makePlate(p.name, def.name);
@@ -177,7 +239,7 @@ export class Network {
       id: p.id, name: p.name, classId: p.classId, mesh,
       pos: new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0),
       target: new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0),
-      facing: 0, targetFacing: 0, state: 'ground', _speed01: 0,
+      facing: 0, targetFacing: 0, state: 'ground', _speed01: 0, attackAnim: 0,
     };
     this.ui.log(`${p.name} entered the world.`, 'sys');
   }
@@ -258,8 +320,10 @@ export class Network {
       while (diff < -Math.PI) diff += Math.PI * 2;
       o.facing += diff * Math.min(1, dt * 10);
       o.mesh.rotation.y = o.facing;
-      animateStickman(o.mesh, dt, { speed01: o._speed01, climbing: o.state === 'climb' });
+      if (o.attackAnim > 0) o.attackAnim = Math.max(0, o.attackAnim - dt * 2.4);
+      animateStickman(o.mesh, dt, { speed01: o._speed01, climbing: o.state === 'climb', attack: o.attackAnim });
     }
+    this._updateFx(dt);
   }
 
   get count() { return 1 + Object.keys(this.others).length; }

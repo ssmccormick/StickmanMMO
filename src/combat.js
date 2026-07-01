@@ -139,10 +139,31 @@ export class Combat {
         speed: prof.speed || 24, mult: 1, color: prof.projColor || 0xffffff,
         shape: prof.shape || 'orb', range: prof.range,
       });
+      this._emitAction('bolt', prof.projColor || 0xffffff, this._muzzle(), dir);
     } else {
       this._faceCam();
       const e = this._aimEnemy(prof.range || this.def.range, 1.3);
       if (e) this._strike(e, p.apower, { crit: this.def.critBonus || 0 });
+      this._emitAction('swing');
+    }
+  }
+
+  // Tell the network layer the local player just attacked/cast, so other players
+  // see an animation + a light FX. `origin`/`dir` default to the aim muzzle.
+  _emitAction(fx, color = 0xffffff, origin = null, dir = null) {
+    if (!this.onAction) return;
+    const o = origin || this._muzzle();
+    const d = dir || this.cam.aimForward();
+    this.onAction({ fx, color,
+      x: +o.x.toFixed(2), y: +o.y.toFixed(2), z: +o.z.toFixed(2),
+      dx: +d.x.toFixed(3), dy: +d.y.toFixed(3), dz: +d.z.toFixed(3) });
+  }
+  _fxForKind(kind) {
+    switch (kind) {
+      case 'beam': return 'beam';
+      case 'projectile': case 'chain': case 'groundaoe': return 'bolt';
+      case 'melee': case 'lifesteal': case 'dash': return 'swing';
+      default: return 'nova'; // buff / heal / summon / dot / instantstep / transform
     }
   }
 
@@ -185,6 +206,7 @@ export class Combat {
   // Dispatch an ability's effect by kind (shared by instant casts and the
   // completion of a charged cast).
   _fireAbility(ab) {
+    this._emitAction(this._fxForKind(ab.kind), ab.color || 0xffffff); // show it to other players
     switch (ab.kind) {
       case 'melee': this._kMelee(ab); break;
       case 'projectile': this._kProjectile(ab); break;

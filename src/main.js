@@ -150,6 +150,8 @@ function beginGame(classId, name, server, save, appearance) {
   combat.onKillEvent = () => ui.refreshGiverMarkers(player);
   // Party-shared XP: relay half of every kill's XP to grouped members.
   combat.onPartyXp = (xp) => network.sendPartyXp(Math.round(xp * 0.5));
+  // Broadcast attacks/casts so other players see us fight.
+  combat.onAction = (info) => network.sendAction(info);
 
   // ---- Synced encounters: switch to server-authoritative enemies ----
   // Fires when we connect to a server that owns the enemies. We retire the
@@ -191,7 +193,7 @@ function beginGame(classId, name, server, save, appearance) {
     : `Welcome, ${name} the ${classId}. Slay monsters and grow strong!`, 'sys');
   ui.log('Rest at a bonfire (orange flame, press E) to heal and SAVE your progress.', 'sys');
 
-  network.connect(server, { name, classId });
+  network.connect(server, { name, classId, appearance: player.appearance });
   input.enabled = true;
   if (input.touchDevice) { touch.enable(); ui.log('Touch controls enabled — left stick to move, drag right to look.', 'sys'); }
 

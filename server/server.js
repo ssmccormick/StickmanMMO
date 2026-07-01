@@ -45,13 +45,13 @@ function broadcast(obj, exceptWs = null) {
 
 function snapshot(p) {
   return { id: p.id, name: p.name, classId: p.classId, x: p.x, y: p.y, z: p.z,
-           facing: p.facing, state: p.state, hp: p.hp, level: p.level };
+           facing: p.facing, state: p.state, hp: p.hp, level: p.level, appearance: p.appearance || null };
 }
 
 wss.on('connection', (ws) => {
   const id = nextId++;
   const p = { id, name: `Stick${id}`, classId: 'fighter', x: 0, y: 0, z: 6,
-              facing: 0, state: 'ground', hp: 100, level: 1 };
+              facing: 0, state: 'ground', hp: 100, level: 1, appearance: null };
   players.set(ws, p);
 
   ws.on('message', (raw) => {
@@ -62,6 +62,7 @@ wss.on('connection', (ws) => {
       case 'join': {
         p.name = String(msg.name || `Stick${id}`).slice(0, 16);
         p.classId = String(msg.classId || 'fighter');
+        if (msg.appearance && typeof msg.appearance === 'object') p.appearance = msg.appearance;
         // Send the newcomer the full roster, then announce them.
         const roster = [];
         for (const other of players.values()) roster.push(snapshot(other));
@@ -84,6 +85,12 @@ wss.on('connection', (ws) => {
         const text = String(msg.text || '').slice(0, 120);
         // Exclude the sender — the client already shows its own message locally.
         if (text) broadcast({ type: 'chat', id, name: p.name, text }, ws);
+        break;
+      }
+      case 'action': {
+        // Relay an attack/cast to everyone else so they can animate it + show FX.
+        broadcast({ type: 'action', id, fx: msg.fx, color: msg.color,
+                    x: msg.x, y: msg.y, z: msg.z, dx: msg.dx, dy: msg.dy, dz: msg.dz }, ws);
         break;
       }
       // ---- Authoritative combat ----
