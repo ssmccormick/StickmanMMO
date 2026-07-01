@@ -24,7 +24,10 @@ export const TYPES = {
 };
 
 // Where the great dragon roosts — a far-north open expanse below the high peaks.
-export const DRAGON_ROOST = { x: -150, z: 210 };
+// Scaled with the world (see terrain.js SCALE) so it stays near the northern
+// peaks after the world is spread out.
+import { SCALE } from './terrain.js';
+export const DRAGON_ROOST = { x: -150 * SCALE, z: 210 * SCALE };
 
 export const TYPE_BY_LEVEL = (lvl) => {
   if (lvl <= 1) return ['slime', 'slime', 'grunt'];

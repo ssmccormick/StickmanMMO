@@ -210,7 +210,9 @@ export class World {
   }
 
   _terrain() {
-    const seg = 300;
+    // Segment count scales with the (now much larger) world so hills keep a
+    // similar on-screen resolution instead of turning into coarse facets.
+    const seg = 480;
     const geo = new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -253,7 +255,11 @@ export class World {
 
   _addBox(mesh, climbable = false, pad = 0) {
     // Register an AABB collider derived from the mesh's bounding box.
-    mesh.updateMatrixWorld(true);
+    // updateWorldMatrix(true, true) refreshes ANCESTORS first (a plain
+    // updateMatrixWorld would leave the parent group's matrix stale, so a house
+    // added inside a positioned group would get a collider stuck at the origin
+    // instead of where the house actually stands — houses wouldn't block).
+    mesh.updateWorldMatrix(true, true);
     const box = new THREE.Box3().setFromObject(mesh);
     box.min.x -= pad; box.min.z -= pad; box.max.x += pad; box.max.z += pad;
     this.colliders.push({ min: box.min, max: box.max, climbable });
@@ -547,6 +553,7 @@ export class World {
 
       if (hash2(i, 17) < 0.7) {
         const g = new THREE.Group();
+        let solid = null; // collider mesh — registered AFTER g is positioned & added
         if (biome.prop === 'cactus') {
           // Saguaro-style cactus.
           const h = 1.8 + hash2(i, 19) * 1.8;
@@ -557,7 +564,7 @@ export class World {
             const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, h * 0.5, 6), cactusMat);
             arm.position.set(0.35, h * 0.6, 0); arm.rotation.z = -0.6; g.add(arm);
           }
-          this._addBox(body, false);
+          solid = body;
         } else if (biome.prop === 'pine') {
           // Snowy pine: stacked cones with white caps.
           const th = 2.4 + hash2(i, 19) * 2;
@@ -569,7 +576,7 @@ export class World {
           }
           const cap = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.7, 7), snowCapMat);
           cap.position.y = th * 0.5 + 2.5; g.add(cap);
-          this._addBox(trunk, false);
+          solid = trunk;
         } else if (biome.prop === 'dead') {
           // Bare, gnarled dead tree.
           const th = 2.2 + hash2(i, 19) * 2;
@@ -580,7 +587,7 @@ export class World {
             br.position.y = th * (0.6 + k * 0.12);
             br.rotation.z = (hash2(i, k) - 0.5) * 2; g.add(br);
           }
-          this._addBox(trunk, false);
+          solid = trunk;
         } else if (biome.prop === 'charred') {
           // Charred, twisted dead tree with a faint ember at its root.
           const th = 1.8 + hash2(i, 19) * 2.2;
@@ -603,7 +610,7 @@ export class World {
             frond.position.set(Math.cos(a) * 0.7, th - 0.3, Math.sin(a) * 0.7);
             frond.rotation.set(Math.sin(a) * 1.35, -a, -Math.cos(a) * 1.35); g.add(frond);
           }
-          this._addBox(trunk, false);
+          solid = trunk;
         } else if (biome.prop === 'crystal') {
           // A cluster of glowing crystal spikes jutting from the ground.
           const n = 2 + Math.floor(hash2(i, 19) * 3);
@@ -622,11 +629,12 @@ export class World {
             leafMats[i % leafMats.length]);
           leaf.position.y = th + 1;
           g.add(trunk, leaf);
-          this._addBox(trunk, false);
+          solid = trunk;
         }
         g.position.set(x, y, z);
         g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         this.group.add(g);
+        if (solid) this._addBox(solid, false); // now that g sits at (x,y,z), the box is correct
       } else {
         // Rock (tinted by biome).
         const r = 0.6 + hash2(i, 31) * 1.6;

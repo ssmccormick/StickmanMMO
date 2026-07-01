@@ -16,7 +16,13 @@
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-export const WORLD_SIZE = 380; // half-extent; world spans -380..380
+// World scale. Positions spread out by SCALE so locations sit far apart and the
+// continent feels large; area/town radii grow more gently by RSCALE so zones
+// stay a sensible size with lots of open travel between them. Tripling SCALE
+// triples every distance between towns, areas, camps, and spawns.
+export const SCALE = 3;
+const RSCALE = 1.6;
+export const WORLD_SIZE = 380 * SCALE; // half-extent; world spans -WORLD_SIZE..WORLD_SIZE
 export const WATER_LEVEL = -4.0;
 
 // Deterministic value-noise so the world is the same every load and
@@ -91,22 +97,23 @@ export const BIOME_LAYOUT = [
 export const BIOME_SIZE = { forest: 1.18, snow: 1.0, desert: 1.12, swamp: 0.9, ash: 1.06, jungle: 1.22, crystal: 0.88, badlands: 1.1 };
 
 // Biome region centers — used by biomeWeights as soft-Voronoi sites.
-export const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, size: BIOME_SIZE[b.biome] || 1, ...polar(b.heading, b.dist) }));
+export const BIOME_REGIONS = BIOME_LAYOUT.map((b) => ({ biome: b.biome, size: BIOME_SIZE[b.biome] || 1, ...polar(b.heading, b.dist * SCALE) }));
 
 // Smooth, noise-distorted biome membership weights at a point: a soft Voronoi
 // over the biome region centers, with a meadow core around the Nexus. Defined
 // before heightAt so terrain elevation can vary by biome.
 export function biomeWeights(x, z) {
-  // Distort the sample point so biome borders wander instead of being clean circles.
-  const nx = x + (smoothNoise(x * 0.02 + 1.3, z * 0.02 + 2.7) - 0.5) * 70;
-  const nz = z + (smoothNoise(x * 0.02 + 9.1, z * 0.02 + 4.2) - 0.5) * 70;
-  const town = 1 - smoothstep(20, 60, Math.hypot(x, z)); // meadow core (true position)
+  // Distort the sample point so biome borders wander instead of being clean
+  // circles (scaled with the world so borders wander proportionally).
+  const nx = x + (smoothNoise(x * 0.02 + 1.3, z * 0.02 + 2.7) - 0.5) * 70 * SCALE;
+  const nz = z + (smoothNoise(x * 0.02 + 9.1, z * 0.02 + 4.2) - 0.5) * 70 * SCALE;
+  const town = 1 - smoothstep(20 * SCALE, 60 * SCALE, Math.hypot(x, z)); // meadow core (true position)
   const outer = 1 - town;
   const w = { forest: 0, snow: 0, swamp: 0, desert: 0, ash: 0, jungle: 0, crystal: 0, badlands: 0, meadow: town };
   let sum = 0; const inf = [];
   for (const r of BIOME_REGIONS) {
     const d = Math.hypot(nx - r.x, nz - r.z);
-    const v = 1 / (1 + Math.pow(d / (95 * (r.size || 1)), 3)); // soft falloff, scaled by region size
+    const v = 1 / (1 + Math.pow(d / (95 * SCALE * (r.size || 1)), 3)); // soft falloff, scaled by world + region size
     inf.push(v); sum += v;
   }
   for (let i = 0; i < BIOME_REGIONS.length; i++) w[BIOME_REGIONS[i].biome] = (inf[i] / sum) * outer;
@@ -116,8 +123,8 @@ export function biomeWeights(x, z) {
 // Town centers (flattened so settlements sit on level ground). The Nexus anchors
 // the middle; each biome gets one outpost partway along its heading.
 export const TOWNS = [
-  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 40, nexus: true },
-  ...BIOME_LAYOUT.map((b) => ({ name: b.town, biome: b.biome, radius: 20, ...polar(b.heading, b.townDist) })),
+  { name: 'The Nexus', x: 0, z: 0, biome: 'meadow', radius: 40 * RSCALE, nexus: true },
+  ...BIOME_LAYOUT.map((b) => ({ name: b.town, biome: b.biome, radius: 20 * RSCALE, ...polar(b.heading, b.townDist * SCALE) })),
 ];
 
 // Named adventuring areas within the biomes, each with a level and a spawn
@@ -127,20 +134,20 @@ export const TOWNS = [
 // by clamping their angular offset toward the center of the wedge.
 export const capOff = (o) => Math.max(-9, Math.min(9, o));
 export const AREAS = [
-  { name: 'Greenmeadow', x: 0, z: 0, r: 40, level: 0, biome: 'meadow', safe: true },
+  { name: 'Greenmeadow', x: 0, z: 0, r: 40 * RSCALE, level: 0, biome: 'meadow', safe: true },
   // A small starter glen across the first bridge from the Nexus, where the
   // Ashbound takes their first steps onto the mainland.
-  { name: 'The Waking Vale', ...polar(14, 110), r: 24, level: 1, count: 7, biome: 'meadow' },
+  { name: 'The Waking Vale', ...polar(14, 110 * SCALE), r: 24 * RSCALE, level: 1, count: 7, biome: 'meadow' },
   ...BIOME_LAYOUT.flatMap((b) => [
-    { name: b.low.name, level: b.low.level, biome: b.biome, r: b.low.r, count: b.low.count, ...polar(b.heading + capOff(b.low.off), b.low.dist) },
-    { name: b.high.name, level: b.high.level, biome: b.biome, r: b.high.r, count: b.high.count, ...polar(b.heading + capOff(b.high.off), b.high.dist) },
+    { name: b.low.name, level: b.low.level, biome: b.biome, r: b.low.r * RSCALE, count: b.low.count, ...polar(b.heading + capOff(b.low.off), b.low.dist * SCALE) },
+    { name: b.high.name, level: b.high.level, biome: b.biome, r: b.high.r * RSCALE, count: b.high.count, ...polar(b.heading + capOff(b.high.off), b.high.dist * SCALE) },
   ]),
 ];
 
 // Elite war-camps and world bosses (one per biome) — camps sit between the town
 // and the high area; bosses lurk in the high area.
-export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + capOff(b.camp.off), b.camp.dist) }));
-export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + capOff(b.high.off), b.high.dist) }));
+export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + capOff(b.camp.off), b.camp.dist * SCALE) }));
+export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + capOff(b.high.off), b.high.dist * SCALE) }));
 
 // Find the named area a point is in (nearest area whose radius contains it).
 export function areaAt(x, z) {
@@ -189,33 +196,33 @@ export function roadDistance(x, z) {
 // Dungeons: an overworld entrance portal that teleports you to an instanced
 // room far off the map. The room sites get a hard-flat floor in heightAt.
 export const DUNGEONS = [
-  { id: 'undervault', name: 'The Undervault', ex: 30, ez: -25, sx: 720, sz: 0, level: 6 },  // on the Nexus island
-  { id: 'frostcrypt', name: 'Frostcrypt', ex: -82, ez: 78, sx: -720, sz: 0, level: 12 },    // forest/snow shore
-  { id: 'sunkentomb', name: 'Sunken Tomb', ex: 82, ez: -78, sx: 0, sz: 720, level: 19 },    // jungle/desert shore
+  { id: 'undervault', name: 'The Undervault', ex: 30 * SCALE, ez: -25 * SCALE, sx: 720 * SCALE, sz: 0, level: 6 },  // on the Nexus island
+  { id: 'frostcrypt', name: 'Frostcrypt', ex: -82 * SCALE, ez: 78 * SCALE, sx: -720 * SCALE, sz: 0, level: 12 },    // forest/snow shore
+  { id: 'sunkentomb', name: 'Sunken Tomb', ex: 82 * SCALE, ez: -78 * SCALE, sx: 0, sz: 720 * SCALE, level: 19 },    // jungle/desert shore
 ];
 export const DUNGEON_SITES = DUNGEONS.map((d) => ({ x: d.sx, z: d.sz, radius: 44, floorY: 0 }));
 
 // Mountains: big rocky peaks that act as landmarks/barriers. A couple of them
 // have a cave mouth at the base that leads down into an instanced cavern.
 export const MOUNTAINS = [
-  { x: -150, z: 255, r: 28, h: 78, cave: 'cave_echo' },  // snowy peak, far north
-  { x: 255, z: 70, r: 26, h: 70, cave: 'cave_deep' },    // eastern forest highland
-  { x: -250, z: -80, r: 23, h: 60 },
-  { x: 120, z: -240, r: 21, h: 54 },
-  { x: -285, z: 70, r: 22, h: 58 },
-  { x: 190, z: 215, r: 19, h: 50 },
+  { x: -150 * SCALE, z: 255 * SCALE, r: 28 * RSCALE, h: 78, cave: 'cave_echo' },  // snowy peak, far north
+  { x: 255 * SCALE, z: 70 * SCALE, r: 26 * RSCALE, h: 70, cave: 'cave_deep' },    // eastern forest highland
+  { x: -250 * SCALE, z: -80 * SCALE, r: 23 * RSCALE, h: 60 },
+  { x: 120 * SCALE, z: -240 * SCALE, r: 21 * RSCALE, h: 54 },
+  { x: -285 * SCALE, z: 70 * SCALE, r: 22 * RSCALE, h: 58 },
+  { x: 190 * SCALE, z: 215 * SCALE, r: 19 * RSCALE, h: 50 },
 ];
 
 // Caves: like dungeons, they teleport to an instanced room far off the map,
 // but these are deep, dark, crystal-lit caverns reached by descending through
 // a mountain-base entrance. A treasure cache waits at the bottom.
 export const CAVES = [
-  { id: 'cave_echo', name: 'Echohollow Cavern', ex: -150, ez: 255, sx: 0, sz: -720, floorY: -42, level: 4 },
-  { id: 'cave_deep', name: 'The Deepvein', ex: 255, ez: 70, sx: -720, sz: -720, floorY: -48, level: 9 },
+  { id: 'cave_echo', name: 'Echohollow Cavern', ex: -150 * SCALE, ez: 255 * SCALE, sx: 0, sz: -720 * SCALE, floorY: -42, level: 4 },
+  { id: 'cave_deep', name: 'The Deepvein', ex: 255 * SCALE, ez: 70 * SCALE, sx: -720 * SCALE, sz: -720 * SCALE, floorY: -48, level: 9 },
 ];
 export const CAVE_SITES = CAVES.map((c) => ({ x: c.sx, z: c.sz, radius: 40, floorY: c.floorY }));
 
-const SEA_IN = 52, SEA_OUT = 92; // inner/outer radius of the Sundered Sea ring
+const SEA_IN = 52 * SCALE, SEA_OUT = 92 * SCALE; // inner/outer radius of the Sundered Sea ring
 export { SEA_IN, SEA_OUT };
 
 // The single source of truth for ground elevation. Base rolling noise plus
@@ -269,9 +276,17 @@ export function heightAt(x, z) {
   // water. Only the land-bridge roads stay above the waves — they're the
   // causeways you cross to leave the heartland.
   const rad = Math.hypot(x, z);
-  const ring = smoothstep(SEA_IN - 8, SEA_IN, rad) * (1 - smoothstep(SEA_OUT, SEA_OUT + 10, rad));
+  // The Nexus heartland is a low, FLAT island: within the inner shore, ease the
+  // ground toward a plateau that sits just above the water, so the capital reads
+  // as an island with the sea lapping just below its edge (not a tall cliff).
+  if (rad < SEA_IN) {
+    const islandTop = WATER_LEVEL + 2;
+    const k = 1 - smoothstep(SEA_IN * 0.55, SEA_IN, rad); // 1 at centre → 0 at the shore
+    h = lerp(h, islandTop, k * 0.85);
+  }
+  const ring = smoothstep(SEA_IN - 8 * SCALE, SEA_IN, rad) * (1 - smoothstep(SEA_OUT, SEA_OUT + 10 * SCALE, rad));
   if (ring > 0.002) {
-    const bridge = roadDistance(x, z) < 8 ? 1 : 0;
+    const bridge = roadDistance(x, z) < 10 ? 1 : 0;
     const seaFloor = WATER_LEVEL - 6 + smoothNoise(x * 0.05, z * 0.05) * 2.5;
     h = lerp(h, seaFloor, ring * (1 - bridge));
   }
@@ -304,7 +319,7 @@ export const BIOMES = {
 // Discrete biome (for prop choice / camps) — the dominant weight, distorted
 // so prop regions interleave at borders to match the blended terrain.
 export function biomeAt(x, z) {
-  if (Math.hypot(x, z) < 22) return BIOMES.meadow;
+  if (Math.hypot(x, z) < 22 * SCALE) return BIOMES.meadow;
   const w = biomeWeights(x, z);
   let best = 'forest', bv = -1;
   for (const k of ['forest', 'snow', 'swamp', 'desert', 'ash', 'jungle', 'crystal', 'badlands', 'meadow']) if (w[k] > bv) { bv = w[k]; best = k; }
