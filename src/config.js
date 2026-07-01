@@ -18,4 +18,4 @@
 //   • If the server is unreachable (e.g. a free instance is asleep), the game
 //     falls back to solo automatically — it's always playable.
 // ============================================================
-export const DEFAULT_SERVER = '';
+export const DEFAULT_SERVER = 'stickman-mmo-server.onrender.com';
