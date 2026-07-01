@@ -11,7 +11,7 @@
 // loot rolls. That keeps player-feel responsive while making encounters shared.
 // ============================================================
 import { heightAt, TOWNS, AREAS, CAMPS, BOSSES } from './terrain.js';
-import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats } from './enemyTypes.js';
+import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, specialsFor } from './enemyTypes.js';
 
 const ACTIVE_R = 145;              // area-of-interest radius (≳ client's 130)
 const ACTIVE2 = ACTIVE_R * ACTIVE_R;
@@ -51,6 +51,11 @@ class SimEnemy {
     this.respawnTimer = 0;
     this.attackTimer = 0;
     this.wanderTarget = this._randomNear(this.home, 7);
+
+    // Telegraphed specials (shared defs with the client).
+    this.specials = specialsFor(typeId, this.ranged);
+    this.specialCd = 2.5 + Math.random() * 3;
+    this.charge = null;
   }
 
   _randomNear(c, r) {
@@ -66,6 +71,10 @@ class SimEnemy {
       if (this.respawnTimer <= 0) this._respawn();
       return null;
     }
+    if (this.specialCd > 0) this.specialCd -= dt;
+
+    // A charged special in progress drives its own movement/telegraph/damage.
+    if (this.charge) return this._updateCharge(dt, players);
 
     // Acquire the nearest living player (flyers judge by ground distance).
     let target = null, best = Infinity;
@@ -80,7 +89,15 @@ class SimEnemy {
     if (target && dist < this.type.aggro) this.state = dist <= engage ? 'attack' : 'chase';
     else if (this.state !== 'idle' && dist > this.type.aggro * 1.4) this.state = 'return';
 
-    let mvx = 0, mvz = 0, ev = null;
+    // Commit to a telegraphed special when ready and in range.
+    if (this.specials.length && this.specialCd <= 0 && target && dist < this.type.aggro
+        && (this.state === 'attack' || this.state === 'chase')) {
+      const ready = this.specials.filter((s) => dist >= s.minR && dist <= s.maxR);
+      if (ready.length) { this._startCharge(ready[(Math.random() * ready.length) | 0], target); return null; }
+    }
+
+    const evs = [];
+    let mvx = 0, mvz = 0;
     if (this.state === 'chase' && target) {
       const dx = target.x - this.x, dz = target.z - this.z, l = Math.hypot(dx, dz) || 1;
       mvx = dx / l; mvz = dz / l;
@@ -94,16 +111,16 @@ class SimEnemy {
         if (this.attackTimer <= 0) {
           this.attackTimer = 1.9 + Math.random() * 0.6;
           const fx = this.x, fy = this.y + (this.flying ? Math.max(0.6, this.flyHeight * 0.4) : 1.1), fz = this.z;
-          ev = { shot: {
+          evs.push({ shot: {
             enemyId: this.id, x: +fx.toFixed(2), y: +fy.toFixed(2), z: +fz.toFixed(2),
             targetId: target.id, tx: +target.x.toFixed(2), ty: +((target.y || 0) + 1).toFixed(2), tz: +target.z.toFixed(2),
             speed: this.type.projSpeed || 15, color: this.type.projColor || 0xffaa44,
             dmg: Math.round(this.dmg), range: this.shootRange + 8,
-          } };
+          } });
         }
       } else if (this.attackTimer <= 0) {
         this.attackTimer = 1.6;
-        if (dist <= this.type.range + 0.8) ev = { hit: { playerId: target.id, dmg: Math.round(this.dmg), enemyId: this.id } };
+        if (dist <= this.type.range + 0.8) evs.push({ hit: { playerId: target.id, dmg: Math.round(this.dmg), enemyId: this.id } });
       }
     } else if (this.state === 'return') {
       const dx = this.home.x - this.x, dz = this.home.z - this.z, l = Math.hypot(dx, dz);
@@ -130,7 +147,50 @@ class SimEnemy {
       this.y = heightAt(this.x, this.z);
     }
     if (this.attackTimer > 0) this.attackTimer -= dt;
-    return ev;
+    return evs.length ? evs : null;
+  }
+
+  // ---- Telegraphed specials (server-authoritative) ----
+  _startCharge(sp, target) {
+    const dx = target.x - this.x, dz = target.z - this.z, l = Math.hypot(dx, dz) || 1;
+    this.charge = { sp, phase: 'w', t: 0, dur: sp.windup, dx: dx / l, dz: dz / l,
+                    tx: target.x, tz: target.z, applied: false, execT: 0 };
+    this.facing = Math.atan2(dx, dz);
+  }
+  _updateCharge(dt, players) {
+    const c = this.charge, sp = c.sp;
+    let evs = null;
+    if (c.phase === 'w') {
+      c.t += dt;
+      if (c.t >= c.dur) { c.phase = 'e'; c.execT = 0; c.applied = false; }
+    } else {
+      c.execT += dt;
+      evs = this._runExec(dt, c, players);
+      if (c.execT >= sp.exec) {
+        this.charge = null;
+        this.specialCd = sp.cd[0] + Math.random() * (sp.cd[1] - sp.cd[0]);
+        this.attackTimer = Math.max(this.attackTimer, 0.8);
+      }
+    }
+    const tz = inSafeZone(this.x, this.z);
+    if (tz) { const ax = this.x - tz.x, az = this.z - tz.z, l = Math.hypot(ax, az) || 1; this.x = tz.x + ax / l * tz.radius; this.z = tz.z + az / l * tz.radius; }
+    this.y = heightAt(this.x, this.z) + (this.flying ? this.flyHeight : 0);
+    return evs;
+  }
+  _runExec(dt, c, players) {
+    const sp = c.sp, out = [];
+    const hit = (p) => out.push({ hit: { playerId: p.id, dmg: Math.round(this.dmg * sp.dmg), enemyId: this.id } });
+    if (sp.shape === 'lane') {                    // dash / pounce / dash-stab
+      this.x += c.dx * sp.dashSpeed * dt; this.z += c.dz * sp.dashSpeed * dt;
+      if (!c.applied) for (const p of players) if (p.alive && Math.hypot(p.x - this.x, p.z - this.z) <= (sp.hitR || 1.4)) { hit(p); c.applied = true; }
+    } else if (sp.shape === 'ring') {             // slam / jump
+      let cx = c.tx, cz = c.tz;
+      if (sp.id === 'jump') { this.x += (c.tx - this.x) * Math.min(1, dt * 7); this.z += (c.tz - this.z) * Math.min(1, dt * 7); cx = this.x; cz = this.z; }
+      if (!c.applied && c.execT >= sp.exec * 0.72) { c.applied = true; for (const p of players) if (p.alive && Math.hypot(p.x - cx, p.z - cz) <= sp.aoe) hit(p); }
+    } else {                                       // arc: cleave / slash
+      if (!c.applied) { c.applied = true; for (const p of players) { if (!p.alive) continue; const dx = p.x - this.x, dz = p.z - this.z, d = Math.hypot(dx, dz); if (d <= sp.range + 0.5) { const diff = Math.abs(((Math.atan2(dx, dz) - this.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI); if (diff <= sp.arc / 2 + 0.2) hit(p); } } }
+    }
+    return out.length ? out : null;
   }
 
   applyDamage(amount) {
@@ -138,7 +198,8 @@ class SimEnemy {
     this.hp -= Math.max(1, Math.round(amount));
     if (this.hp <= 0) {
       this.hp = 0; this.alive = false;
-      this.respawnTimer = this.boss ? 90 : 18 + Math.random() * 10;
+      this.charge = null;
+      this.respawnTimer = this.boss ? 270 : 54 + Math.random() * 30; // tripled respawn
       return { killed: true };
     }
     return { killed: false };
@@ -161,6 +222,13 @@ class SimEnemy {
     };
     if (this.boss) { s.b = 1; s.nm = this.bossName; }
     if (this.elite) s.e = 1;
+    // Charge telegraph state (so clients can render the wind-up bar + danger zone).
+    if (this.charge) {
+      const c = this.charge;
+      s.cg = { s: c.sp.id, ph: c.phase, pr: c.phase === 'w' ? +Math.min(1, c.t / c.dur).toFixed(2) : 1,
+               tx: +c.tx.toFixed(2), tz: +c.tz.toFixed(2), dx: +c.dx.toFixed(3), dz: +c.dz.toFixed(3) };
+      s.st = 'attack';
+    }
     return s;
   }
 }
@@ -220,9 +288,16 @@ export class WorldSim {
         if (dx * dx + dz * dz < ACTIVE2) { near = true; break; }
       }
       if (!near) continue;
-      const ev = e.update(dt, players);
-      if (ev) { if (ev.hit) events.push({ kind: 'hit', ...ev.hit }); if (ev.shot) events.push({ kind: 'shot', ...ev.shot }); }
-      active.push(e.snapshot());
+      const evOut = e.update(dt, players); // may return one event or an array
+      if (evOut) {
+        const arr = Array.isArray(evOut) ? evOut : [evOut];
+        for (const ev of arr) { if (ev.hit) events.push({ kind: 'hit', ...ev.hit }); if (ev.shot) events.push({ kind: 'shot', ...ev.shot }); }
+      }
+      // Only stream LIVING enemies. A dead one stops appearing in snapshots, so
+      // clients remove the corpse (after its death animation) instead of leaving
+      // it lying around for the whole respawn timer. Its death was already
+      // announced via the enemy_death event.
+      if (e.alive) active.push(e.snapshot());
     }
     return { active, events };
   }

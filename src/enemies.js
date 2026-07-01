@@ -10,7 +10,7 @@ import { heightAt, BOSSES } from './world.js';
 // Enemy archetypes + level-scaling live in a Three-free shared module so the
 // authoritative server simulates identical enemies. Re-export DRAGON_ROOST so
 // existing importers (main.js) keep working.
-import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats } from './sim/enemyTypes.js';
+import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, SPECIAL_SETS, specialsFor } from './sim/enemyTypes.js';
 export { DRAGON_ROOST };
 
 let NEXT_ID = 1;
@@ -23,32 +23,8 @@ const ENEMY_SHOTS = [];
 const _toPlayer = new THREE.Vector3();
 const _move = new THREE.Vector3();
 const _scratch = new THREE.Vector3();
-
-// ---- Telegraphed special attacks, per enemy type ----
-// Each special winds up (a red bar fills + a danger zone glows on the ground),
-// flashes full red, then executes its move. Shapes drive the ground telegraph:
-//   'lane' = a straight dash lane · 'ring' = a circular slam/jump AoE ·
-//   'arc'  = a sweep in front (cleave/slash). `dmg` is a multiple of base damage.
-const SPECIAL_SETS = {
-  slime: [
-    { id: 'dash', shape: 'lane', minR: 3, maxR: 9,  windup: 0.6,  exec: 0.28, cd: [4, 7],  dashSpeed: 16, hitR: 1.5, width: 1.6, dmg: 1.25, color: 0x8fe05a },
-    { id: 'jump', shape: 'ring', minR: 3, maxR: 11, windup: 0.85, exec: 0.55, cd: [6, 10], aoe: 2.4, dmg: 1.5, color: 0x8fe05a },
-  ],
-  grunt: [ // Bandit — quick short-range dagger slash
-    { id: 'slash', shape: 'arc', minR: 0, maxR: 3, windup: 0.4, exec: 0.22, cd: [3, 5], range: 2.8, arc: 1.5, dmg: 1.2, color: 0xff6a4a },
-  ],
-  wolf: [ // Dire Stick — a pouncing lunge
-    { id: 'pounce', shape: 'lane', minR: 3, maxR: 8, windup: 0.45, exec: 0.25, cd: [4, 7], dashSpeed: 17, hitR: 1.4, width: 1.5, dmg: 1.3, color: 0xcfcfcf },
-  ],
-  knight: [ // Fallen Knight — sweeping slash + a lunging dash-stab
-    { id: 'slash', shape: 'arc', minR: 0, maxR: 3.2, windup: 0.5, exec: 0.24, cd: [4, 6], range: 3.2, arc: 1.8, dmg: 1.3, color: 0x9aa4ef },
-    { id: 'dashstab', shape: 'lane', minR: 3, maxR: 9, windup: 0.7, exec: 0.3, cd: [6, 9], dashSpeed: 19, hitR: 1.3, width: 1.1, dmg: 1.7, color: 0x9aa4ef },
-  ],
-  brute: [ // Ogre Brute — a wide club cleave + a ground-shaking slam
-    { id: 'cleave', shape: 'arc', minR: 0, maxR: 3.9, windup: 0.8, exec: 0.3, cd: [5, 8], range: 3.9, arc: 2.5, dmg: 1.5, color: 0xff8a2a },
-    { id: 'slam', shape: 'ring', minR: 0, maxR: 4.5, windup: 1.0, exec: 0.4, cd: [7, 11], aoe: 3.4, dmg: 1.9, color: 0xff5a1a },
-  ],
-};
+// Telegraphed special-attack definitions live in the shared sim module so the
+// authoritative server drives identical specials (SPECIAL_SETS imported above).
 export function updateEnemyShots(dt, player) {
   for (let i = ENEMY_SHOTS.length - 1; i >= 0; i--) {
     const s = ENEMY_SHOTS[i];
@@ -160,7 +136,7 @@ export class Enemy {
 
     // Telegraphed specials: a menu of charged attacks for this type (melee only;
     // ranged mobs keep firing). `charge` holds an in-progress wind-up/execution.
-    this.specials = (!this.ranged && SPECIAL_SETS[typeId]) ? SPECIAL_SETS[typeId] : [];
+    this.specials = specialsFor(typeId, this.ranged);
     this.specialCd = 2.5 + Math.random() * 3;
     this.charge = null;
     this._jumpArc = 0;
@@ -456,6 +432,28 @@ export class Enemy {
     this._clearTelegraph();
   }
 
+  // Render-only telegraph for a SERVER-driven charge (multiplayer). The server
+  // owns the logic + damage; the client only shows the bar + ground danger zone.
+  renderCharge(cg) {
+    if (!cg) {
+      if (this._renderChargeId) { this._clearTelegraph(); this._renderChargeId = null; this.charge = null; }
+      return;
+    }
+    const sp = (SPECIAL_SETS[this.typeId] || []).find((s) => s.id === cg.s);
+    if (!sp) return;
+    this.charge = { sp, dx: cg.dx || 0, dz: cg.dz || 1, tx: cg.tx != null ? cg.tx : this.pos.x, tz: cg.tz != null ? cg.tz : this.pos.z };
+    if (this._renderChargeId !== cg.s) { this._showTelegraph(sp); this._renderChargeId = cg.s; }
+    if (this._chargeFill) {
+      this._chargeFill.scale.x = Math.max(0.0001, cg.pr || 0);
+      this._chargeFill.material.color.setHex(cg.ph === 'e' ? 0xffffff : 0xff3020);
+    }
+    if (this._indicator) {
+      this._indicator.children[0].material.opacity = cg.ph === 'e' ? 0.9 : (0.16 + (cg.pr || 0) * 0.34);
+      if (sp.shape !== 'ring') this._positionIndicator(sp);
+    }
+    if (cg.ph === 'e') this.attackAnim = 1; // swing on execute
+  }
+
   // Telegraph: a red charge bar over the enemy + a danger zone on the ground.
   _ensureChargeBar() {
     if (this._chargeBar) return;
@@ -597,7 +595,7 @@ export class Enemy {
 
   _die() {
     this.alive = false;
-    this.respawnTimer = 18 + Math.random() * 10;
+    this.respawnTimer = 54 + Math.random() * 30; // tripled respawn
     this.nameplate.visible = false;
     this._cancelCharge();
   }

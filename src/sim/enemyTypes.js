@@ -35,6 +35,32 @@ export const TYPE_BY_LEVEL = (lvl) => {
   return ['brute', 'knight', 'brute', 'hexer'];
 };
 
+// ---- Telegraphed special attacks, per enemy type (shared client + server) ----
+// Each winds up (a red bar fills + a ground danger zone glows), flashes full
+// red, then executes. Shapes: 'lane' (dash), 'ring' (slam/jump AoE), 'arc'
+// (front sweep). `dmg` is a multiple of the enemy's base damage.
+export const SPECIAL_SETS = {
+  slime: [
+    { id: 'dash', shape: 'lane', minR: 3, maxR: 9,  windup: 0.6,  exec: 0.28, cd: [4, 7],  dashSpeed: 16, hitR: 1.5, width: 1.6, dmg: 1.25, color: 0x8fe05a },
+    { id: 'jump', shape: 'ring', minR: 3, maxR: 11, windup: 0.85, exec: 0.55, cd: [6, 10], aoe: 2.4, dmg: 1.5, color: 0x8fe05a },
+  ],
+  grunt: [
+    { id: 'slash', shape: 'arc', minR: 0, maxR: 3, windup: 0.4, exec: 0.22, cd: [3, 5], range: 2.8, arc: 1.5, dmg: 1.2, color: 0xff6a4a },
+  ],
+  wolf: [
+    { id: 'pounce', shape: 'lane', minR: 3, maxR: 8, windup: 0.45, exec: 0.25, cd: [4, 7], dashSpeed: 17, hitR: 1.4, width: 1.5, dmg: 1.3, color: 0xcfcfcf },
+  ],
+  knight: [
+    { id: 'slash', shape: 'arc', minR: 0, maxR: 3.2, windup: 0.5, exec: 0.24, cd: [4, 6], range: 3.2, arc: 1.8, dmg: 1.3, color: 0x9aa4ef },
+    { id: 'dashstab', shape: 'lane', minR: 3, maxR: 9, windup: 0.7, exec: 0.3, cd: [6, 9], dashSpeed: 19, hitR: 1.3, width: 1.1, dmg: 1.7, color: 0x9aa4ef },
+  ],
+  brute: [
+    { id: 'cleave', shape: 'arc', minR: 0, maxR: 3.9, windup: 0.8, exec: 0.3, cd: [5, 8], range: 3.9, arc: 2.5, dmg: 1.5, color: 0xff8a2a },
+    { id: 'slam', shape: 'ring', minR: 0, maxR: 4.5, windup: 1.0, exec: 0.4, cd: [7, 11], aoe: 3.4, dmg: 1.9, color: 0xff5a1a },
+  ],
+};
+export function specialsFor(typeId, ranged) { return (!ranged && SPECIAL_SETS[typeId]) ? SPECIAL_SETS[typeId] : []; }
+
 // The single derivation of an enemy's level-scaled combat stats — used by both
 // the client Enemy and the server SimEnemy so they always agree.
 export function deriveStats(typeId, level, opts = {}) {
