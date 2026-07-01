@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { CLASSES } from './classes.js';
 import { createStickman } from './stickman.js';
 import { rollDrop, goldDrop, generateItem, makeUnique, bossDrop, RARITY } from './items.js';
+import { heightAt } from './world.js';
 import * as Quests from './quests.js';
 
 export class Combat {
@@ -104,23 +105,23 @@ export class Combat {
   // points. Now fully 3D — aiming at a foe tracks its HEIGHT (so flying enemies
   // and the dragon can be hit), and with no target the shot follows the
   // camera's vertical tilt, so you can fire up or down.
-  _aimDir(range, arc = 0.7) {
-    const e = this._aimEnemy(range, arc);
-    if (e) {
-      const origin = this.player.pos.clone(); origin.y += 1.3; // chest / muzzle height
-      const aim = e.pos.clone(); aim.y += 1.0;                 // foe's centre
-      const d = aim.sub(origin);
-      if (d.lengthSq() > 0.0001) return d.normalize();
-    }
+  // No aim assist: abilities fire exactly where the crosshair points. Skill-based
+  // aiming — the shot travels along the camera's view direction and hits whatever
+  // it actually strikes along its path.
+  _aimDir(_range, _arc) {
     return this.cam.aimForward();
   }
 
-  // A point in front of the player, clamped to a max range (for ground AoE).
+  // Where a ground-targeted AoE lands: cast the aim ray from the chest and drop
+  // it where it meets the ground (else out to maxRange), so you place it by aim.
   _aimPoint(maxRange) {
-    const fwd = this.cam.forward();
-    const aimed = this._aimEnemy(maxRange, 0.9);
-    if (aimed) return aimed.pos.clone();
-    return this.player.pos.clone().addScaledVector(fwd, Math.min(maxRange, 8));
+    const o = this.player.pos.clone(); o.y += 1.3;
+    const dir = this.cam.aimForward();
+    let hit = maxRange;
+    for (let d = 1; d <= maxRange; d += 1) {
+      if (o.y + dir.y * d <= heightAt(o.x + dir.x * d, o.z + dir.z * d)) { hit = d; break; }
+    }
+    return new THREE.Vector3(o.x + dir.x * hit, 0, o.z + dir.z * hit);
   }
 
   // ---- Auto attack ----
@@ -288,8 +289,8 @@ export class Combat {
   }
 
   _kChain(ab) {
-    const first = this._aimEnemy(ab.range, 1.4) || this._nearest(this.player.pos, ab.range);
-    if (!first) { this.ui.log('No target in range', 'sys'); return; }
+    const first = this._aimEnemy(ab.range, 0.4); // must aim at the first target
+    if (!first) { this.ui.log('No target in your sights', 'sys'); return; }
     const hit = new Set();
     let cur = first, from = this._muzzle();
     for (let j = 0; j < ab.jumps && cur; j++) {
@@ -310,7 +311,7 @@ export class Combat {
   _kLifesteal(ab) {
     let dealt = 0;
     if (ab.ranged) {
-      const e = this._aimEnemy(ab.range, 1.0);
+      const e = this._aimEnemy(ab.range, 0.4); // aim it at the foe
       if (e) { const r = this._strike(e, this.player.apower * ab.mult, {}); dealt += r; this._boltFx(this._muzzle(), e.pos.clone().setY(e.pos.y + 1), ab.color); }
     } else {
       const dir = this.cam.forward();
@@ -579,9 +580,12 @@ export class Combat {
     beam.position.y = 3;
     g.add(gem, beam);
     g.add(new THREE.PointLight(color, 1.2, 5));
-    g.position.set(pos.x, pos.y + 0.7, pos.z);
+    // Drop onto the GROUND under the kill (so loot from flying enemies falls to
+    // where you can actually walk over it, instead of floating at their altitude).
+    const groundY = heightAt(pos.x, pos.z) + 0.7;
+    g.position.set(pos.x, groundY, pos.z);
     this.scene.add(g);
-    this.drops.push({ item, mesh: g, gem, base: pos.y + 0.7, t: Math.random() * 6 });
+    this.drops.push({ item, mesh: g, gem, base: groundY, t: Math.random() * 6 });
   }
   _updateDrops(dt) {
     for (let i = this.drops.length - 1; i >= 0; i--) {

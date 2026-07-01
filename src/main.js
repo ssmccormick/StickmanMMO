@@ -350,6 +350,10 @@ function animate() {
     if (input.just('KeyL')) ui.toggleCodex(player);
     if (input.just('KeyB')) ui.toggleAchievements(player);
     if (input.just('KeyN')) ui.toggleWardrobe(player);
+    if (input.just('KeyV')) {
+      const m = followCam.cycleMode();
+      ui.log(m === 'fps' ? 'First-person view.' : 'Over-the-shoulder view.', 'sys');
+    }
     if (input.just('KeyO')) ui.toggleSettings(player);
     if (input.just('KeyT')) ui.toggleEmotes(player);
     if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
@@ -610,6 +614,8 @@ function animate() {
 
     // Camera follows the player.
     followCam.update(player.pos, dt);
+    // In first-person, hide your own body so it doesn't fill the screen.
+    if (player.mesh) player.mesh.visible = followCam.mode !== 'fps';
 
     // Keep level/gold counters live for their achievements (gold = total earned).
     if (player.gold > lastGold) player.counters.gold_earned = (player.counters.gold_earned || 0) + (player.gold - lastGold);
