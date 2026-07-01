@@ -5,8 +5,11 @@
 // stickmen with nameplates, and relays chat.
 // ============================================================
 import * as THREE from 'three';
-import { createStickman, animateStickman } from './stickman.js';
+import { createStickman, animateStickman, applyAppearance } from './stickman.js';
+import { applyArmorVisual } from './gear3d.js';
+import { buildHeldWeapon } from './weapons.js';
 import { CLASSES } from './classes.js';
+import { RARITY } from './items.js';
 import { heightAt } from './world.js';
 import { normalizeAppearance } from './appearance.js';
 
@@ -71,7 +74,8 @@ export class Network {
       this.ui.setServerStatus('online', 'online');
       this.ui.log(this._everConnected ? 'Reconnected to server.' : 'Connected to server.', 'sys');
       this._everConnected = true;
-      this._send({ type: 'join', name: this.selfInfo.name, classId: this.selfInfo.classId, appearance: this.selfInfo.appearance || null });
+      this._send({ type: 'join', name: this.selfInfo.name, classId: this.selfInfo.classId,
+                   appearance: this.selfInfo.appearance || null, equip: this.selfInfo.equip || null });
     };
     this.ws.onclose = () => {
       this.connected = false;
@@ -150,6 +154,13 @@ export class Network {
       case 'enemy_shot':  if (this.onEnemyShot) this.onEnemyShot(msg.shot); break;
       // A remote player attacked or cast — animate them and show a light FX.
       case 'action':      if (msg.id !== this.id) this._onAction(msg); break;
+      // A remote player changed their look/gear — restyle their model.
+      case 'look': {
+        if (msg.id === this.id) break;
+        const o = this.others[msg.id];
+        if (o) this._applyRemoteLook(o, msg.appearance || null, msg.equip || null);
+        break;
+      }
     }
   }
 
@@ -159,6 +170,19 @@ export class Network {
 
   // Broadcast the local player's attack/cast so others can see it.
   sendAction(info) { if (this.connected) this._send({ type: 'action', ...info }); }
+
+  // Broadcast a change to our appearance/gear so others restyle our model.
+  // Coalesced (wardrobe sliders can fire rapidly) — always sends the latest.
+  sendLook(appearance, equip) {
+    if (this.selfInfo) { this.selfInfo.appearance = appearance; this.selfInfo.equip = equip; }
+    this._pendingLook = { appearance, equip };
+    if (this._lookTimer) return;
+    this._lookTimer = setTimeout(() => {
+      this._lookTimer = null;
+      const p = this._pendingLook; this._pendingLook = null;
+      if (p && this.connected) this._send({ type: 'look', appearance: p.appearance, equip: p.equip });
+    }, 180);
+  }
 
   _onAction(msg) {
     const o = this.others[msg.id];
@@ -227,21 +251,64 @@ export class Network {
     const def = CLASSES[p.classId] || CLASSES.fighter;
     // Render other players with THEIR customised look (colours/hair/proportions)
     // when we received one, else fall back to the class default.
-    const mesh = p.appearance
-      ? createStickman({ appearance: normalizeAppearance(p.appearance, p.classId) })
+    const app = p.appearance ? normalizeAppearance(p.appearance, p.classId) : null;
+    const mesh = app
+      ? createStickman({ appearance: app })
       : createStickman({ color: def.color, accent: def.accent });
     mesh.position.set(p.x || 0, p.y || 0, p.z || 0);
     this.scene.add(mesh);
     const plate = this._makePlate(p.name, def.name);
     plate.position.y = 2.6;
     mesh.add(plate);
-    this.others[p.id] = {
+    const o = {
       id: p.id, name: p.name, classId: p.classId, mesh,
+      appearance: app, equip: p.equip || null,
       pos: new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0),
       target: new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0),
       facing: 0, targetFacing: 0, state: 'ground', _speed01: 0, attackAnim: 0,
     };
+    this.others[p.id] = o;
+    // Show their worn armor + held weapon (if we got their equip data).
+    this._applyRemoteLook(o, null, p.equip || null);
     this.ui.log(`${p.name} entered the world.`, 'sys');
+  }
+
+  // Apply/refresh a remote player's visible look — colours, worn armor, and the
+  // weapon in their hand — from a `look` update or their initial snapshot.
+  _applyRemoteLook(o, appearance, equip) {
+    if (!o || !o.mesh) return;
+    if (appearance) {
+      o.appearance = normalizeAppearance(appearance, o.classId);
+      applyAppearance(o.mesh, o.appearance);
+    }
+    if (equip !== undefined) o.equip = equip;
+    applyArmorVisual(o.mesh, o.equip || {}, o.appearance || {});
+    this._setRemoteWeapon(o);
+  }
+
+  // Mount the correct weapon model in a remote player's right hand.
+  _setRemoteWeapon(o) {
+    const j = o.mesh.userData.joints;
+    if (!j || !j.armR) return;
+    const w = o.equip && o.equip.weapon;
+    const kind = w ? w.kind : null;
+    const skin = (o.equip && o.equip.skin) || 'default';
+    const key = kind ? `${kind}:${w.r || 'common'}:${skin}` : 'none';
+    if (key === o._heldKey) return;
+    if (o._heldWeapon) {
+      j.armR.remove(o._heldWeapon);
+      o._heldWeapon.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
+      o._heldWeapon = null;
+    }
+    if (j.weapon) j.weapon.visible = false; // hide the generic stick
+    if (kind) {
+      const color = (RARITY[w.r] || RARITY.common).hex;
+      const wm = buildHeldWeapon(kind, color, skin);
+      wm.scale.setScalar(1 + Object.keys(RARITY).indexOf(w.r) * 0.06);
+      j.armR.add(wm);
+      o._heldWeapon = wm;
+    }
+    o._heldKey = key;
   }
 
   _updateOther(msg) {

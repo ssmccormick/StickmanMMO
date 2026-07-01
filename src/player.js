@@ -7,19 +7,19 @@
 import * as THREE from 'three';
 import { createStickman, animateStickman, applyAppearance } from './stickman.js';
 import { defaultAppearance, normalizeAppearance } from './appearance.js';
-import { buildWeaponMesh, isRangedWeaponKind, WEAPON_PROFILE } from './weapons.js';
+import { buildWeaponMesh, isRangedWeaponKind, WEAPON_PROFILE, WEAPON_HOLD } from './weapons.js';
+import { applyArmorVisual } from './gear3d.js';
 import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
 } from './classes.js';
 import { heightAt, WATER_LEVEL } from './world.js';
-import { sumStats, SLOTS, RARITY, SETS } from './items.js';
+import { sumStats, EQUIP_SLOTS, RARITY, SETS } from './items.js';
 import * as Achievements from './achievements.js';
 
 function emptyGear() {
   const g = {};
-  for (const s of SLOTS) g[s] = null;
-  g.weapon2 = null; // secondary weapon (Tab swaps which one is wielded)
+  for (const s of EQUIP_SLOTS) g[s] = null; // every socket, incl. weapon2 & ring2
   return g;
 }
 
@@ -40,19 +40,8 @@ export const EMOTES = [
 export const MAP_GRID = 64;
 const MAP_SPAN = 760, MAP_HALF = 380;
 
-// How each weapon kind RESTS in the hand (local to the right arm). Poles are
-// held upright and a little out from the body (so they don't merge into the
-// arm); ranged kinds then thrust forward when attacking (see _poseHeldWeapon).
-const WEAPON_HOLD = {
-  staff:    { pos: [-0.07, -0.82, 0.1], rot: [0.18, 0, -0.13] }, // upright, leaning outward
-  wand:     { pos: [-0.05, -0.62, 0.1], rot: [0.2, 0, -0.1] },
-  bow:      { pos: [-0.05, -0.66, 0.1], rot: [0.05, 0, -0.05] },
-  crossbow: { pos: [-0.05, -0.62, 0.12], rot: [0.1, 0, 0] },
-  throwknife: { pos: [0, -0.56, 0.04], rot: [0.1, 0, -0.1] },
-  throwaxe:   { pos: [0, -0.6, 0.04], rot: [0.1, 0, -0.1] },
-  dagger:   { pos: [0, -0.56, 0], rot: [0, 0, Math.PI / 2.4] },
-  default:  { pos: [0, -0.62, 0], rot: [0, 0, Math.PI / 2.5] },  // sword/axe/mace
-};
+// (WEAPON_HOLD — how each weapon kind rests in the hand — now lives in
+// weapons.js so the remote-player renderer can hold weapons identically.)
 
 const GRAVITY = 26;
 const JUMP_VEL = 9.5;
@@ -203,8 +192,12 @@ export class Player {
   setAppearance(app) {
     this.appearance = normalizeAppearance(app, this.classId);
     applyAppearance(this.mesh, this.appearance);
-    this._updateWeaponVisual && this._updateWeaponVisual(); // re-assert held weapon model
+    this._updateWeaponVisual && this._updateWeaponVisual(); // re-assert held weapon (skin may have changed)
+    // Force the worn armor to rebuild so it re-fits the new proportions/skin.
+    if (this.mesh) this.mesh.userData.armor = null;
+    this._updateArmorVisual();
     this._updateSsjVisual();                                // hide custom hair if mid-transform
+    if (this.onLookChange) this.onLookChange();
   }
 
   _updateSsjVisual() {
@@ -284,6 +277,29 @@ export class Player {
     this.stats.mp = Math.min(this.stats.mp, this.effMaxMp);
     this.stats.sp = Math.min(this.stats.sp, this.effMaxSp);
     this._updateWeaponVisual();
+    this._updateArmorVisual();
+    if (this.onLookChange) this.onLookChange(); // let multiplayer re-broadcast our look
+  }
+
+  // Compact, JSON-friendly description of everything that shows on the model —
+  // the wielded weapon (+ its skin) and each worn armor piece. Sent to other
+  // players so they see our gear; also used to render our own armor locally.
+  equipVisual() {
+    const g = this.gear;
+    const w = this.curWeapon();
+    const piece = (it) => (it ? { b: it.baseId, r: it.rarity, s: it.setId || null } : null);
+    return {
+      weapon: w ? { kind: w.kind || 'sword', r: w.rarity } : null,
+      skin: (this.appearance && this.appearance.weaponSkin) || 'default',
+      head: piece(g.head), shoulders: piece(g.shoulders), chest: piece(g.chest),
+      back: piece(g.back), hands: piece(g.hands), feet: piece(g.feet),
+    };
+  }
+
+  // Rebuild the worn-armor meshes on our own model (scaled to our proportions).
+  _updateArmorVisual() {
+    if (!this.mesh) return;
+    applyArmorVisual(this.mesh, this.equipVisual(), this.appearance);
   }
   // Sum / product of an active timed-buff field.
   _t(key) { let s = 0; for (const b of this.timed) if (b[key]) s += b[key]; return s; }
@@ -367,6 +383,9 @@ export class Player {
     if (item.slot === 'weapon') {
       slot = !this.gear.weapon ? 'weapon' : !this.gear.weapon2 ? 'weapon2' : (this.activeWeapon === 1 ? 'weapon2' : 'weapon');
       this.activeWeapon = slot === 'weapon2' ? 1 : 0; // wield what you just equipped
+    } else if (item.slot === 'ring') {
+      // Rings fill the first free socket, else replace the first ring.
+      slot = !this.gear.ring ? 'ring' : !this.gear.ring2 ? 'ring2' : 'ring';
     }
     const prev = this.gear[slot];
     this.gear[slot] = item;
@@ -396,8 +415,9 @@ export class Player {
     const w = this.curWeapon();
     const kind = w ? (w.kind || 'sword') : null;
     const color = w ? RARITY[w.rarity].hex : this.def.accent;
-    // Swap the held model only when the weapon kind/rarity actually changes.
-    const key = kind ? kind + ':' + w.rarity : 'none';
+    const skin = (this.appearance && this.appearance.weaponSkin) || 'default';
+    // Swap the held model only when the weapon kind/rarity/skin actually changes.
+    const key = kind ? kind + ':' + w.rarity + ':' + skin : 'none';
     if (key !== this._heldKey) {
       if (this._heldWeapon) {
         j.armR.remove(this._heldWeapon);
@@ -406,7 +426,7 @@ export class Player {
       }
       if (j.weapon) j.weapon.visible = false; // hide the generic stick
       if (kind) {
-        const wm = buildWeaponMesh(kind, color);
+        const wm = buildWeaponMesh(kind, color, skin);
         // Each weapon kind is held in its own natural pose: poles (staff/bow)
         // run straight up & down in the grip, the wand points forward like a
         // focus, and blades sit angled in a ready stance.

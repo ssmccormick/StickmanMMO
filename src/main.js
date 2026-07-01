@@ -15,7 +15,7 @@ import { UI } from './ui.js';
 import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
-import { starterWeapon, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
+import { starterKit, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
 import * as Quests from './quests.js';
 import * as Achievements from './achievements.js';
 import { evaluateUnlocks } from './appearance.js';
@@ -119,9 +119,9 @@ function beginGame(classId, name, server, save, appearance) {
     // Continue an existing character.
     player.applySave(save);
   } else {
-    // Brand new character → give a starter weapon, then persist so it joins
-    // the roster.
-    player.gear.weapon = starterWeapon(player.def.primary);
+    // Brand new character → outfit them in a class-themed starter set (weapon +
+    // armor pieces that actually show on the model), then persist to the roster.
+    Object.assign(player.gear, starterKit(classId));
     player.recomputeGear();
     const rec = Saves.create(player.toSave());
     player.saveId = rec.id;
@@ -193,7 +193,10 @@ function beginGame(classId, name, server, save, appearance) {
     : `Welcome, ${name} the ${classId}. Slay monsters and grow strong!`, 'sys');
   ui.log('Rest at a bonfire (orange flame, press E) to heal and SAVE your progress.', 'sys');
 
-  network.connect(server, { name, classId, appearance: player.appearance });
+  network.connect(server, { name, classId, appearance: player.appearance, equip: player.equipVisual() });
+  // Re-broadcast our look whenever gear or appearance changes, so other players
+  // see our armor, weapon, and cosmetics update live.
+  player.onLookChange = () => network.sendLook(player.appearance, player.equipVisual());
   input.enabled = true;
   if (input.touchDevice) { touch.enable(); ui.log('Touch controls enabled — left stick to move, drag right to look.', 'sys'); }
 

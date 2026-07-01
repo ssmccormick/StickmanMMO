@@ -239,6 +239,21 @@ export function buildHair(style, mat) {
       }
       break;
     }
+    case 'cowboyhat': {
+      const felt = new THREE.MeshLambertMaterial({ color: 0x6b4a2a });
+      const band = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.46, 0.03, 20), felt);
+      brim.position.y = 0.16; brim.scale.z = 1.12; g.add(brim);          // wide oval brim
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.27, 0.3, 16), felt);
+      crown.position.y = 0.31; g.add(crown);
+      const crease = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.3, 0.34), felt);
+      crease.position.y = 0.33; g.add(crease);                            // centre pinch ridge
+      const hatband = new THREE.Mesh(new THREE.CylinderGeometry(0.245, 0.275, 0.06, 16), band);
+      hatband.position.y = 0.2; g.add(hatband);
+      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.045, 0.02), new THREE.MeshLambertMaterial({ color: 0xc9a227 }));
+      buckle.position.set(0, 0.2, 0.275); g.add(buckle);
+      break;
+    }
     case 'tophat': {
       const m2 = dark();
       const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.03, 18), m2);

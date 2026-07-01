@@ -53,6 +53,7 @@ export const HAIR_STYLES = [
   { id: 'flame',    name: 'Emberlocks',    glyph: '🔥', cosmetic: true },
   { id: 'frost',    name: 'Frostcrown',    glyph: '❄️', cosmetic: true },
   { id: 'vines',    name: 'Wildcrown',     glyph: '🍃', cosmetic: true },
+  { id: 'cowboyhat', name: 'Cowboy Hat',   glyph: '🤠', cosmetic: true },
 ];
 export const HAIR_BY_ID = Object.fromEntries(HAIR_STYLES.map((h) => [h.id, h]));
 
@@ -78,6 +79,24 @@ export const COSMETICS = [
     unlock: { kind: 'quest', id: 'q_boss_pyraxis' }, hint: 'Defeat Pyraxis in the Ashlands (Ember quest line).' },
   { id: 'hair_crown', type: 'hair', value: 'crown', name: 'Hero’s Crown', glyph: '👑',
     unlock: { kind: 'quest', id: 'q_dragon' }, hint: 'Complete the final quest and slay the Sky-Tyrant.' },
+  { id: 'hair_cowboyhat', type: 'hair', value: 'cowboyhat', name: 'Cowboy Hat', glyph: '🤠',
+    unlock: { kind: 'achievement', id: 'cavalier', tier: 2 }, hint: 'Reach Cavalier tier 2 — ride 8,000 paces on a mount.' },
+
+  // ----- Weapon skins (recolour whatever weapon you wield) -----
+  { id: 'wskin_gilded', type: 'weaponSkin', value: 'gilded', name: 'Gilded Weapon', glyph: '🪙',
+    unlock: { kind: 'level', n: 15 }, hint: 'Reach level 15.' },
+  { id: 'wskin_obsidian', type: 'weaponSkin', value: 'obsidian', name: 'Obsidian Weapon', glyph: '⬛',
+    unlock: { kind: 'quest', id: 'q_boss_skarn' }, hint: 'Defeat Skarn in the Badlands.' },
+  { id: 'wskin_crystal', type: 'weaponSkin', value: 'crystal', name: 'Crystal Weapon', glyph: '🔷',
+    unlock: { kind: 'quest', id: 'q_boss_vael' }, hint: 'Defeat Vael in the Crystal Reach.' },
+  { id: 'wskin_ember', type: 'weaponSkin', value: 'ember', name: 'Ember Weapon', glyph: '🔥',
+    unlock: { kind: 'quest', id: 'q_boss_pyraxis' }, hint: 'Defeat Pyraxis in the Ashlands.' },
+  { id: 'wskin_frost', type: 'weaponSkin', value: 'frost', name: 'Frostbrand Weapon', glyph: '❄️',
+    unlock: { kind: 'quest', id: 'q_boss_frosthelm' }, hint: 'Defeat Frosthelm the Fallen.' },
+  { id: 'wskin_verdant', type: 'weaponSkin', value: 'verdant', name: 'Verdant Weapon', glyph: '🌿',
+    unlock: { kind: 'quest', id: 'q_boss_gorath' }, hint: 'Defeat Gorath the Wildking.' },
+  { id: 'wskin_void', type: 'weaponSkin', value: 'void', name: 'Voidsteel Weapon', glyph: '🟣',
+    unlock: { kind: 'special', id: 'dragonlord' }, hint: 'Complete the Dragonslayer achievement (Dragonlord).' },
 
   // ----- Body colours -----
   { id: 'body_gold', type: 'bodyColor', value: 0xffd24a, name: 'Gilded Hide', glyph: '🪙',
@@ -119,6 +138,7 @@ export function defaultAppearance(classId) {
     hairColor: 0x3a2a1a,
     size: 1, build: 1, headSize: 1, limb: 1,
     hair: 'short',
+    weaponSkin: 'default',
   };
 }
 
@@ -136,6 +156,7 @@ export function normalizeAppearance(app, classId) {
     headSize: clamp(app.headSize, RANGES.headSize, d.headSize),
     limb:     clamp(app.limb, RANGES.limb, d.limb),
     hair:     HAIR_BY_ID[app.hair] ? app.hair : d.hair,
+    weaponSkin: (typeof app.weaponSkin === 'string' && app.weaponSkin) ? app.weaponSkin : 'default',
   };
 }
 

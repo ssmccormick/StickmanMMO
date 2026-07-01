@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 8080;
 const TICK_MS = 80; // ~12.5 Hz enemy simulation/broadcast
 // Build tag — bump when server behaviour changes so you can confirm at a glance
 // (visit the server URL in a browser) which build Render is actually running.
-const BUILD = 'specials-v2 · telegraphed-only melee · 3x respawn';
+const BUILD = 'specials-v2 · telegraphed-only melee · 3x respawn · gear-sync';
 
 // Serve a tiny health page so you can confirm it's up (and which build) in a browser.
 const httpServer = http.createServer((req, res) => {
@@ -48,13 +48,14 @@ function broadcast(obj, exceptWs = null) {
 
 function snapshot(p) {
   return { id: p.id, name: p.name, classId: p.classId, x: p.x, y: p.y, z: p.z,
-           facing: p.facing, state: p.state, hp: p.hp, level: p.level, appearance: p.appearance || null };
+           facing: p.facing, state: p.state, hp: p.hp, level: p.level,
+           appearance: p.appearance || null, equip: p.equip || null };
 }
 
 wss.on('connection', (ws) => {
   const id = nextId++;
   const p = { id, name: `Stick${id}`, classId: 'fighter', x: 0, y: 0, z: 6,
-              facing: 0, state: 'ground', hp: 100, level: 1, appearance: null };
+              facing: 0, state: 'ground', hp: 100, level: 1, appearance: null, equip: null };
   players.set(ws, p);
 
   ws.on('message', (raw) => {
@@ -66,6 +67,7 @@ wss.on('connection', (ws) => {
         p.name = String(msg.name || `Stick${id}`).slice(0, 16);
         p.classId = String(msg.classId || 'fighter');
         if (msg.appearance && typeof msg.appearance === 'object') p.appearance = msg.appearance;
+        if (msg.equip && typeof msg.equip === 'object') p.equip = msg.equip;
         // Send the newcomer the full roster, then announce them.
         const roster = [];
         for (const other of players.values()) roster.push(snapshot(other));
@@ -94,6 +96,14 @@ wss.on('connection', (ws) => {
         // Relay an attack/cast to everyone else so they can animate it + show FX.
         broadcast({ type: 'action', id, fx: msg.fx, color: msg.color,
                     x: msg.x, y: msg.y, z: msg.z, dx: msg.dx, dy: msg.dy, dz: msg.dz }, ws);
+        break;
+      }
+      case 'look': {
+        // A player changed their appearance/gear — store it and relay so others
+        // (and newcomers, via the roster) see the updated model.
+        if (msg.appearance && typeof msg.appearance === 'object') p.appearance = msg.appearance;
+        if (msg.equip && typeof msg.equip === 'object') p.equip = msg.equip;
+        broadcast({ type: 'look', id, appearance: p.appearance, equip: p.equip }, ws);
         break;
       }
       // ---- Authoritative combat ----

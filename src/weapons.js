@@ -9,7 +9,7 @@ import * as THREE from 'three';
 // Which weapon kinds attack at range (fire a projectile) vs. in melee.
 export function isRangedWeaponKind(kind) {
   return kind === 'staff' || kind === 'wand' || kind === 'bow' || kind === 'crossbow'
-    || kind === 'throwknife' || kind === 'throwaxe';
+    || kind === 'throwknife' || kind === 'throwaxe' || kind === 'revolver' || kind === 'rifle';
 }
 
 // Per-kind auto-attack profile when this weapon is the one in hand. `ranged`
@@ -25,15 +25,56 @@ export const WEAPON_PROFILE = {
   crossbow: { ranged: true, shape: 'arrow', speed: 42, range: 22 },
   throwknife: { ranged: true, shape: 'blade', speed: 30, range: 13 },
   throwaxe:   { ranged: true, shape: 'blade', speed: 22, range: 11 },
+  // Guns: fast, flat-shooting tracer rounds. The rifle reaches further.
+  revolver: { ranged: true, shape: 'bullet', speed: 54, range: 18, projColor: 0xffe08a },
+  rifle:    { ranged: true, shape: 'bullet', speed: 66, range: 26, projColor: 0xfff0b0 },
 };
 
-export function buildWeaponMesh(kind, color = 0xcfd2da) {
+// How each weapon kind RESTS in the hand (local to the right arm). Poles are
+// held upright and a little out from the body; ranged kinds thrust forward when
+// attacking (see Player._poseHeldWeapon). Shared by the local player and, for
+// synced multiplayer, the remote-player renderer.
+export const WEAPON_HOLD = {
+  staff:    { pos: [-0.07, -0.82, 0.1], rot: [0.18, 0, -0.13] },
+  wand:     { pos: [-0.05, -0.62, 0.1], rot: [0.2, 0, -0.1] },
+  bow:      { pos: [-0.05, -0.66, 0.1], rot: [0.05, 0, -0.05] },
+  crossbow: { pos: [-0.05, -0.62, 0.12], rot: [0.1, 0, 0] },
+  throwknife: { pos: [0, -0.56, 0.04], rot: [0.1, 0, -0.1] },
+  throwaxe:   { pos: [0, -0.6, 0.04], rot: [0.1, 0, -0.1] },
+  revolver: { pos: [-0.02, -0.6, 0.05], rot: [0.15, 0, 0] },   // pistol, held forward
+  rifle:    { pos: [-0.04, -0.66, 0.1], rot: [0.08, 0, 0] },   // long gun, levelled
+  dagger:   { pos: [0, -0.56, 0], rot: [0, 0, Math.PI / 2.4] },
+  default:  { pos: [0, -0.62, 0], rot: [0, 0, Math.PI / 2.5] },  // sword/axe/mace
+};
+
+// ---- Weapon skins: recolour a weapon's materials without changing its shape.
+// A skin overrides some of steel/glow/wood/dark/gold; unset fields fall back to
+// the rarity tint (steel/glow) or the natural material colour. Chosen per
+// character (appearance.weaponSkin) and applied to whatever weapon is held.
+export const WEAPON_SKINS = [
+  { id: 'default',  name: 'Standard',   glyph: '⚙️' },
+  { id: 'gilded',   name: 'Gilded',     glyph: '🪙', steel: 0xffd24a, glow: 0xffe27a, gold: 0xfff0b0 },
+  { id: 'obsidian', name: 'Obsidian',   glyph: '⬛', steel: 0x2b2b34, glow: 0x6a6a82, wood: 0x1a1a1f, gold: 0x55555f },
+  { id: 'crystal',  name: 'Crystal',    glyph: '🔷', steel: 0x9fe6ff, glow: 0xcdf2ff, gold: 0xcfefff },
+  { id: 'ember',    name: 'Ember',      glyph: '🔥', steel: 0xff6a2a, glow: 0xffb24a, wood: 0x3a1a10, gold: 0xff8a3a },
+  { id: 'frost',    name: 'Frostbrand', glyph: '❄️', steel: 0xbfeaff, glow: 0xe6f7ff, wood: 0x2a3a44, gold: 0xd0f0ff },
+  { id: 'verdant',  name: 'Verdant',    glyph: '🌿', steel: 0x6fae54, glow: 0x9bd86a, wood: 0x3a5a2a, gold: 0x8fca6a },
+  { id: 'void',     name: 'Voidsteel',  glyph: '🟣', steel: 0x8a2abf, glow: 0xb05aff, wood: 0x201030, gold: 0xc06bff },
+];
+export const WEAPON_SKIN_BY_ID = Object.fromEntries(WEAPON_SKINS.map((s) => [s.id, s]));
+
+export function buildWeaponMesh(kind, color = 0xcfd2da, skin = null) {
+  // Resolve a skin (id or object) into material colour overrides. Unset fields
+  // keep the rarity tint (steel/glow) or the natural material colour.
+  const sk = skin && typeof skin === 'object' ? skin
+    : (skin && skin !== 'default' ? WEAPON_SKIN_BY_ID[skin] : null);
+  const pick = (v, d) => (sk && sk[v] != null ? sk[v] : d);
   const g = new THREE.Group();
-  const steel = new THREE.MeshLambertMaterial({ color });
-  const glow = new THREE.MeshBasicMaterial({ color });
-  const wood = new THREE.MeshLambertMaterial({ color: 0x6a4a2a });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x33333a });
-  const gold = new THREE.MeshLambertMaterial({ color: 0xc9a227 });
+  const steel = new THREE.MeshLambertMaterial({ color: pick('steel', color) });
+  const glow = new THREE.MeshBasicMaterial({ color: pick('glow', color) });
+  const wood = new THREE.MeshLambertMaterial({ color: pick('wood', 0x6a4a2a) });
+  const dark = new THREE.MeshLambertMaterial({ color: pick('dark', 0x33333a) });
+  const gold = new THREE.MeshLambertMaterial({ color: pick('gold', 0xc9a227) });
   const add = (geo, mat, x, y, z, rot) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z);
     if (rot) m.rotation.set(rot[0] || 0, rot[1] || 0, rot[2] || 0);
@@ -117,6 +158,22 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
       tip = [0, 0.48, 0.22];
       break;
     }
+    case 'revolver': {
+      add(new THREE.BoxGeometry(0.055, 0.17, 0.05), wood, 0, 0.06, -0.03, [0.3, 0, 0]); // grip (down/back)
+      add(new THREE.BoxGeometry(0.06, 0.11, 0.14), steel, 0, 0.17, 0.02);               // frame
+      add(new THREE.CylinderGeometry(0.05, 0.05, 0.09, 10), steel, 0, 0.17, 0.02, [Math.PI / 2, 0, 0]); // cylinder
+      add(new THREE.CylinderGeometry(0.022, 0.022, 0.28, 8), steel, 0, 0.2, 0.18, [Math.PI / 2, 0, 0]); // barrel (forward)
+      tip = [0, 0.2, 0.33]; // muzzle
+      break;
+    }
+    case 'rifle': {
+      add(new THREE.BoxGeometry(0.05, 0.13, 0.1), wood, 0, 0.09, -0.13, [0.15, 0, 0]);  // stock
+      add(new THREE.BoxGeometry(0.05, 0.09, 0.42), wood, 0, 0.14, 0.07);                // body
+      add(new THREE.CylinderGeometry(0.016, 0.016, 0.52, 8), steel, 0, 0.18, 0.22, [Math.PI / 2, 0, 0]); // long barrel
+      add(new THREE.BoxGeometry(0.02, 0.03, 0.06), steel, 0, 0.22, 0.12);               // sight
+      tip = [0, 0.18, 0.48]; // muzzle
+      break;
+    }
     case 'sword':
     default: {
       add(new THREE.CylinderGeometry(0.026, 0.026, 0.18, 6), dark, 0, 0.09, 0); // grip
@@ -131,4 +188,15 @@ export function buildWeaponMesh(kind, color = 0xcfd2da) {
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   g.userData.tip = tip;
   return g;
+}
+
+// Build a weapon already posed in its resting hold, ready to add to a stickman's
+// right arm. Shared by the local player and the remote-player renderer so both
+// hold weapons identically.
+export function buildHeldWeapon(kind, color, skin) {
+  const wm = buildWeaponMesh(kind, color, skin);
+  const h = WEAPON_HOLD[kind] || WEAPON_HOLD.default;
+  wm.position.set(h.pos[0], h.pos[1], h.pos[2]);
+  wm.rotation.set(h.rot[0], h.rot[1], h.rot[2]);
+  return wm;
 }

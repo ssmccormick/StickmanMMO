@@ -4,9 +4,15 @@
 // enemy drops, starter gear, and the inventory/equipment system.
 // ============================================================
 
-export const SLOTS = ['weapon', 'head', 'chest', 'hands', 'feet', 'ring', 'amulet'];
+// Slots a random DROP may roll into (one entry per gear category). Rings roll
+// as a single 'ring' item that can be equipped into either ring socket.
+export const SLOTS = ['weapon', 'head', 'shoulders', 'chest', 'back', 'hands', 'feet', 'ring', 'amulet'];
+// Every EQUIPPABLE socket, including the extra weapon and ring sockets. The
+// equipment panel and the character mesh iterate this list.
+export const EQUIP_SLOTS = ['weapon', 'weapon2', 'head', 'shoulders', 'chest', 'back', 'hands', 'feet', 'ring', 'ring2', 'amulet'];
 export const SLOT_LABEL = {
-  weapon: 'Weapon', head: 'Head', chest: 'Chest', hands: 'Hands', feet: 'Feet', ring: 'Ring', amulet: 'Amulet',
+  weapon: 'Weapon', weapon2: 'Weapon 2', head: 'Head', shoulders: 'Shoulders', chest: 'Chest',
+  back: 'Back', hands: 'Hands', feet: 'Feet', ring: 'Ring', ring2: 'Ring', amulet: 'Amulet',
 };
 
 export const RARITY = {
@@ -49,9 +55,13 @@ const BASES = {
     { id: 'throwaxe', name: 'Throwing Axes', glyph: '🪓', kind: 'throwaxe', affinity: 'str' },
     { id: 'staff',  name: 'Staff',   glyph: '🔮', kind: 'staff', affinity: 'int' },
     { id: 'wand',   name: 'Wand',    glyph: '✨', kind: 'wand',  affinity: 'int' },
+    { id: 'revolver', name: 'Revolver', glyph: '🔫', kind: 'revolver', affinity: 'dex' },
+    { id: 'rifle',    name: 'Rifle',    glyph: '🔫', kind: 'rifle',    affinity: 'dex' },
   ],
   head:   [{ id: 'helm', name: 'Helm', glyph: '⛑️' }, { id: 'hood', name: 'Hood', glyph: '🎓' }, { id: 'crown', name: 'Circlet', glyph: '👑' }],
+  shoulders: [{ id: 'pauldrons', name: 'Pauldrons', glyph: '🛡️' }, { id: 'mantle', name: 'Spaulders', glyph: '🧣' }],
   chest:  [{ id: 'plate', name: 'Breastplate', glyph: '🛡️' }, { id: 'robe', name: 'Robe', glyph: '🥼' }, { id: 'tunic', name: 'Tunic', glyph: '👕' }],
+  back:   [{ id: 'cape', name: 'Cape', glyph: '🧥' }, { id: 'cloak', name: 'Cloak', glyph: '🧥' }],
   hands:  [{ id: 'gauntlets', name: 'Gauntlets', glyph: '🧤' }, { id: 'gloves', name: 'Gloves', glyph: '🧤' }],
   feet:   [{ id: 'boots', name: 'Boots', glyph: '🥾' }, { id: 'sandals', name: 'Sandals', glyph: '👢' }],
   ring:   [{ id: 'ring', name: 'Ring', glyph: '💍' }, { id: 'band', name: 'Band', glyph: '💍' }],
@@ -227,8 +237,8 @@ export function generateItem({ slot, level = 1, rarityBoost = 0, forceRarity, se
   if (slot === 'weapon') {
     addStat(stats, 'damage', Math.round((6 + ilvl * 1.5) * rar.mult));
     addStat(stats, base.affinity, Math.round((2 + ilvl * 0.4) * rar.mult));
-  } else if (['head', 'chest', 'hands', 'feet'].includes(slot)) {
-    const armorBudget = { chest: 1.4, head: 1.0, feet: 0.8, hands: 0.7 }[slot];
+  } else if (['head', 'shoulders', 'chest', 'back', 'hands', 'feet'].includes(slot)) {
+    const armorBudget = { chest: 1.4, head: 1.0, shoulders: 0.9, back: 0.7, feet: 0.8, hands: 0.7 }[slot];
     addStat(stats, 'armor', Math.round((3 + ilvl * 1.3 * armorBudget) * rar.mult));
   }
   // Bonus stat lines (accessories get an extra one — they're pure stats).
@@ -271,6 +281,47 @@ export function starterWeapon(primary) {
   it.baseId = base.id; it.kind = base.kind; it.glyph = base.glyph;
   it.name = `Worn ${base.name}`;
   return it;
+}
+
+// Per-class starting loadout: a themed weapon + a small set of common armor
+// pieces, so every hero begins the game actually WEARING something (which now
+// also shows on the character model). `weapon: null` = an unarmed martial class.
+const STARTER_KITS = {
+  fighter:    { weapon: 'sword',    name: "Recruit's",     pieces: { head: 'helm', chest: 'plate', feet: 'boots' } },
+  barbarian:  { weapon: 'axe',      name: "Raider's",      pieces: { shoulders: 'pauldrons', chest: 'tunic', hands: 'gauntlets' } },
+  rogue:      { weapon: 'dagger',   name: "Prowler's",     pieces: { head: 'hood', chest: 'tunic', hands: 'gloves' } },
+  wizard:     { weapon: 'staff',    name: "Apprentice's",  pieces: { head: 'hood', chest: 'robe' } },
+  cleric:     { weapon: 'mace',     name: "Acolyte's",     pieces: { head: 'crown', chest: 'robe', shoulders: 'mantle' } },
+  ranger:     { weapon: 'bow',      name: "Scout's",       pieces: { chest: 'tunic', feet: 'boots', back: 'cloak' } },
+  paladin:    { weapon: 'sword',    name: "Squire's",      pieces: { head: 'helm', shoulders: 'pauldrons', chest: 'plate' } },
+  warlock:    { weapon: 'wand',     name: "Cultist's",     pieces: { head: 'hood', chest: 'robe', back: 'cloak' } },
+  monk:       { weapon: null,       name: "Initiate's",    pieces: { chest: 'tunic', hands: 'gloves', feet: 'sandals' } },
+  druid:      { weapon: 'staff',    name: "Grovekeeper's", pieces: { head: 'hood', chest: 'robe', shoulders: 'mantle' } },
+  saiyan:     { weapon: null,       name: 'Training',      pieces: { chest: 'tunic', feet: 'boots' } },
+  gunslinger: { weapon: 'revolver', name: "Drifter's",     pieces: { chest: 'tunic', back: 'cloak', feet: 'boots' } },
+};
+
+// Build a fresh gear object (slot -> item) for a brand-new character.
+export function starterKit(classId) {
+  const kit = STARTER_KITS[classId] || STARTER_KITS.fighter;
+  const gear = {};
+  if (kit.weapon) {
+    const w = generateItem({ slot: 'weapon', level: 1, forceRarity: 'common' });
+    const b = BASES.weapon.find((x) => x.id === kit.weapon);
+    if (b) { w.baseId = b.id; w.kind = b.kind; w.glyph = b.glyph; }
+    w.name = `${kit.name} ${b ? b.name : 'Weapon'}`;
+    w.setId = null; w.setName = null;
+    gear.weapon = w;
+  }
+  for (const slot in kit.pieces) {
+    const it = generateItem({ slot, level: 1, forceRarity: 'common' });
+    const b = (BASES[slot] || []).find((x) => x.id === kit.pieces[slot]) || (BASES[slot] || [])[0];
+    if (b) { it.baseId = b.id; it.glyph = b.glyph; }
+    it.name = `${kit.name} ${b ? b.name : SLOT_LABEL[slot]}`;
+    it.setId = null; it.setName = null; // starter pieces are plain, not set gear
+    gear[slot] = it;
+  }
+  return gear;
 }
 
 // Turn any item into one of the named uniques (keeps its rolled stats,

@@ -653,11 +653,13 @@ export class Combat {
     let geo;
     if (shape === 'arrow') geo = new THREE.CylinderGeometry(0.05, 0.05, 0.9, 5);
     else if (shape === 'blade') geo = new THREE.BoxGeometry(0.08, 0.5, 0.22);
+    else if (shape === 'bullet') geo = new THREE.SphereGeometry(0.12, 8, 8); // small, fast tracer
     else geo = new THREE.SphereGeometry(0.3, 10, 10);
     const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color }));
     const start = originPos.clone(); // already at the weapon muzzle
     mesh.position.copy(start);
     if (shape === 'arrow') { mesh.rotation.x = Math.PI / 2; mesh.lookAt(start.clone().add(dir)); }
+    if (shape === 'bullet') mesh.add(new THREE.PointLight(color, 0.7, 3)); // faint muzzle glow
     if (shape === 'orb' || holy) mesh.add(new THREE.PointLight(color, 1.4, 6));
     this.scene.add(mesh);
     this.projectiles.push({ mesh, dir, speed, range, traveled: 0, dmg: this.player.apower * mult, pierce, aoe, holy, stunOnHit, hitSet: new Set() });

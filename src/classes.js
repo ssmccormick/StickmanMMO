@@ -208,6 +208,24 @@ export const CLASSES = {
     ],
   },
 
+  gunslinger: {
+    name: 'Gunslinger', glyph: '🤠', tag: 'Wild West outlaw',
+    color: 0x8a6a3a, accent: 0xc0392b,
+    desc: 'A quick-draw desperado from the frontier. Fires guns — fast pistol rounds, a spray of lead, dynamite, and trick shots. Deadly at range with the mobility to stay there.',
+    primary: 'dex', ranged: true, projGlyph: 'bullet', projColor: 0xffe08a,
+    base: { hp: 108, mp: 40, sp: 135, str: 12, dex: 17, int: 10 },
+    growth: { hp: 11, mp: 3, sp: 10 }, critBonus: 0.10,
+    baseDamage: 12, attackSpeed: 0.4, range: 18,
+    abilities: [
+      { id: 'sixshooter', name: 'Six-Shooter', kind: 'projectile', glyph: '🔫', cost: 10, costType: 'sp', cooldown: 1.6, reqLevel: 1, speed: 54, mult: 2.2, color: 0xffe08a, shape: 'bullet', desc: 'Snap off a quick pistol round.' },
+      { id: 'quickroll', name: 'Combat Roll', kind: 'dash', glyph: '🌵', cost: 12, costType: 'sp', cooldown: 4, reqLevel: 2, range: 6, arc: 0, mult: 0, iframes: 0.5, color: 0xffffff, desc: 'Dive-roll aside with brief invulnerability.' },
+      { id: 'fanhammer', name: 'Fan the Hammer', kind: 'projectile', glyph: '🖐️', cost: 18, costType: 'sp', cooldown: 6, reqLevel: 4, count: 5, spread: 0.7, speed: 48, mult: 1.1, color: 0xffd27a, shape: 'bullet', desc: 'Unload the whole cylinder in a spray of lead.' },
+      { id: 'dynamite', name: 'Dynamite', kind: 'groundaoe', glyph: '🧨', cost: 22, costType: 'sp', cooldown: 9, reqLevel: 6, range: 12, aoe: 4.5, mult: 2.8, delay: 0.7, color: 0xff6a2a, desc: 'Toss a lit stick of dynamite that blows a point sky-high.' },
+      { id: 'ricochet', name: 'Ricochet', kind: 'chain', glyph: '🎯', cost: 20, costType: 'sp', cooldown: 6, reqLevel: 9, jumps: 4, range: 12, mult: 1.7, color: 0xffe08a, desc: 'A trick shot that bounces between foes.' },
+      { id: 'deadeye', name: 'Dead Eye', kind: 'projectile', glyph: '💥', cost: 24, costType: 'sp', cooldown: 10, reqLevel: 12, speed: 70, mult: 5.2, pierce: true, crit: 0.5, color: 0xffe9a0, shape: 'bullet', desc: 'Line up the perfect shot — a piercing round that guts everything in its path.' },
+    ],
+  },
+
   // ---- Special hero class: Super Saiyan ----
   // A ki warrior who builds energy in battle, then spends a full Ki gauge to
   // ASCEND through Super Saiyan forms (SSJ1 → 2 → 3), each multiplying all
@@ -231,7 +249,7 @@ export const CLASSES = {
   },
 };
 
-export const CLASS_ORDER = ['fighter', 'barbarian', 'rogue', 'wizard', 'cleric', 'ranger', 'paladin', 'warlock', 'monk', 'druid', 'saiyan'];
+export const CLASS_ORDER = ['fighter', 'barbarian', 'rogue', 'wizard', 'cleric', 'ranger', 'paladin', 'warlock', 'monk', 'druid', 'gunslinger', 'saiyan'];
 
 // XP needed to advance FROM the given level to the next.
 export function xpForLevel(level) {

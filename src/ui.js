@@ -5,7 +5,8 @@
 // ============================================================
 import { CLASSES, CLASS_ORDER } from './classes.js';
 import { Saves } from './save.js';
-import { SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
+import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
+import { WEAPON_SKINS } from './weapons.js';
 import * as Quests from './quests.js';
 import { TOWNS, AREAS, MOUNTAINS, WATER_LEVEL, heightAt, biomeColorAt } from './world.js';
 import { MAP_GRID } from './player.js';
@@ -305,6 +306,7 @@ export class UI {
     host.appendChild(this._colorRow('Body', 'bodyColor', BODY_COLORS, app, unlocked, commit));
     host.appendChild(this._colorRow('Accent', 'accentColor', ACCENT_COLORS, app, unlocked, commit));
     host.appendChild(this._colorRow('Hair', 'hairColor', HAIR_COLORS, app, unlocked, commit));
+    host.appendChild(this._weaponSkinRow(app, unlocked, commit));
     // Sliders update live but must NOT trigger a re-render (it would replace the
     // input element mid-drag), so they call onChange directly.
     for (const key of ['size', 'build', 'headSize', 'limb']) {
@@ -325,6 +327,24 @@ export class UI {
         `<span class="cz-glyph">${h.glyph}</span><span class="cz-name">${h.name}</span>${locked ? '<span class="cz-lock">🔒</span>' : ''}`);
       btn.title = locked && cos ? `Locked — ${cos.hint}` : h.name;
       if (!locked) btn.onclick = () => { app.hair = h.id; commit(); };
+      grid.appendChild(btn);
+    }
+    row.appendChild(grid);
+    return row;
+  }
+
+  _weaponSkinRow(app, unlocked, commit) {
+    const row = this._cz('div', 'cz-row');
+    row.appendChild(this._cz('div', 'cz-label', 'Weapon Skin'));
+    const grid = this._cz('div', 'cz-grid');
+    const cur = app.weaponSkin || 'default';
+    for (const s of WEAPON_SKINS) {
+      const locked = s.id !== 'default' && !isOptionAvailable('weaponSkin', s.id, unlocked);
+      const cos = COSMETICS.find((c) => c.type === 'weaponSkin' && c.value === s.id);
+      const btn = this._cz('button', 'cz-chip' + (cur === s.id ? ' sel' : '') + (locked ? ' locked' : ''),
+        `<span class="cz-glyph">${s.glyph}</span><span class="cz-name">${s.name}</span>${locked ? '<span class="cz-lock">🔒</span>' : ''}`);
+      btn.title = locked && cos ? `Locked — ${cos.hint}` : s.name;
+      if (!locked) btn.onclick = () => { app.weaponSkin = s.id; commit(); };
       grid.appendChild(btn);
     }
     row.appendChild(grid);
@@ -853,9 +873,13 @@ export class UI {
       }
       this.equipSlotsEl.appendChild(cell);
     };
-    for (const slot of SLOTS) addSlot(slot, SLOT_LABEL[slot], slot === 'weapon' && p.activeWeapon === 0 && !!p.gear.weapon2);
-    // Second weapon slot — Tab swaps which one is wielded (★ = active).
-    addSlot('weapon2', 'Weapon 2', p.activeWeapon === 1);
+    // Every socket, including the extra weapon/ring, cape (back), and shoulders.
+    // ★ marks the wielded weapon when two are equipped (Tab swaps).
+    for (const slot of EQUIP_SLOTS) {
+      const active = (slot === 'weapon' && p.activeWeapon === 0 && !!p.gear.weapon2)
+        || (slot === 'weapon2' && p.activeWeapon === 1);
+      addSlot(slot, SLOT_LABEL[slot], active);
+    }
 
     // Effective stats summary.
     const b = p.bonus;
@@ -1222,7 +1246,7 @@ export class UI {
     const setHtml = sets.length
       ? sets.map((x) => `<div class="cs-set" style="color:${x.color}">${x.name} — ${x.count} pieces (${x.tiers.map((t) => t + 'pc').join(', ')} active)</div>`).join('')
       : '<div class="cs-base">No set bonuses active</div>';
-    const equip = SLOTS.map((sl) => {
+    const equip = EQUIP_SLOTS.filter((sl) => player.gear[sl]).map((sl) => {
       const it = player.gear[sl];
       const col = it ? (it.setId ? '#9be0ff' : RARITY[it.rarity].color) : '#777';
       return `<div class="cs-row"><span>${SLOT_LABEL[sl]}</span><b style="color:${col}">${it ? it.glyph + ' ' + it.name : '—'}</b></div>`;
