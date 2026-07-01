@@ -251,15 +251,12 @@ export class Enemy {
       move.copy(toPlayer).setY(0).normalize();
     } else if (this.state === 'attack' && toPlayer) {
       this.facing = Math.atan2(toPlayer.x, toPlayer.z);
+      // Ranged mobs fire dodgeable shots; melee mobs deal damage only through
+      // their telegraphed specials (no untelegraphed poke) — they just hold and
+      // face while a special comes off cooldown.
       if (this.ranged) {
-        // Hold at range and fire; back away (kite) if the player closes in.
-        if (dist < this.shootRange * 0.55) move.copy(toPlayer).setY(0).normalize().multiplyScalar(-1);
+        if (dist < this.shootRange * 0.55) move.copy(toPlayer).setY(0).normalize().multiplyScalar(-1); // kite
         if (this.attackTimer <= 0) { this.attackTimer = 1.9 + Math.random() * 0.6; this.attackAnim = 1; this._fireShot(player); }
-      } else if (this.attackTimer <= 0) {
-        // melee: telegraph then land a hit
-        this.attackTimer = 1.6;
-        this.attackAnim = 1;
-        this.pendingHit = { at: t + 0.35, applied: false };
       }
     } else if (this.state === 'return') {
       const toHome = _scratch.subVectors(this.home, this.pos).setY(0);
@@ -270,15 +267,6 @@ export class Enemy {
       const toW = _scratch.subVectors(this.wanderTarget, this.pos).setY(0);
       if (toW.length() < 1) { this.wanderTarget = this._randomNear(this.home, 7); }
       else if (Math.random() < 0.9) move.copy(toW).normalize().multiplyScalar(0.4);
-    }
-
-    // Apply landed attack on the player after telegraph.
-    if (this.pendingHit && !this.pendingHit.applied && t >= this.pendingHit.at) {
-      this.pendingHit.applied = true;
-      if (player.alive && this.pos.distanceTo(player.pos) <= this.type.range + 0.8) {
-        const dealt = player.takeDamage(this.dmg, this.pos);
-        if (dealt > 0) player.lastHitBy = this;
-      }
     }
 
     const speed = this.type.speed * speedMult * (this.bossSpeedMult || 1);
@@ -375,6 +363,7 @@ export class Enemy {
     // Ground/collision clamp during the whole charge.
     const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
     this.pos.x = res.x; this.pos.z = res.z;
+    if (this.flying) this.flyHeight += (1.3 - this.flyHeight) * Math.min(1, dt * 4); // swoop down to strike
     const g = heightAt(this.pos.x, this.pos.z);
     this.pos.y = this.flying ? g + this.flyHeight : g + (this._jumpArc || 0);
     if (this.attackTimer > 0) this.attackTimer -= dt;
@@ -522,7 +511,13 @@ export class Enemy {
       this.mesh.scale.setScalar(this.displayScale * s);
       if (this._hitFlash <= 0) this.mesh.scale.setScalar(this.displayScale);
     }
+    this.updatePlateVisibility();
   }
+
+  // Only show the floating name + HP bar when the enemy is actively engaged
+  // (aggro'd on / attacking the player), not while it idles or wanders.
+  isEngaged() { return this.alive && (this.state === 'chase' || this.state === 'attack' || !!this.charge); }
+  updatePlateVisibility() { if (this.nameplate) this.nameplate.visible = this.isEngaged(); }
 
   takeDamage(amount, crit = false) {
     if (!this.alive) return { dealt: 0, killed: false };

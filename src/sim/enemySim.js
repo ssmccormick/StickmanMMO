@@ -118,10 +118,8 @@ class SimEnemy {
             dmg: Math.round(this.dmg), range: this.shootRange + 8,
           } });
         }
-      } else if (this.attackTimer <= 0) {
-        this.attackTimer = 1.6;
-        if (dist <= this.type.range + 0.8) evs.push({ hit: { playerId: target.id, dmg: Math.round(this.dmg), enemyId: this.id } });
       }
+      // Melee mobs deal damage only through telegraphed specials — no plain poke.
     } else if (this.state === 'return') {
       const dx = this.home.x - this.x, dz = this.home.z - this.z, l = Math.hypot(dx, dz);
       if (l < 1.5) { this.state = 'idle'; this.wanderTarget = this._randomNear(this.home, 6); }
@@ -174,6 +172,7 @@ class SimEnemy {
     }
     const tz = inSafeZone(this.x, this.z);
     if (tz) { const ax = this.x - tz.x, az = this.z - tz.z, l = Math.hypot(ax, az) || 1; this.x = tz.x + ax / l * tz.radius; this.z = tz.z + az / l * tz.radius; }
+    if (this.flying) this.flyHeight += (1.3 - this.flyHeight) * Math.min(1, dt * 4); // swoop down to strike
     this.y = heightAt(this.x, this.z) + (this.flying ? this.flyHeight : 0);
     return evs;
   }

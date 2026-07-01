@@ -90,6 +90,7 @@ export class NetEnemies {
       const moving = e.alive && (e.state === 'chase' || e.state === 'attack' || e.state === 'return');
       const atk = Math.max(e.attackAnim || 0, e.state === 'attack' ? 0.5 : 0);
       if (e._poser) e._poser(e.mesh, dt, { speed01: moving ? 0.8 : 0.15, attack: atk, dead: !e.alive });
+      if (e.updatePlateVisibility) e.updatePlateVisibility(); // names/HP only when engaged
       // Hit-flash fade (set by optimistic local hits).
       if (e._hitFlash > 0) { e._hitFlash -= dt; if (e._hitFlash <= 0 && e.mesh.scale) e.mesh.scale.setScalar(e.displayScale); }
     }

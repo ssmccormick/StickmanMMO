@@ -58,6 +58,13 @@ export const SPECIAL_SETS = {
     { id: 'cleave', shape: 'arc', minR: 0, maxR: 3.9, windup: 0.8, exec: 0.3, cd: [5, 8], range: 3.9, arc: 2.5, dmg: 1.5, color: 0xff8a2a },
     { id: 'slam', shape: 'ring', minR: 0, maxR: 4.5, windup: 1.0, exec: 0.4, cd: [7, 11], aoe: 3.4, dmg: 1.9, color: 0xff5a1a },
   ],
+  wraith: [ // Sky Wraith — a swooping dive-slash
+    { id: 'dive', shape: 'lane', minR: 2, maxR: 9, windup: 0.5, exec: 0.28, cd: [4, 7], dashSpeed: 18, hitR: 1.6, width: 1.5, dmg: 1.3, color: 0xc07bff },
+  ],
+  dragon: [ // Vetharion — a great sweeping bite and a crashing tail slam
+    { id: 'cleave', shape: 'arc', minR: 0, maxR: 5.5, windup: 0.85, exec: 0.35, cd: [5, 8], range: 5.5, arc: 2.2, dmg: 1.4, color: 0xff5a3c },
+    { id: 'slam', shape: 'ring', minR: 0, maxR: 7, windup: 1.1, exec: 0.45, cd: [8, 12], aoe: 4.6, dmg: 1.7, color: 0xff3030 },
+  ],
 };
 export function specialsFor(typeId, ranged) { return (!ranged && SPECIAL_SETS[typeId]) ? SPECIAL_SETS[typeId] : []; }
 
