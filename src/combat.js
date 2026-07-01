@@ -100,28 +100,62 @@ export class Combat {
     const c = this.player.pos.clone(); c.y += 1.3; return c;
   }
 
-  // The direction offensive skills should travel: toward the locked target
-  // (or the enemy nearest the crosshair within `arc`), else where the camera
-  // points. Now fully 3D — aiming at a foe tracks its HEIGHT (so flying enemies
-  // and the dragon can be hit), and with no target the shot follows the
-  // camera's vertical tilt, so you can fire up or down.
-  // No aim assist: abilities fire exactly where the crosshair points. Skill-based
-  // aiming — the shot travels along the camera's view direction and hits whatever
-  // it actually strikes along its path.
-  _aimDir(_range, _arc) {
-    return this.cam.aimForward();
+  // The world point the crosshair is actually on. The crosshair is the CAMERA's
+  // centre ray (screen centre), so we march THAT ray — not one from the player —
+  // out to the first enemy body it crosses, else the ground, else maxRange. In
+  // the over-the-shoulder view the camera sits off to one side, so a point on
+  // its centre ray is where you visually see the crosshair; aiming the muzzle at
+  // this point makes shots converge on the crosshair instead of firing parallel
+  // (and landing beside it). No aim assist — it uses whatever the crosshair is
+  // literally pointing at, it does not snap to off-crosshair foes.
+  _aimConvergePoint(maxRange) {
+    const C = this.cam.cam.position;         // real (rendered) camera position
+    const dir = this.cam.aimForward();
+    // First, where the ray meets the ground (upper bound on depth).
+    let depth = maxRange;
+    for (let d = 1; d <= maxRange; d += 1) {
+      if (C.y + dir.y * d <= heightAt(C.x + dir.x * d, C.z + dir.z * d)) { depth = d; break; }
+    }
+    // Then pull the convergence in to the nearest enemy the ray passes through,
+    // so shots land at the foe's true depth (essential for close targets).
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const to = new THREE.Vector3().subVectors(e.pos.clone().setY(e.pos.y + 1), C);
+      const proj = to.dot(dir);              // distance along the ray to the enemy plane
+      if (proj <= 0.5 || proj > depth) continue;
+      const perp = Math.sqrt(Math.max(0, to.lengthSq() - proj * proj));
+      const hitR = (e.displayScale || 1) * 1.1 + 0.6; // generous body radius
+      if (perp <= hitR) depth = proj;
+    }
+    return new THREE.Vector3(C.x + dir.x * depth, C.y + dir.y * depth, C.z + dir.z * depth);
   }
 
-  // Where a ground-targeted AoE lands: cast the aim ray from the chest and drop
-  // it where it meets the ground (else out to maxRange), so you place it by aim.
+  // The direction offensive skills should travel: from the weapon muzzle toward
+  // the point the crosshair is on. Fully 3D and skill-based — you hit exactly
+  // what the crosshair covers (flying foes and the dragon included), and the
+  // convergence cancels the shoulder offset so aim and crosshair agree.
+  _aimDir(range, _arc) {
+    const p = this._aimConvergePoint(Math.max(8, range || 40));
+    return new THREE.Vector3().subVectors(p, this._muzzle()).normalize();
+  }
+
+  // Where a ground-targeted AoE lands: march the crosshair's ray to the ground,
+  // clamped to within maxRange of the player so ability range still bounds it.
   _aimPoint(maxRange) {
-    const o = this.player.pos.clone(); o.y += 1.3;
+    const C = this.cam.cam.position;
     const dir = this.cam.aimForward();
-    let hit = maxRange;
-    for (let d = 1; d <= maxRange; d += 1) {
-      if (o.y + dir.y * d <= heightAt(o.x + dir.x * d, o.z + dir.z * d)) { hit = d; break; }
+    // Extra reach so the camera-to-player gap doesn't eat into the ability range.
+    const march = maxRange + 8;
+    let hit = march;
+    for (let d = 1; d <= march; d += 1) {
+      if (C.y + dir.y * d <= heightAt(C.x + dir.x * d, C.z + dir.z * d)) { hit = d; break; }
     }
-    return new THREE.Vector3(o.x + dir.x * hit, 0, o.z + dir.z * hit);
+    const pt = new THREE.Vector3(C.x + dir.x * hit, 0, C.z + dir.z * hit);
+    // Clamp to the ability's range measured from the player.
+    const from = this.player.pos.clone().setY(0);
+    const off = pt.clone().sub(from);
+    if (off.length() > maxRange) pt.copy(from).add(off.setLength(maxRange));
+    return pt;
   }
 
   // ---- Auto attack ----
