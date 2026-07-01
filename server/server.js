@@ -13,11 +13,14 @@ import { WorldSim } from '../src/sim/enemySim.js';
 
 const PORT = process.env.PORT || 8080;
 const TICK_MS = 80; // ~12.5 Hz enemy simulation/broadcast
+// Build tag — bump when server behaviour changes so you can confirm at a glance
+// (visit the server URL in a browser) which build Render is actually running.
+const BUILD = 'specials-v2 · telegraphed-only melee · 3x respawn';
 
-// Serve a tiny health page so you can confirm it's up in a browser.
+// Serve a tiny health page so you can confirm it's up (and which build) in a browser.
 const httpServer = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end(`Stickman MMO server up. ${wss ? wss.clients.size : 0} client(s) connected.\n`);
+  res.end(`Stickman MMO server up [${BUILD}]. ${wss ? wss.clients.size : 0} client(s) connected.\n`);
 });
 
 const wss = new WebSocketServer({ server: httpServer });
@@ -204,5 +207,5 @@ setInterval(() => {
 }, TICK_MS);
 
 httpServer.listen(PORT, () => {
-  console.log(`Stickman MMO server listening on ws://localhost:${PORT}`);
+  console.log(`Stickman MMO server listening on ws://localhost:${PORT} [${BUILD}]`);
 });
