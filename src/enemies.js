@@ -23,6 +23,32 @@ const ENEMY_SHOTS = [];
 const _toPlayer = new THREE.Vector3();
 const _move = new THREE.Vector3();
 const _scratch = new THREE.Vector3();
+
+// ---- Telegraphed special attacks, per enemy type ----
+// Each special winds up (a red bar fills + a danger zone glows on the ground),
+// flashes full red, then executes its move. Shapes drive the ground telegraph:
+//   'lane' = a straight dash lane · 'ring' = a circular slam/jump AoE ·
+//   'arc'  = a sweep in front (cleave/slash). `dmg` is a multiple of base damage.
+const SPECIAL_SETS = {
+  slime: [
+    { id: 'dash', shape: 'lane', minR: 3, maxR: 9,  windup: 0.6,  exec: 0.28, cd: [4, 7],  dashSpeed: 16, hitR: 1.5, width: 1.6, dmg: 1.25, color: 0x8fe05a },
+    { id: 'jump', shape: 'ring', minR: 3, maxR: 11, windup: 0.85, exec: 0.55, cd: [6, 10], aoe: 2.4, dmg: 1.5, color: 0x8fe05a },
+  ],
+  grunt: [ // Bandit — quick short-range dagger slash
+    { id: 'slash', shape: 'arc', minR: 0, maxR: 3, windup: 0.4, exec: 0.22, cd: [3, 5], range: 2.8, arc: 1.5, dmg: 1.2, color: 0xff6a4a },
+  ],
+  wolf: [ // Dire Stick — a pouncing lunge
+    { id: 'pounce', shape: 'lane', minR: 3, maxR: 8, windup: 0.45, exec: 0.25, cd: [4, 7], dashSpeed: 17, hitR: 1.4, width: 1.5, dmg: 1.3, color: 0xcfcfcf },
+  ],
+  knight: [ // Fallen Knight — sweeping slash + a lunging dash-stab
+    { id: 'slash', shape: 'arc', minR: 0, maxR: 3.2, windup: 0.5, exec: 0.24, cd: [4, 6], range: 3.2, arc: 1.8, dmg: 1.3, color: 0x9aa4ef },
+    { id: 'dashstab', shape: 'lane', minR: 3, maxR: 9, windup: 0.7, exec: 0.3, cd: [6, 9], dashSpeed: 19, hitR: 1.3, width: 1.1, dmg: 1.7, color: 0x9aa4ef },
+  ],
+  brute: [ // Ogre Brute — a wide club cleave + a ground-shaking slam
+    { id: 'cleave', shape: 'arc', minR: 0, maxR: 3.9, windup: 0.8, exec: 0.3, cd: [5, 8], range: 3.9, arc: 2.5, dmg: 1.5, color: 0xff8a2a },
+    { id: 'slam', shape: 'ring', minR: 0, maxR: 4.5, windup: 1.0, exec: 0.4, cd: [7, 11], aoe: 3.4, dmg: 1.9, color: 0xff5a1a },
+  ],
+};
 export function updateEnemyShots(dt, player) {
   for (let i = ENEMY_SHOTS.length - 1; i >= 0; i--) {
     const s = ENEMY_SHOTS[i];
@@ -132,6 +158,13 @@ export class Enemy {
     this._speed01 = 0;
     this._hitFlash = 0;
 
+    // Telegraphed specials: a menu of charged attacks for this type (melee only;
+    // ranged mobs keep firing). `charge` holds an in-progress wind-up/execution.
+    this.specials = (!this.ranged && SPECIAL_SETS[typeId]) ? SPECIAL_SETS[typeId] : [];
+    this.specialCd = 2.5 + Math.random() * 3;
+    this.charge = null;
+    this._jumpArc = 0;
+
     // Floating nameplate sprite.
     this.nameplate = this._makePlate();
     this.mesh.add(this.nameplate);
@@ -182,9 +215,13 @@ export class Enemy {
       return;
     }
 
-    if (this.stun > 0) { this.stun -= dt; this._speed01 = 0; this._finish(dt); return; }
+    if (this.stun > 0) { this.stun -= dt; this._speed01 = 0; this._cancelCharge(); this._finish(dt); return; }
     if (this.slow > 0) this.slow -= dt;
+    if (this.specialCd > 0) this.specialCd -= dt;
     const speedMult = this.slow > 0 ? 0.45 : 1;
+
+    // A charged special in progress drives its own movement/telegraph/damage.
+    if (this.charge) { this._updateCharge(dt, player, t); this._finish(dt); return; }
 
     const toPlayer = player.alive ? _toPlayer.subVectors(player.pos, this.pos) : null;
     // Flyers judge range by ground distance so their altitude never stops them
@@ -218,6 +255,19 @@ export class Enemy {
       this.state = dist <= engageRange ? 'attack' : 'chase';
     } else if (this.state !== 'idle' && dist > this.type.aggro * 1.4) {
       this.state = 'return';
+    }
+
+    // Commit to a telegraphed special when one is ready and in range (dash-type
+    // specials fire from mid-range; slashes/slams from close up). The special
+    // then takes over movement + damage via _updateCharge.
+    if (this.specials.length && this.specialCd <= 0 && player.alive && dist < this.type.aggro
+        && (this.state === 'attack' || this.state === 'chase')) {
+      const ready = this.specials.filter((s) => dist >= s.minR && dist <= s.maxR);
+      if (ready.length) {
+        this._startCharge(ready[(Math.random() * ready.length) | 0], player);
+        this._finish(dt);
+        return;
+      }
     }
 
     const move = _move.set(0, 0, 0);
@@ -312,6 +362,151 @@ export class Enemy {
     if (this.state === 'chase' || this.state === 'attack') this.state = 'return';
   }
 
+  // ---- Telegraphed special attacks ----
+  _startCharge(sp, player) {
+    const dx = player.pos.x - this.pos.x, dz = player.pos.z - this.pos.z;
+    const l = Math.hypot(dx, dz) || 1;
+    this.charge = { sp, phase: 'windup', t: 0, dur: sp.windup, dx: dx / l, dz: dz / l,
+                    tx: player.pos.x, tz: player.pos.z, applied: false, execT: 0 };
+    this.facing = Math.atan2(dx, dz);
+    this.attackAnim = 0.4; // brace/wind-up pose
+    this._speed01 = 0;
+    this._showTelegraph(sp);
+  }
+
+  _updateCharge(dt, player, t) {
+    const c = this.charge, sp = c.sp;
+    if (c.phase === 'windup') {
+      c.t += dt;
+      const p = Math.min(1, c.t / c.dur);
+      this.facing = Math.atan2(c.dx, c.dz);
+      this._speed01 = 0;
+      if (this._chargeFill) this._chargeFill.scale.x = Math.max(0.0001, p);
+      if (this._indicator) this._indicator.children[0].material.opacity = 0.16 + p * 0.34;
+      if (sp.shape !== 'ring') this._positionIndicator(sp); // lane/arc follow the enemy
+      if (p >= 1) {
+        // FLASH, then execute.
+        c.phase = 'exec'; c.execT = 0; c.applied = false;
+        this.attackAnim = 1;
+        if (this._chargeFill) this._chargeFill.material.color.setHex(0xffffff);
+        if (this._indicator) this._indicator.children[0].material.opacity = 0.9;
+      }
+    } else {
+      c.execT += dt;
+      this._runExec(dt, c, player);
+      if (c.execT >= sp.exec) this._endCharge(sp);
+    }
+    // Ground/collision clamp during the whole charge.
+    const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
+    this.pos.x = res.x; this.pos.z = res.z;
+    const g = heightAt(this.pos.x, this.pos.z);
+    this.pos.y = this.flying ? g + this.flyHeight : g + (this._jumpArc || 0);
+    if (this.attackTimer > 0) this.attackTimer -= dt;
+  }
+
+  _runExec(dt, c, player) {
+    const sp = c.sp;
+    if (sp.shape === 'lane') {                    // dash / pounce / dash-stab
+      this.pos.x += c.dx * sp.dashSpeed * dt;
+      this.pos.z += c.dz * sp.dashSpeed * dt;
+      this._speed01 = 1;
+      if (!c.applied && player.alive && this.pos.distanceTo(player.pos) <= (sp.hitR || 1.4)) {
+        c.applied = true; this._hitPlayer(player, sp.dmg);
+      }
+    } else if (sp.shape === 'ring') {             // slam / jump
+      if (sp.id === 'jump') {
+        this.pos.x += (c.tx - this.pos.x) * Math.min(1, dt * 7);
+        this.pos.z += (c.tz - this.pos.z) * Math.min(1, dt * 7);
+        this._jumpArc = Math.sin(Math.min(1, c.execT / sp.exec) * Math.PI) * 2.4;
+      }
+      if (!c.applied && c.execT >= sp.exec * 0.72) {
+        c.applied = true;
+        const cx = sp.id === 'jump' ? this.pos.x : c.tx, cz = sp.id === 'jump' ? this.pos.z : c.tz;
+        if (player.alive && Math.hypot(player.pos.x - cx, player.pos.z - cz) <= sp.aoe) this._hitPlayer(player, sp.dmg);
+      }
+    } else {                                       // arc: cleave / slash
+      if (!c.applied) {
+        c.applied = true;
+        const dx = player.pos.x - this.pos.x, dz = player.pos.z - this.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (player.alive && d <= sp.range + 0.5) {
+          let diff = Math.abs(((Math.atan2(dx, dz) - this.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          if (diff <= sp.arc / 2 + 0.2) this._hitPlayer(player, sp.dmg);
+        }
+      }
+    }
+  }
+
+  _hitPlayer(player, mul) {
+    if (!player.alive) return;
+    const dealt = player.takeDamage(Math.round(this.dmg * mul), this.pos);
+    if (dealt > 0) player.lastHitBy = this;
+  }
+
+  _endCharge(sp) {
+    this.charge = null; this._jumpArc = 0;
+    this.specialCd = sp.cd[0] + Math.random() * (sp.cd[1] - sp.cd[0]);
+    this.attackTimer = Math.max(this.attackTimer, 0.8); // brief recovery
+    this._clearTelegraph();
+  }
+  _cancelCharge() {
+    if (!this.charge) return;
+    this.charge = null; this._jumpArc = 0;
+    this.specialCd = 2 + Math.random() * 2;
+    this._clearTelegraph();
+  }
+
+  // Telegraph: a red charge bar over the enemy + a danger zone on the ground.
+  _ensureChargeBar() {
+    if (this._chargeBar) return;
+    const W = 1.3, H = 0.14, ds = this.displayScale || 1;
+    const g = new THREE.Group();
+    const bg = new THREE.Mesh(new THREE.PlaneGeometry(W, H),
+      new THREE.MeshBasicMaterial({ color: 0x260000, transparent: true, opacity: 0.75, depthTest: false, side: THREE.DoubleSide }));
+    bg.renderOrder = 998;
+    const fgGeo = new THREE.PlaneGeometry(W, H * 0.7); fgGeo.translate(W / 2, 0, 0);
+    const fg = new THREE.Mesh(fgGeo, new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide }));
+    fg.position.x = -W / 2; fg.scale.x = 0.0001; fg.renderOrder = 999;
+    g.add(bg, fg);
+    g.scale.setScalar(1 / ds);          // constant world size regardless of enemy scale
+    g.position.y = 2.4 / ds;            // ~2.4u above the enemy in world space
+    this.mesh.add(g);
+    this._chargeBar = g; this._chargeFill = fg;
+  }
+  _showTelegraph(sp) {
+    this._ensureChargeBar();
+    this._chargeBar.visible = true;
+    this._chargeFill.material.color.setHex(0xff3020);
+    this._chargeFill.scale.x = 0.0001;
+    if (this._indicator) { this.scene.remove(this._indicator); this._disposeObj(this._indicator); }
+    const g = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: sp.color, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
+    let mesh;
+    if (sp.shape === 'ring') { mesh = new THREE.Mesh(new THREE.CircleGeometry(sp.aoe, 28), mat); mesh.rotation.x = -Math.PI / 2; }
+    else if (sp.shape === 'arc') { mesh = new THREE.Mesh(new THREE.CircleGeometry(sp.range * 0.62, 22), mat); mesh.rotation.x = -Math.PI / 2; mesh.position.z = sp.range * 0.5; }
+    else { mesh = new THREE.Mesh(new THREE.PlaneGeometry(sp.width, sp.maxR), mat); mesh.rotation.x = -Math.PI / 2; mesh.position.z = sp.maxR / 2; }
+    g.add(mesh);
+    this.scene.add(g);
+    this._indicator = g;
+    this._positionIndicator(sp);
+  }
+  _positionIndicator(sp) {
+    const g = this._indicator; if (!g) return;
+    if (sp.shape === 'ring') {
+      g.position.set(this.charge.tx, heightAt(this.charge.tx, this.charge.tz) + 0.06, this.charge.tz);
+      g.rotation.y = 0;
+    } else {
+      g.position.set(this.pos.x, heightAt(this.pos.x, this.pos.z) + 0.06, this.pos.z);
+      g.rotation.y = Math.atan2(this.charge.dx, this.charge.dz);
+    }
+  }
+  _clearTelegraph() {
+    if (this._chargeBar) this._chargeBar.visible = false;
+    if (this._chargeFill) { this._chargeFill.material.color.setHex(0xff3020); this._chargeFill.scale.x = 0.0001; }
+    if (this._indicator) { this.scene.remove(this._indicator); this._disposeObj(this._indicator); this._indicator = null; }
+  }
+  _disposeObj(o) { o.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); }); }
+
   _finish(dt) {
     if (this.attackAnim > 0) this.attackAnim = Math.max(0, this.attackAnim - dt * 2.4);
     this.mesh.position.copy(this.pos);
@@ -404,10 +599,12 @@ export class Enemy {
     this.alive = false;
     this.respawnTimer = 18 + Math.random() * 10;
     this.nameplate.visible = false;
+    this._cancelCharge();
   }
   _respawn() {
     this.alive = true;
     this.hp = this.maxHp;
+    this.specialCd = 2.5 + Math.random() * 3;
     this.pos.copy(this._randomNear(this.home, 5));
     if (this.flying) this.flyHeight = 9;
     this.pos.y = heightAt(this.pos.x, this.pos.z) + (this.flying ? this.flyHeight : 0);
