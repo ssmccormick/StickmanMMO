@@ -786,8 +786,9 @@ export class Combat {
   _chargeFx(color = 0xffffff) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
-    const o = this.player.pos.clone(); o.y += 1.3;
-    o.addScaledVector(this.cam.forward(), 0.5);
+    // Charge from the weapon's tip (staff orb / wand gem / etc.), falling back
+    // to the chest when unarmed — so a spell visibly gathers at the weapon.
+    const o = this._muzzle();
     m.position.copy(o);
     m.add(new THREE.PointLight(color, 2, 6));
     m.userData.grow = 1.6; m.userData.baseOpacity = 0.85;

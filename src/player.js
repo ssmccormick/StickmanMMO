@@ -428,10 +428,19 @@ export class Player {
   // than staying glued to the arm. Melee keeps the normal arm swing.
   _poseHeldWeapon() {
     const w = this._heldWeapon;
-    if (!w || !isRangedWeaponKind(this._heldKind)) return;
+    const kind = this._heldKind;
+    if (!w || !isRangedWeaponKind(kind)) return;
     const j = this.mesh.userData.joints;
-    const base = (WEAPON_HOLD[this._heldKind] || WEAPON_HOLD.default).rot;
-    if (this.attackAnim > 0) {
+    const base = (WEAPON_HOLD[kind] || WEAPON_HOLD.default).rot;
+    const attacking = this.attackAnim > 0;
+    if (kind === 'bow' || kind === 'crossbow') {
+      // A bow/crossbow is levelled and loosed, not thrust like a spear: raise the
+      // arm to aim it forward on release; the weapon keeps its steady orientation
+      // (the arrow/bolt already leaves from the tip via weaponMuzzle()).
+      if (attacking) j.armR.rotation.set(-1.5, 0, 0);
+      w.rotation.set(base[0], base[1], base[2]);
+    } else if (attacking) {
+      // Staff / wand / thrown: rest upright, then thrust the tip outward on cast.
       const t = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 ease over the swing
       j.armR.rotation.set(-1.4 * t, 0, 0);                 // extend the arm toward the foe
       w.rotation.set(base[0] + (2.9 - base[0]) * t, base[1], base[2] * (1 - t)); // tip points outward
