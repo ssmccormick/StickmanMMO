@@ -41,36 +41,67 @@ export class Network {
   }
 
   // Attempt connection. selfInfo = { name, classId }. Resolves either way.
+  // Keeps trying to reconnect if the link drops — important for hosts whose free
+  // tier sleeps when idle (e.g. Render), so a wake-up or redeploy re-joins the
+  // player automatically instead of stranding them in an empty world.
   connect(url, selfInfo) {
     this.selfInfo = selfInfo;
     if (!url) { this.ui.setServerStatus('offline', 'offline — solo play'); return; }
-    url = this._normalizeUrl(url);
-    this.ui.setServerStatus('connecting', 'connecting…');
+    this._url = this._normalizeUrl(url);
+    this._wantConnect = true;
+    this._reconnectDelay = 1000;
+    this._everConnected = false;
+    this._open();
+  }
+
+  _open() {
+    if (!this._wantConnect) return;
+    this.ui.setServerStatus('connecting', this._everConnected ? 'reconnecting…' : 'connecting…');
     try {
-      this.ws = new WebSocket(url);
+      this.ws = new WebSocket(this._url);
     } catch (e) {
-      this.ui.setServerStatus('offline', 'offline — solo play');
+      this._scheduleReconnect();
       return;
     }
-
     this.ws.onopen = () => {
       this.connected = true;
+      this._reconnectDelay = 1000; // reset backoff on success
       this.ui.setServerStatus('online', 'online');
-      this.ui.log('Connected to server.', 'sys');
-      this._send({ type: 'join', name: selfInfo.name, classId: selfInfo.classId });
+      this.ui.log(this._everConnected ? 'Reconnected to server.' : 'Connected to server.', 'sys');
+      this._everConnected = true;
+      this._send({ type: 'join', name: this.selfInfo.name, classId: this.selfInfo.classId });
     };
     this.ws.onclose = () => {
       this.connected = false;
-      this.ui.setServerStatus('offline', 'offline — solo play');
       this._clearOthers();
+      this._scheduleReconnect();
     };
-    this.ws.onerror = () => {
-      this.ui.setServerStatus('offline', 'offline — solo play');
-    };
+    this.ws.onerror = () => { /* an onclose follows, which handles reconnect */ };
     this.ws.onmessage = (ev) => {
       let msg; try { msg = JSON.parse(ev.data); } catch { return; }
       this._handle(msg);
     };
+  }
+
+  // Retry with exponential backoff (capped), until we succeed or disconnect().
+  _scheduleReconnect() {
+    if (!this._wantConnect || this._reconnectTimer) {
+      if (!this._wantConnect) this.ui.setServerStatus('offline', 'offline — solo play');
+      return;
+    }
+    this.ui.setServerStatus('connecting', 'reconnecting…');
+    const delay = this._reconnectDelay;
+    this._reconnectDelay = Math.min(15000, delay * 2);
+    this._reconnectTimer = setTimeout(() => { this._reconnectTimer = null; this._open(); }, delay);
+  }
+
+  // Stop trying and close the link (e.g. leaving to the menu).
+  disconnect() {
+    this._wantConnect = false;
+    if (this._reconnectTimer) { clearTimeout(this._reconnectTimer); this._reconnectTimer = null; }
+    if (this.ws) { try { this.ws.close(); } catch { /* ignore */ } }
+    this.connected = false;
+    this.ui.setServerStatus('offline', 'offline — solo play');
   }
 
   _handle(msg) {
