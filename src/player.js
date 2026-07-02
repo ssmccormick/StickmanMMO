@@ -13,7 +13,7 @@ import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
 } from './classes.js';
-import { heightAt, WATER_LEVEL } from './world.js';
+import { heightAt, WATER_LEVEL, WORLD_SIZE } from './world.js';
 import { sumStats, EQUIP_SLOTS, RARITY, SETS } from './items.js';
 import * as Achievements from './achievements.js';
 
@@ -35,10 +35,11 @@ export const EMOTES = [
   { id: 'sit', name: 'Sit', glyph: '🪑' },
 ];
 
-// Map fog-of-war grid: the world (-380..380, span 760) is divided into a
-// MAP_GRID × MAP_GRID lattice; cells the player has stood near are "explored".
-export const MAP_GRID = 64;
-const MAP_SPAN = 760, MAP_HALF = 380;
+// Map fog-of-war grid: the whole world is divided into a MAP_GRID × MAP_GRID
+// lattice; cells the player has stood near are "explored". The grid tracks the
+// full (tripled) world span, at a resolution that keeps cells ~12u across.
+export const MAP_SPAN = WORLD_SIZE * 2, MAP_HALF = WORLD_SIZE;
+export const MAP_GRID = Math.round(MAP_SPAN / 12);
 
 // (WEAPON_HOLD — how each weapon kind rests in the hand — now lives in
 // weapons.js so the remote-player renderer can hold weapons identically.)

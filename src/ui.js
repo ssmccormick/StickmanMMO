@@ -8,7 +8,7 @@ import { Saves } from './save.js';
 import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import { WEAPON_SKINS } from './weapons.js';
 import * as Quests from './quests.js';
-import { TOWNS, AREAS, MOUNTAINS, WATER_LEVEL, heightAt, biomeColorAt } from './world.js';
+import { TOWNS, AREAS, MOUNTAINS, WATER_LEVEL, WORLD_SIZE, heightAt, biomeColorAt } from './world.js';
 import { MAP_GRID } from './player.js';
 import { CODEX, PROLOGUE, WORLD_NAME, ashboundEntry, TOWN_CHATTER } from './lore.js';
 import { EMOTES } from './player.js';
@@ -748,6 +748,31 @@ export class UI {
   }
 
   // ---- Minimap ----
+  // The Leviathan-zone warning: a flashing banner + a draining "Leviathan bar".
+  // `active` shows it; `frac` (1→0) is how much time is left before the beast
+  // rises. Call with active=false to hide it.
+  setLeviathan(active, frac) {
+    if (!this._levEl) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:absolute;top:14%;left:50%;transform:translateX(-50%);z-index:60;text-align:center;pointer-events:none;';
+      el.innerHTML = `
+        <div class="lev-text" style="font:900 30px Trebuchet MS,sans-serif;color:#ff3b3b;text-shadow:0 0 12px #ff0000,0 2px 4px #000;letter-spacing:1px;">⚠ ENTERING LEVIATHAN ZONE — TURN BACK! ⚠</div>
+        <div style="margin:10px auto 0;width:360px;height:16px;background:rgba(0,0,0,0.55);border:2px solid #7a1010;border-radius:8px;overflow:hidden;">
+          <div class="lev-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#ff7a2a,#ff2020);"></div>
+        </div>
+        <div style="margin-top:6px;color:#ffb0b0;font:600 14px Trebuchet MS;">The deep stirs… the Leviathan wakes.</div>`;
+      (this.el.hud || document.body).appendChild(el);
+      this._levEl = el; this._levFill = el.querySelector('.lev-fill'); this._levText = el.querySelector('.lev-text');
+    }
+    this._levEl.style.display = active ? 'block' : 'none';
+    if (active) {
+      this._levFill.style.width = Math.max(0, Math.min(1, frac)) * 100 + '%';
+      // Flash the warning text.
+      const on = Math.sin(Date.now() / 110) > -0.2;
+      this._levText.style.opacity = on ? '1' : '0.25';
+    }
+  }
+
   drawMinimap(player, enemies, world, others) {
     const ctx = this.minimapCtx;
     const W = 160, scale = 0.32;
@@ -1595,23 +1620,105 @@ export class UI {
     ov.querySelector('.inv-close').onclick = () => this.closeWorldMap();
     ov.addEventListener('click', (e) => { if (e.target === ov) this.closeWorldMap(); });
     this.wmCanvas.addEventListener('click', (e) => this._worldMapClick(e));
+
+    // Zoom + pan state. zoom 1 = whole continent; higher = closer in.
+    this._wmZoom = 1; this._wmCenter = { x: 0, z: 0 };
+    // Scroll to zoom toward the cursor.
+    this.wmCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this._wmZoomAt(e.deltaY < 0 ? 1.25 : 1 / 1.25, e);
+    }, { passive: false });
+    // Drag to pan (pointer). A tiny drag still counts as a click (fast-travel).
+    let dragging = false, lx = 0, ly = 0, moved = 0;
+    this.wmCanvas.addEventListener('pointerdown', (e) => { dragging = true; moved = 0; lx = e.clientX; ly = e.clientY; });
+    window.addEventListener('pointermove', (e) => {
+      if (!dragging || !this.worldMapOpen) return;
+      const rect = this.wmCanvas.getBoundingClientRect();
+      const sc = 600 / rect.width;                     // client px → canvas px
+      const view = (WORLD_SIZE * 2) / (this._wmZoom || 1);
+      const wpp = view / 600;                          // world units per canvas px
+      const dx = (e.clientX - lx) * sc, dy = (e.clientY - ly) * sc;
+      moved += Math.abs(dx) + Math.abs(dy);
+      this._wmCenter.x -= dx * wpp; this._wmCenter.z -= dy * wpp;
+      this._clampWmCenter();
+      lx = e.clientX; ly = e.clientY;
+      if (moved > 4) this.renderWorldMap();
+    });
+    window.addEventListener('pointerup', () => { dragging = false; this._wmDragged = moved > 5; });
+    // Zoom buttons + reset.
+    const zoomBtns = document.createElement('div');
+    zoomBtns.className = 'wm-zoom';
+    zoomBtns.style.cssText = 'position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;gap:6px;';
+    zoomBtns.innerHTML = '<button data-z="in">＋</button><button data-z="out">－</button><button data-z="fit">⤢</button>';
+    for (const b of zoomBtns.querySelectorAll('button')) b.style.cssText = 'width:34px;height:34px;font-size:18px;font-weight:bold;background:#1a2230;color:#cfe0ff;border:1px solid #3a4a5a;border-radius:6px;cursor:pointer;';
+    zoomBtns.querySelector('[data-z="in"]').onclick = () => this._wmZoomAt(1.4);
+    zoomBtns.querySelector('[data-z="out"]').onclick = () => this._wmZoomAt(1 / 1.4);
+    zoomBtns.querySelector('[data-z="fit"]').onclick = () => { this._wmZoom = 1; this._wmCenter = { x: 0, z: 0 }; this.renderWorldMap(); };
+    const body = ov.querySelector('.wm-body');
+    body.style.position = 'relative';
+    body.appendChild(zoomBtns);
+  }
+
+  _clampWmCenter() {
+    const view = (WORLD_SIZE * 2) / (this._wmZoom || 1);
+    const lim = Math.max(0, WORLD_SIZE - view / 2); // keep the view over the world
+    this._wmCenter.x = Math.max(-lim, Math.min(lim, this._wmCenter.x));
+    this._wmCenter.z = Math.max(-lim, Math.min(lim, this._wmCenter.z));
+  }
+
+  // Zoom by a factor, keeping the world point under the cursor fixed (if given).
+  _wmZoomAt(factor, e) {
+    const prev = this._wmZoom || 1;
+    const next = Math.max(1, Math.min(8, prev * factor));
+    if (next === prev) return;
+    if (e) {
+      const rect = this.wmCanvas.getBoundingClientRect();
+      const px = (e.clientX - rect.left) * (600 / rect.width);
+      const py = (e.clientY - rect.top) * (600 / rect.height);
+      const vPrev = (WORLD_SIZE * 2) / prev;
+      // World point under the cursor before zoom.
+      const wx = this._wmCenter.x + (px / 600 - 0.5) * vPrev;
+      const wz = this._wmCenter.z + (py / 600 - 0.5) * vPrev;
+      const vNext = (WORLD_SIZE * 2) / next;
+      // Re-centre so that same world point stays under the cursor.
+      this._wmCenter.x = wx - (px / 600 - 0.5) * vNext;
+      this._wmCenter.z = wz - (py / 600 - 0.5) * vNext;
+    }
+    this._wmZoom = next;
+    this._clampWmCenter();
+    this.renderWorldMap();
   }
   toggleWorldMap(player, enemies) {
     this._ensureWorldMap();
     this._wmPlayer = player; this._wmEnemies = enemies;
     if (this.worldMapOpen) this.closeWorldMap();
-    else { this.worldMapOpen = true; this.wmOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this.renderWorldMap(); }
+    else { this.worldMapOpen = true; this.wmOverlay.classList.remove('hidden'); if (document.exitPointerLock) document.exitPointerLock(); this._wmZoom = 1; this._wmCenter = { x: 0, z: 0 }; this.renderWorldMap(); }
   }
   closeWorldMap() { this.worldMapOpen = false; if (this.wmOverlay) this.wmOverlay.classList.add('hidden'); }
 
-  _wmScale() { const S = 600, span = 760; return { S, k: (v) => (v + 380) / span * S }; }
+  // The current map view transform (zoom + pan aware). `span` is the full world;
+  // `view` is how much of it is visible across the 600px canvas.
+  _wmView() {
+    const S = 600, span = WORLD_SIZE * 2, half = WORLD_SIZE;
+    const zoom = this._wmZoom || 1;
+    const view = span / zoom;
+    const cx = (this._wmCenter && this._wmCenter.x) || 0;
+    const cz = (this._wmCenter && this._wmCenter.z) || 0;
+    const originX = cx - view / 2, originZ = cz - view / 2;
+    return {
+      S, span, half, zoom, view,
+      kx: (wx) => (wx - originX) / view * S,
+      kz: (wz) => (wz - originZ) / view * S,
+      kr: (r) => r / view * S,
+    };
+  }
 
   // Build (once) a shaded terrain image of the whole continent by sampling the
   // heightfield + blended biome colours, with hill-shading, water, and snow
   // caps. Cached — it's static, so only the fog overlay changes per render.
   _buildWmTerrain() {
     if (this._wmTerrain) return this._wmTerrain;
-    const TS = 256, span = 760, half = 380;
+    const TS = 360, span = WORLD_SIZE * 2, half = WORLD_SIZE;
     const cv = document.createElement('canvas'); cv.width = TS; cv.height = TS;
     const cx = cv.getContext('2d');
     const img = cx.createImageData(TS, TS); const d = img.data;
@@ -1646,52 +1753,64 @@ export class UI {
     this._wmTerrain = cv; return cv;
   }
   _wmExplored(player, x, z) {
-    const gx = Math.floor((x + 380) / 760 * MAP_GRID), gz = Math.floor((z + 380) / 760 * MAP_GRID);
+    const span = WORLD_SIZE * 2, half = WORLD_SIZE;
+    const gx = Math.floor((x + half) / span * MAP_GRID), gz = Math.floor((z + half) / span * MAP_GRID);
     return player.explored.has(gz * MAP_GRID + gx);
   }
   renderWorldMap() {
     const w = this._world, player = this._wmPlayer, enemies = this._wmEnemies || [];
     if (!w) return;
     const ctx = this.wmCanvas.getContext('2d');
-    const { S, k } = this._wmScale();
+    const v = this._wmView();
+    const { S, span, half } = v;
 
     // Fog of war: start dark, then paint in only the explored cells of the
-    // cached terrain image. Undiscovered land stays shrouded.
+    // cached terrain image (transformed by the current zoom/pan).
     ctx.fillStyle = '#0a0d13'; ctx.fillRect(0, 0, S, S);
     const terr = this._buildWmTerrain();
     const TS = terr.width, GRID = MAP_GRID;
-    const cellS = S / GRID, cellT = TS / GRID;
+    const cellW = span / GRID;        // world units per fog cell
+    const cellT = TS / GRID;          // terrain-image px per fog cell
     ctx.imageSmoothingEnabled = true;
     for (const idx of player.explored) {
       const gx = idx % GRID, gz = Math.floor(idx / GRID);
-      ctx.drawImage(terr, gx * cellT, gz * cellT, cellT, cellT, gx * cellS, gz * cellS, cellS + 1, cellS + 1);
+      const wx0 = -half + gx * cellW, wz0 = -half + gz * cellW;
+      const dx = v.kx(wx0), dy = v.kz(wz0), dS = v.kr(cellW) + 1;
+      if (dx > S || dy > S || dx + dS < 0 || dy + dS < 0) continue; // off-screen cull
+      ctx.drawImage(terr, gx * cellT, gz * cellT, cellT, cellT, dx, dy, dS, dS);
     }
-    // Soft vignette where fog meets the revealed land.
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 1;
 
     // Roads (Nexus → towns) — faint, drawn over the revealed terrain.
     ctx.strokeStyle = 'rgba(60,46,30,0.55)'; ctx.lineWidth = 3;
-    for (const t of TOWNS) { if (t.nexus) continue; ctx.beginPath(); ctx.moveTo(k(0), k(0)); ctx.lineTo(k(t.x), k(t.z)); ctx.stroke(); }
+    for (const t of TOWNS) { if (t.nexus) continue; ctx.beginPath(); ctx.moveTo(v.kx(0), v.kz(0)); ctx.lineTo(v.kx(t.x), v.kz(t.z)); ctx.stroke(); }
 
     // Areas — ONLY those the player has discovered.
     for (const a of AREAS) {
       if (a.safe || !player.discoveredAreas.has(a.name)) continue;
       ctx.fillStyle = 'rgba(90,169,255,0.10)'; ctx.strokeStyle = 'rgba(120,190,255,0.5)'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.arc(k(a.x), k(a.z), a.r / 760 * S, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(v.kx(a.x), v.kz(a.z), v.kr(a.r), 0, 7); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#cfe7ff'; ctx.font = 'bold 10px Trebuchet MS'; ctx.textAlign = 'center';
-      ctx.fillText(`${a.name} (Lv${a.level})`, k(a.x), k(a.z) - a.r / 760 * S - 3);
+      ctx.fillText(`${a.name} (Lv${a.level})`, v.kx(a.x), v.kz(a.z) - v.kr(a.r) - 3);
     }
-    // Camps & bosses — only where you've explored.
+    // Elite camps & landmark sites — only where you've explored.
     ctx.fillStyle = '#cc8844';
-    for (const c of w.camps) { if (!this._wmExplored(player, c.pos.x, c.pos.z)) continue; ctx.beginPath(); ctx.arc(k(c.pos.x), k(c.pos.z), 4, 0, 7); ctx.fill(); }
+    for (const c of w.camps) { if (!this._wmExplored(player, c.pos.x, c.pos.z)) continue; ctx.beginPath(); ctx.arc(v.kx(c.pos.x), v.kz(c.pos.z), 4, 0, 7); ctx.fill(); }
+    // Named landmarks (castles, mage tower, fishing villages) once discovered.
+    for (const lm of (w.landmarks || [])) {
+      if (!this._wmExplored(player, lm.x, lm.z)) continue;
+      ctx.fillStyle = lm.color || '#cbb'; ctx.font = '13px Trebuchet MS'; ctx.textAlign = 'center';
+      ctx.fillText(lm.glyph || '⚑', v.kx(lm.x), v.kz(lm.z) + 4);
+      ctx.fillStyle = '#e6dcc4'; ctx.font = 'bold 10px Trebuchet MS';
+      ctx.fillText(lm.name, v.kx(lm.x), v.kz(lm.z) - 8);
+    }
     ctx.font = 'bold 11px Trebuchet MS';
     for (const e of enemies) {
       if (!e.boss || !e.alive || !this._wmExplored(player, e.pos.x, e.pos.z)) continue;
-      ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(k(e.pos.x), k(e.pos.z), 5, 0, 7); ctx.fill();
-      ctx.fillStyle = '#ffb0b0'; ctx.textAlign = 'center'; ctx.fillText('☠ ' + e.bossName, k(e.pos.x), k(e.pos.z) - 8);
+      ctx.fillStyle = '#ff4444'; ctx.beginPath(); ctx.arc(v.kx(e.pos.x), v.kz(e.pos.z), 5, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffb0b0'; ctx.textAlign = 'center'; ctx.fillText('☠ ' + e.bossName, v.kx(e.pos.x), v.kz(e.pos.z) - 8);
     }
     // Bonfires — discovered ones are travel points; others stay hidden in fog.
-    this._wmBonfires = w.bonfires.map((b) => ({ b, cx: k(b.pos.x), cy: k(b.pos.z), found: player.discovered.includes(b.name) }));
+    this._wmBonfires = w.bonfires.map((b) => ({ b, cx: v.kx(b.pos.x), cy: v.kz(b.pos.z), found: player.discovered.includes(b.name) }));
     for (const m of this._wmBonfires) {
       if (!m.found && !this._wmExplored(player, m.b.pos.x, m.b.pos.z)) continue;
       ctx.fillStyle = m.found ? '#ff8a2a' : 'rgba(150,120,90,0.6)';
@@ -1701,20 +1820,21 @@ export class UI {
     // Towns — major landmarks; shown once their ground has been explored.
     for (const t of TOWNS) {
       if (!t.nexus && !this._wmExplored(player, t.x, t.z)) continue;
-      ctx.fillStyle = '#d8b24a'; ctx.fillRect(k(t.x) - 4, k(t.z) - 4, 8, 8);
-      ctx.strokeStyle = '#3a2c14'; ctx.lineWidth = 1; ctx.strokeRect(k(t.x) - 4, k(t.z) - 4, 8, 8);
+      ctx.fillStyle = '#d8b24a'; ctx.fillRect(v.kx(t.x) - 4, v.kz(t.z) - 4, 8, 8);
+      ctx.strokeStyle = '#3a2c14'; ctx.lineWidth = 1; ctx.strokeRect(v.kx(t.x) - 4, v.kz(t.z) - 4, 8, 8);
       ctx.fillStyle = '#ffe9a8'; ctx.font = 'bold 11px Trebuchet MS'; ctx.textAlign = 'center';
-      ctx.fillText(t.name, k(t.x), k(t.z) + 16);
+      ctx.fillText(t.name, v.kx(t.x), v.kz(t.z) + 16);
     }
-    // Player.
-    ctx.fillStyle = '#7be38a'; ctx.beginPath(); ctx.arc(k(player.pos.x), k(player.pos.z), 5, 0, 7); ctx.fill();
+    // Player (with a heading tick).
+    ctx.fillStyle = '#7be38a'; ctx.beginPath(); ctx.arc(v.kx(player.pos.x), v.kz(player.pos.z), 5, 0, 7); ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
 
     this._canTravel = !!(w.nearestBonfire(player.pos, 6) || w.inSafeZone(player.pos.x, player.pos.z));
-    this.wmHint.textContent = this._canTravel ? 'Click a discovered bonfire to fast-travel.' : 'Stand at a bonfire or town to fast-travel.';
+    this.wmHint.textContent = `${this._canTravel ? 'Click a discovered bonfire to fast-travel.' : 'Stand at a bonfire or town to fast-travel.'}  ·  Scroll to zoom, drag to pan (${(this._wmZoom || 1).toFixed(1)}×)`;
     this.wmHint.style.color = this._canTravel ? '#9be29e' : '#caa';
   }
   _worldMapClick(e) {
+    if (this._wmDragged) { this._wmDragged = false; return; } // was a pan, not a click
     if (!this._canTravel || !this._wmBonfires) return;
     const rect = this.wmCanvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (600 / rect.width);

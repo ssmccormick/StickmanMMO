@@ -3,12 +3,12 @@
 // player, camera, enemies, combat, UI, audio, and networking.
 // ============================================================
 import * as THREE from 'three';
-import { World, areaAt, WATER_LEVEL } from './world.js';
+import { World, areaAt, WATER_LEVEL, LEVIATHAN_RADIUS } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
 import { NetEnemies } from './netenemies.js';
 import { UI } from './ui.js';
@@ -51,6 +51,8 @@ let combat = null;
 let started = false;
 let deathHandled = false;
 let dragonAwoken = false;   // has the end-boss dragon descended?
+let leviathanT = 0;         // time spent in the Leviathan Zone (drains the warning bar)
+let leviathanTriggered = false; // has the beast risen (kills the player)?
 let cosmeticTimer = 0;      // throttle for the cosmetic-unlock scan
 let lastGold = 0;           // for crediting gold earned to the Tycoon achievement
 let lastHp = 0;
@@ -137,6 +139,7 @@ function beginGame(classId, name, server, save, appearance) {
   enemies = spawnEnemies(scene, world);
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
   enemies.push(...spawnBosses(scene, world)); // world bosses
+  enemies.push(...spawnBossSites(scene, world)); // castle lords + the Archmagus
   enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
   enemies.push(...spawnFlyers(scene, world));    // Sky Wraiths patrolling the air
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
@@ -420,6 +423,29 @@ function animate() {
       lastHp = player.stats.hp;
     }
 
+    // ---- The Leviathan Zone: swim too far past the coast and the beast wakes. ----
+    if (player.alive) {
+      const rad = Math.hypot(player.pos.x, player.pos.z);
+      const inZone = rad > LEVIATHAN_RADIUS;
+      const DUR = 8; // seconds in the zone before the Leviathan rises
+      if (inZone && !leviathanTriggered) {
+        leviathanT = Math.min(DUR, leviathanT + dt);
+        ui.setLeviathan(true, 1 - leviathanT / DUR);
+        if (leviathanT >= DUR) {
+          leviathanTriggered = true;
+          ui.setLeviathan(false, 0);
+          const len = rad || 1;
+          world.triggerLeviathan(player.pos.x + (player.pos.x / len) * 34, player.pos.z + (player.pos.z / len) * 34);
+          ui.log('The <b>LEVIATHAN</b> erupts from the abyss and drags you under!', 'death');
+          audio.play('death');
+          player.takeDamage(999999, player.pos.clone());
+        }
+      } else {
+        if (leviathanT > 0) leviathanT = Math.max(0, leviathanT - dt * 2.2); // recede when you turn back
+        ui.setLeviathan(!leviathanTriggered && leviathanT > 0.05, leviathanT > 0 ? 1 - leviathanT / DUR : 1);
+      }
+    }
+
     // Death + respawn flow.
     if (!player.alive && !deathHandled) {
       deathHandled = true;
@@ -431,6 +457,8 @@ function animate() {
         lastHp = player.stats.hp;
         ui.showDeath(false);
         deathHandled = false;
+        // Reset the Leviathan warning so it can trigger again on a future swim.
+        leviathanT = 0; leviathanTriggered = false; ui.setLeviathan(false, 1);
         ui.log('You awaken at the bonfire.', 'sys');
       }, 2600);
     }

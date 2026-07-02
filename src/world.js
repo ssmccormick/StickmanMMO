@@ -15,13 +15,14 @@ import {
   WORLD_SIZE, WATER_LEVEL, hash2, smoothNoise, smoothstep, DEG, polar,
   BIOME_LAYOUT, BIOME_SIZE, BIOME_REGIONS, biomeWeights, TOWNS, capOff, AREAS,
   CAMPS, BOSSES, areaAt, ROADS, roadDistance, DUNGEONS, DUNGEON_SITES, MOUNTAINS,
-  CAVES, CAVE_SITES, SEA_IN, SEA_OUT, heightAt, townBaseHeight, BIOMES, biomeAt,
+  CAVES, CAVE_SITES, SEA_IN, SEA_OUT, EDGE_SHORE, LEVIATHAN_RADIUS,
+  heightAt, townBaseHeight, BIOMES, biomeAt,
 } from './sim/terrain.js';
 
 // Re-export the world-data API that the rest of the game imports from world.js.
 export {
   WORLD_SIZE, WATER_LEVEL, TOWNS, AREAS, MOUNTAINS, BOSSES, DUNGEONS, CAVES,
-  heightAt, areaAt, BIOMES,
+  EDGE_SHORE, LEVIATHAN_RADIUS, heightAt, areaAt, BIOMES,
 };
 
 const EMPTY_COLLIDERS = []; // shared empty list for resolveCircle grid misses
@@ -71,6 +72,8 @@ export class World {
     this.critters = [];    // ambient wandering creatures
     this.treasures = [];   // hidden loot chests scattered in the wild
     this.shrines = [];     // buff shrines
+    this.landmarks = [];   // named map landmarks (castles, mage tower, fishing villages)
+    this.bossSites = [];   // { x, z, type, level, name } — bosses spawned by main
     this._build();
   }
 
@@ -86,6 +89,7 @@ export class World {
     this._mountains();
     this._ranges();
     this._camps();
+    this._landmarks();
     this._dungeons();
     this._caves();
     this._bonfires();
@@ -1016,6 +1020,249 @@ export class World {
     }
   }
 
+  // ---- Big landmarks that fill the now-larger world: enemy castles, a great
+  // multi-level mage tower, friendly fishing villages on the coast, and a few
+  // extra bandit bases. Each registers a map landmark; the fortified ones add a
+  // boss site that main.js populates. ----
+  _landmarks() {
+    const R = WORLD_SIZE;
+    const polarPt = (deg, rad) => ({ x: Math.cos(deg * Math.PI / 180) * rad, z: Math.sin(deg * Math.PI / 180) * rad });
+
+    // A safe-ish flat-enough anchor: nudge off water if the spot is submerged.
+    const landAt = (p) => { let y = heightAt(p.x, p.z); return { ...p, y }; };
+
+    // --- Enemy castles (mid-ring, between the biome spokes) ---
+    const castleSpecs = [
+      { deg: 45, rad: R * 0.5, name: 'Ashguard Keep', level: 20 },
+      { deg: 165, rad: R * 0.52, name: 'Bleakstone Castle', level: 30 },
+      { deg: 285, rad: R * 0.5, name: 'Direwall Fortress', level: 38 },
+    ];
+    for (const c of castleSpecs) {
+      const p = landAt(polarPt(c.deg, c.rad));
+      if (p.y < WATER_LEVEL + 1) continue; // don't drop a castle in the sea
+      this._castle(p.x, p.y, p.z, c.name);
+      this.bossSites.push({ x: p.x, z: p.z, type: 'knight', level: c.level, name: `Lord of ${c.name}` });
+      this.landmarks.push({ name: c.name, x: p.x, z: p.z, glyph: '🏰', color: '#c98a5a' });
+    }
+
+    // --- The great Mage Tower: a tall, multi-tier climbable spire with an
+    //     Archmagus boss guarding its base. ---
+    {
+      const p = landAt(polarPt(210, R * 0.56));
+      if (p.y > WATER_LEVEL + 1) {
+        this._mageTower(p.x, p.y, p.z);
+        this.bossSites.push({ x: p.x + 6, z: p.z + 6, type: 'hexer', level: 34, name: 'Archmagus Nyxaris' });
+        this.landmarks.push({ name: 'The Arcanum Spire', x: p.x, z: p.z, glyph: '🔮', color: '#b78bff' });
+      }
+    }
+
+    // --- Friendly fishing villages out on the coast (safe rest stops) ---
+    const villageSpecs = [
+      { deg: 20, name: 'Saltbrook' }, { deg: 115, name: 'Codhaven' },
+      { deg: 250, name: 'Tidewater' }, { deg: 320, name: 'Pearlbay' },
+    ];
+    for (const v of villageSpecs) {
+      // Walk outward until we near the shore, then sit just inland of it.
+      let rad = R * 0.82, p = landAt(polarPt(v.deg, rad));
+      for (let i = 0; i < 10 && p.y > WATER_LEVEL + 1.5; i++) { rad += R * 0.015; p = landAt(polarPt(v.deg, rad)); }
+      rad -= R * 0.03; p = landAt(polarPt(v.deg, rad)); // step back onto solid ground
+      if (p.y < WATER_LEVEL) continue;
+      this._fishingVillage(p.x, p.y, p.z, v.name, v.deg);
+      this.landmarks.push({ name: v.name, x: p.x, z: p.z, glyph: '🎣', color: '#7fd4e0' });
+    }
+
+    // --- A few extra bandit bases (populated like camps) in the open mid-world ---
+    const baseSpecs = [
+      { deg: 80, rad: R * 0.42, level: 16 }, { deg: 190, rad: R * 0.44, level: 26 },
+      { deg: 300, rad: R * 0.42, level: 34 }, { deg: 5, rad: R * 0.62, level: 24 },
+    ];
+    for (let i = 0; i < baseSpecs.length; i++) {
+      const b = baseSpecs[i];
+      const p = landAt(polarPt(b.deg, b.rad));
+      if (p.y < WATER_LEVEL + 1) continue;
+      this._banditBase(p.x, p.y, p.z);
+      this.camps.push({ id: 'base_' + i, level: b.level, pos: new THREE.Vector3(p.x, p.y, p.z), chest: null, lid: null, glow: null, opened: true, members: [] });
+    }
+  }
+
+  // A square-walled enemy castle: curtain walls, four corner towers, a gatehouse.
+  _castle(cx, cy, cz, name) {
+    const stone = new THREE.MeshLambertMaterial({ color: 0x8a8578 });
+    const stone2 = new THREE.MeshLambertMaterial({ color: 0x726c60 });
+    const roof = new THREE.MeshLambertMaterial({ color: 0x5a3030 });
+    const H = 40; // curtain half-width (footprint 80×80)
+    const wallH = 7, wallT = 2;
+    const g = new THREE.Group(); g.position.set(cx, cy, cz);
+    this.group.add(g);
+    // Four curtain walls (leave a gap on the +z side for a gate).
+    const walls = [
+      { x: 0, z: -H, w: H * 2, d: wallT },  // north
+      { x: -H, z: 0, w: wallT, d: H * 2 },  // west
+      { x: H, z: 0, w: wallT, d: H * 2 },   // east
+      { x: -H * 0.55, z: H, w: H * 0.9, d: wallT }, // south-left (gate gap in middle)
+      { x: H * 0.55, z: H, w: H * 0.9, d: wallT },  // south-right
+    ];
+    for (const wdef of walls) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(wdef.w, wallH, wdef.d), stone);
+      wall.position.set(wdef.x, wallH / 2, wdef.z);
+      g.add(wall);
+      wall.updateWorldMatrix(true, true); this._addBox(wall, false);
+    }
+    // Corner towers.
+    for (const s of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5, wallH + 6, 10), stone2);
+      tower.position.set(s[0] * H, (wallH + 6) / 2, s[1] * H); g.add(tower);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(5.5, 5, 10), roof);
+      cap.position.set(s[0] * H, wallH + 6 + 2.5, s[1] * H); g.add(cap);
+      tower.updateWorldMatrix(true, true); this._addBox(tower, false);
+    }
+    // Gatehouse flanking the south gap.
+    for (const sx of [-1, 1]) {
+      const gh = new THREE.Mesh(new THREE.BoxGeometry(6, wallH + 4, 6), stone2);
+      gh.position.set(sx * H * 0.16, (wallH + 4) / 2, H); g.add(gh);
+      gh.updateWorldMatrix(true, true); this._addBox(gh, false);
+    }
+    // A central keep.
+    const keep = new THREE.Mesh(new THREE.BoxGeometry(16, 16, 16), stone);
+    keep.position.set(0, 8, -H * 0.3); g.add(keep);
+    const keepRoof = new THREE.Mesh(new THREE.ConeGeometry(13, 8, 4), roof);
+    keepRoof.position.set(0, 20, -H * 0.3); keepRoof.rotation.y = Math.PI / 4; g.add(keepRoof);
+    keep.updateWorldMatrix(true, true); this._addBox(keep, false);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  }
+
+  // A tall, multi-level mage tower: stacked tapering drums with balconies, arcane
+  // runes, and a glowing orb crowning the top.
+  _mageTower(cx, cy, cz) {
+    const stone = new THREE.MeshLambertMaterial({ color: 0x4a4668 });
+    const trim = new THREE.MeshLambertMaterial({ color: 0x6a5a9a });
+    const roofM = new THREE.MeshLambertMaterial({ color: 0x2e2a55 });
+    const g = new THREE.Group(); g.position.set(cx, cy, cz);
+    this.group.add(g);
+    const tiers = 5;
+    let y = 0, rad = 9;
+    for (let t = 0; t < tiers; t++) {
+      const h = 9;
+      const drum = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.86, rad, h, 14), stone);
+      drum.position.y = y + h / 2; g.add(drum);
+      // A balcony ring at the top of each tier.
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.98, rad * 0.98, 0.8, 16), trim);
+      ring.position.y = y + h; g.add(ring);
+      drum.updateWorldMatrix(true, true); this._addBox(drum, true); // climbable — scale the spire
+      y += h; rad *= 0.82;
+    }
+    // Conical roof + a glowing arcane orb beacon.
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(rad * 1.4, 8, 14), roofM);
+    roof.position.y = y + 4; g.add(roof);
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 0), new THREE.MeshBasicMaterial({ color: 0xb78bff }));
+    orb.position.y = y + 10; g.add(orb);
+    const glow = new THREE.PointLight(0xb78bff, 2.6, 40); glow.position.y = y + 10; g.add(glow);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  }
+
+  // A small, friendly fishing village on the coast: a few huts, a jetty over the
+  // water, drying racks, and villagers. Also a bonfire so it's a rest/save stop.
+  _fishingVillage(cx, cy, cz, name, deg) {
+    const wall = new THREE.MeshLambertMaterial({ color: 0xb8a07a });
+    const roof = new THREE.MeshLambertMaterial({ color: 0x5a7a8a });
+    const woodM = new THREE.MeshLambertMaterial({ color: 0x6a4a2a });
+    const g = new THREE.Group(); g.position.set(cx, cy, cz);
+    this.group.add(g);
+    // Huts.
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + 0.3;
+      const hr = 7 + hash2(i, cx) * 3;
+      const hx = Math.cos(a) * hr, hz = Math.sin(a) * hr;
+      const hut = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(3.4, 2.6, 3.4), wall); body.position.y = 1.3;
+      const top = new THREE.Mesh(new THREE.ConeGeometry(2.8, 1.8, 4), roof); top.position.y = 3.4; top.rotation.y = Math.PI / 4;
+      hut.add(body, top); hut.position.set(hx, heightAt(cx + hx, cz + hz) - cy, hz);
+      g.add(hut);
+      body.updateWorldMatrix(true, true); this._addBox(body, false);
+    }
+    // A jetty running toward deeper water (outward from the map centre).
+    const outAng = deg * Math.PI / 180;
+    for (let j = 1; j <= 6; j++) {
+      const jx = Math.cos(outAng) * (8 + j * 2.4), jz = Math.sin(outAng) * (8 + j * 2.4);
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.3, 2.4), woodM);
+      plank.position.set(jx, (WATER_LEVEL + 0.4) - cy, jz); g.add(plank);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 3, 5), woodM);
+      post.position.set(jx, (WATER_LEVEL - 1) - cy, jz); g.add(post);
+    }
+    // Friendly villagers.
+    for (let i = 0; i < 4; i++) {
+      const a = hash2(i + 5, cx) * Math.PI * 2, rr = 3 + hash2(i, cz) * 5;
+      const nx = Math.cos(a) * rr, nz = Math.sin(a) * rr;
+      const npc = createStickman({ color: 0x8aa0b0, accent: 0x3a5a6a, scale: 0.95 });
+      npc.position.set(nx, heightAt(cx + nx, cz + nz) - cy, nz); npc.rotation.y = a;
+      g.add(npc);
+      this.villagers.push({ pos: new THREE.Vector3(cx + nx, cy, cz + nz), town: name });
+    }
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    // Rest bonfire (adds a fast-travel/save point on the coast).
+    this._makeBonfire(cx, cz, name);
+  }
+
+  // A palisade bandit base: a ring of sharpened stakes with a couple of tents.
+  _banditBase(cx, cy, cz) {
+    const woodM = new THREE.MeshLambertMaterial({ color: 0x5a3f28 });
+    const tentM = new THREE.MeshLambertMaterial({ color: 0x6a5a3a });
+    const g = new THREE.Group(); g.position.set(cx, cy, cz);
+    this.group.add(g);
+    const N = 16, ringR = 9;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      // Leave a gap for an entrance.
+      if (Math.abs(a - Math.PI) < 0.5) continue;
+      const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 3.4, 5), woodM);
+      stake.position.set(Math.cos(a) * ringR, 1.5, Math.sin(a) * ringR);
+      stake.rotation.z = (hash2(i, cx) - 0.5) * 0.2;
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 5), woodM);
+      tip.position.set(Math.cos(a) * ringR, 3.3, Math.sin(a) * ringR);
+      g.add(stake, tip);
+    }
+    for (const s of [[-3, -2], [3, 1]]) {
+      const tent = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.6, 4), tentM);
+      tent.position.set(s[0], 1.3, s[1]); tent.rotation.y = Math.PI / 4; g.add(tent);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  }
+
+  // Summon the Leviathan: a colossal, Godzilla-like beast that rises out of the
+  // deep ocean at the World's Edge. Built once; world.update() animates the rise.
+  triggerLeviathan(x, z) {
+    if (this._leviathan) return this._leviathan;
+    const skin = new THREE.MeshLambertMaterial({ color: 0x233038 });
+    const belly = new THREE.MeshLambertMaterial({ color: 0x3a5560 });
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(6, 9, 46, 12), skin); body.position.y = 23; g.add(body);
+    const chest = new THREE.Mesh(new THREE.CylinderGeometry(5, 6.5, 16, 12), belly); chest.position.set(0, 20, 3.5); g.add(chest);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 4.6, 12, 10), skin); neck.position.set(0, 42, 2); neck.rotation.x = -0.2; g.add(neck);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(9, 8, 13), skin); head.position.set(0, 49, 4); g.add(head);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(8.4, 3, 9), belly); jaw.position.set(0, 45.5, 6.5); g.add(jaw);
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffce3a }));
+      eye.position.set(sx * 2.7, 51, 9.5); g.add(eye);
+    }
+    for (let i = 0; i < 8; i++) { // dorsal spikes
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(1.7 - i * 0.05, 5, 5), skin);
+      sp.position.set(0, 8 + i * 5.2, -5.6 - i * 0.3); sp.rotation.x = -0.5; g.add(sp);
+    }
+    for (const sx of [-1, 1]) { // arms
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.7, 18, 8), skin);
+      arm.position.set(sx * 8.5, 22, 2.5); arm.rotation.z = sx * 0.5; g.add(arm);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    // Face the map centre (where the fleeing player is).
+    g.rotation.y = Math.atan2(-x, -z);
+    const from = WATER_LEVEL - 50; // fully submerged
+    g.position.set(x, from, z);
+    this.scene.add(g);
+    const light = new THREE.PointLight(0xff5a2a, 0, 160); light.position.set(x, WATER_LEVEL + 40, z); this.scene.add(light);
+    this._leviathan = { group: g, light, t: 0, from, to: WATER_LEVEL - 3 };
+    return this._leviathan;
+  }
+
   _portal(x, y, z, color) {
     const g = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.18, 8, 20), new THREE.MeshBasicMaterial({ color }));
@@ -1393,8 +1640,19 @@ export class World {
     if (this.water) this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.15;
     if (this._nexusOrb) { this._nexusOrb.rotation.y += dt; this._nexusOrb.rotation.x += dt * 0.5; }
 
+    // The Leviathan rising from the deep.
+    if (this._leviathan) {
+      const L = this._leviathan; L.t += dt;
+      const k = Math.min(1, L.t / 1.7);
+      L.group.position.y = L.from + (L.to - L.from) * (k * k * (3 - 2 * k));
+      L.group.rotation.y += dt * 0.12;
+      L.group.position.y += Math.sin(t * 1.5) * 0.4; // heave in the swell
+      L.light.intensity = Math.min(4.5, L.t * 3);
+    }
+
     // Camp chests: glow once unlocked; swing the lid open when looted.
     for (const c of this.camps) {
+      if (!c.chest) continue; // bandit bases have no loot chest
       if (c.opened) {
         c.lid.rotation.x = THREE.MathUtils.lerp(c.lid.rotation.x, -2.2, Math.min(1, dt * 6));
         c.glow.intensity = 0;

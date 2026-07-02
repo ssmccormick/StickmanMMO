@@ -28,6 +28,7 @@ export class Combat {
     this.drops = [];     // world loot pickups
     this._fx = [];
     this.casting = null; // in-progress spell cast: { slot, ab, until, total }
+    this.channeling = null; // in-progress sustained channel: { ab, left, tickAcc, fxAcc }
     this.target = null;
     this.onLoot = null;     // (item) => void, set by main for logging
     this.onPartyXp = null;  // (xp) => void, set by main to share kill XP with partymates
@@ -37,13 +38,15 @@ export class Combat {
     const p = this.player;
     if (this.target && !this.target.alive) this.target = null;
 
-    // Resolve any in-progress spell cast first (it may fire this frame).
+    // Resolve any in-progress spell cast first (it may fire this frame), then
+    // advance a sustained channel (e.g. the Kamehameha beam) if one is running.
     this._updateCast(dt);
+    this._updateChannel(dt);
 
     if (p.alive && !this.suppressInput) {
       if (input.just('KeyF')) this.cycleTarget(); // Tab now swaps weapons (handled in main)
-      // Auto-attacks and new abilities are locked out while charging a spell.
-      if (!this.casting) {
+      // Auto-attacks and new abilities are locked out while charging or channelling.
+      if (!this.casting && !this.channeling) {
         if (input.lmb && p.attackTimer <= 0) this.autoAttack();
         const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
         for (let i = 0; i < keys.length; i++) if (input.just(keys[i])) this.useAbility(i);
@@ -242,6 +245,9 @@ export class Combat {
   // completion of a charged cast).
   _fireAbility(ab) {
     this._emitAction(this._fxForKind(ab.kind), ab.color || 0xffffff); // show it to other players
+    // Sustained abilities (channels) keep firing for a while after the cast —
+    // the beam pours out continuously rather than as one burst.
+    if (ab.channel > 0 && ab.kind === 'beam') { this._startChannel(ab); return; }
     switch (ab.kind) {
       case 'melee': this._kMelee(ab); break;
       case 'projectile': this._kProjectile(ab); break;
@@ -427,8 +433,11 @@ export class Combat {
   }
 
   // Kamehameha-style beam: a channelled line that hits every foe in its path.
-  // Bends toward the target/aimed foe so it's easy to land down a lane.
-  _kBeam(ab) {
+  // Bends toward the target/aimed foe so it's easy to land down a lane. When the
+  // ability has a `channel`, this is called every tick by _updateChannel; `dps`
+  // (fraction of a second) scales the damage so a sustained beam is DPS, not a
+  // huge instant hit. A one-shot beam (no channel) passes dps = 1.
+  _kBeam(ab, dps = 1) {
     const dir = this._aimDir(ab.range, 0.55); // 3D — can be angled up or down
     this._face(dir);
     const origin = this.player.pos.clone(); origin.y += 1.3; // chest height
@@ -440,11 +449,37 @@ export class Combat {
       if (proj < 0 || proj > ab.range) continue;
       const perp = to.addScaledVector(dir, -proj).length(); // perpendicular distance (3D)
       if (perp > halfW) continue;
-      this._strike(e, this.player.apower * ab.mult, { crit: this.def.critBonus || 0 });
+      this._strike(e, this.player.apower * ab.mult * dps, { crit: this.def.critBonus || 0, silent: dps < 1 });
       if (ab.stunOnHit) e.applyStun(ab.stunOnHit);
     }
     this._beamFx(this.player.pos.clone(), dir, ab.range, ab.width || 2, ab.color || 0x3aa0ff);
+  }
+
+  // Begin a sustained channel (currently the beam). The player is rooted-slow
+  // and keeps aiming with the camera while the beam pours out for `ab.channel`
+  // seconds; damage is applied as DPS in small ticks.
+  _startChannel(ab) {
+    this.channeling = { ab, left: ab.channel, tickAcc: 0, fxAcc: 0, tickEvery: 0.12 };
+    this.player.casting = true;                 // slows movement like a cast
     if (this.audio) this.audio.play('cast');
+  }
+
+  _updateChannel(dt) {
+    const c = this.channeling;
+    if (!c) return;
+    const p = this.player;
+    if (!p.alive) { this.channeling = null; p.casting = false; return; }
+    this._faceCam();
+    p.casting = true;
+    p.attackAnim = Math.max(p.attackAnim, 0.6);  // hold the firing pose
+    c.left -= dt; c.tickAcc += dt;
+    // Damage ticks: DPS ≈ apower·mult, split across small ticks. Each tick also
+    // refreshes the beam FX (ttl > tick interval), so it reads as continuous.
+    while (c.tickAcc >= c.tickEvery) {
+      c.tickAcc -= c.tickEvery;
+      this._kBeam(c.ab, c.tickEvery * 0.6); // 0.6 tempers the sustained total
+    }
+    if (c.left <= 0) { this.channeling = null; p.casting = false; }
   }
 
   // Instant Step: teleport behind the locked/aimed target, face it, and snap
@@ -519,17 +554,19 @@ export class Combat {
   }
 
   // ---- Damage application ----
-  _strike(enemy, amount, { crit = 0 }) {
+  _strike(enemy, amount, { crit = 0, silent = false }) {
     // Giantslayer (Boss Slayer reward): extra punishment against bosses.
     if (enemy.boss && this.player.passives && this.player.passives.has('giantslayer')) amount *= 1.25;
     const isCrit = Math.random() < (0.05 + crit + this.player.gearCrit);
     let dmg = amount * (0.9 + Math.random() * 0.2);
     if (isCrit) dmg *= 1.8;
     const res = enemy.takeDamage(dmg, isCrit);
-    if (this.audio) this.audio.play('hit');
+    // Channel ticks strike many times a second — stay quiet so we don't spam the
+    // hit sound / damage numbers; a channel shows one number occasionally.
+    if (this.audio && !silent) this.audio.play('hit');
     // Dealing damage charges the Saiyan's Ki gauge.
     if (res.dealt > 0) this.player.addKi(res.dealt * 0.2 + 2);
-    this.ui.floater(`${res.dealt}${isCrit ? '!' : ''}`, isCrit ? 'crit' : 'dmg', enemy.pos);
+    if (!silent || Math.random() < 0.25) this.ui.floater(`${res.dealt}${isCrit ? '!' : ''}`, isCrit ? 'crit' : 'dmg', enemy.pos);
     // Lifesteal from gear (e.g. unique weapons) heals on every hit.
     if (this.player.gearLifesteal > 0 && res.dealt > 0) this.player.heal(res.dealt * this.player.gearLifesteal);
     if (res.killed) this.creditKill(enemy);

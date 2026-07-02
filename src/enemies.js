@@ -690,6 +690,14 @@ export function spawnBosses(scene, world) {
   });
 }
 
+// Bosses tied to hand-placed landmarks (castle lords, the Archmagus, etc.).
+export function spawnBossSites(scene, world) {
+  return (world.bossSites || []).map((sp) => {
+    const home = new THREE.Vector3(sp.x, 0, sp.z);
+    return new Enemy(scene, world, sp.type, sp.level, home, { boss: true, bossName: sp.name });
+  });
+}
+
 // Populate each dungeon with a pack of monsters and a dungeon Warden boss.
 export function spawnDungeons(scene, world) {
   const enemies = [];

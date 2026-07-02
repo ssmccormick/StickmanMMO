@@ -225,6 +225,12 @@ export const CAVE_SITES = CAVES.map((c) => ({ x: c.sx, z: c.sz, radius: 40, floo
 const SEA_IN = 52 * SCALE, SEA_OUT = 92 * SCALE; // inner/outer radius of the Sundered Sea ring
 export { SEA_IN, SEA_OUT };
 
+// The outer coastline: beyond this radius the continent slides into open ocean.
+// Farther still lies the Leviathan Zone (a swim into deep water that summons the
+// beast). Content is kept within EDGE_SHORE; the ocean is the outer margin.
+export const EDGE_SHORE = WORLD_SIZE * 0.85;
+export const LEVIATHAN_RADIUS = WORLD_SIZE * 0.94;
+
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
 // plateaus), all flattened to level ground around every town.
@@ -289,6 +295,16 @@ export function heightAt(x, z) {
     const bridge = roadDistance(x, z) < 10 ? 1 : 0;
     const seaFloor = WATER_LEVEL - 6 + smoothNoise(x * 0.05, z * 0.05) * 2.5;
     h = lerp(h, seaFloor, ring * (1 - bridge));
+  }
+
+  // The World's Edge: beyond the outer shore the land gives way to open ocean
+  // you can swim into — and, far enough out, the Leviathan's domain. The ground
+  // ramps below the waterline so there's no invisible wall to walk off; you just
+  // wade into the sea.
+  if (rad > EDGE_SHORE) {
+    const oceanFloor = WATER_LEVEL - 14 + smoothNoise(x * 0.04, z * 0.04) * 3;
+    const k = smoothstep(EDGE_SHORE, EDGE_SHORE + 60 * SCALE, rad);
+    h = lerp(h, oceanFloor, k);
   }
   return h;
 }

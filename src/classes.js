@@ -240,7 +240,7 @@ export const CLASSES = {
     baseDamage: 15, attackSpeed: 0.42, range: 2.6,
     abilities: [
       { id: 'kiblast', name: 'Ki Blast', kind: 'projectile', glyph: '🟡', cost: 10, costType: 'mp', cooldown: 1.2, reqLevel: 1, count: 1, speed: 34, mult: 2.2, aoe: 1.6, color: 0xffe24a, shape: 'orb', desc: 'A quick bolt of golden ki hurled at your foe.' },
-      { id: 'kamehameha', name: 'Kamehameha', kind: 'beam', glyph: '🌊', cost: 34, costType: 'mp', cooldown: 8, reqLevel: 2, range: 24, width: 2.4, mult: 5.6, stunOnHit: 0.6, color: 0x3aa0ff, castTime: 1.2, desc: 'Channel a massive blue beam that scorches everything in a line ahead.' },
+      { id: 'kamehameha', name: 'Kamehameha', kind: 'beam', glyph: '🌊', cost: 34, costType: 'mp', cooldown: 8, reqLevel: 2, range: 24, width: 2.4, mult: 5.6, stunOnHit: 0.6, color: 0x3aa0ff, castTime: 1.2, channel: 3, desc: 'Charge, then pour out a massive blue beam that scorches everything in a line ahead — sustained for 3s, longer at higher ranks.' },
       { id: 'instantstep', name: 'Instant Step', kind: 'instantstep', glyph: '💫', cost: 18, costType: 'mp', cooldown: 6, reqLevel: 3, range: 36, mult: 2.6, color: 0xfff2a0, desc: 'Vanish and reappear behind your target, facing them — the view snaps around with you.' },
       { id: 'supersaiyan', name: 'Super Saiyan', kind: 'transform', glyph: '✨', cost: 0, costType: 'mp', cooldown: 1.5, reqLevel: 4, dur: 30, color: 0xffe24a, desc: 'Spend a FULL Ki gauge to ascend (SSJ1→2→3): +100% to all attributes per tier for 30s. Ascend again before it fades to climb higher.' },
       { id: 'afterimage', name: 'After-Image', kind: 'dash', glyph: '💨', cost: 14, costType: 'sp', cooldown: 5, reqLevel: 6, range: 9, arc: 1.6, mult: 1.8, iframes: 0.45, color: 0xbff0ff, desc: 'Blur forward through foes, cutting them while you dodge.' },
@@ -276,6 +276,7 @@ export function effectiveAbility(classId, id, rank) {
   if (a.mult != null) e.mult = +(a.mult * (1 + 0.28 * k)).toFixed(3);
   if (a.cooldown != null) e.cooldown = +(a.cooldown * (1 - 0.12 * k)).toFixed(3);
   if (a.castTime != null) e.castTime = +(a.castTime * (1 - 0.1 * k)).toFixed(3); // ranks cast faster
+  if (a.channel != null) e.channel = +(a.channel + k).toFixed(2);                // +1s of sustained fire per rank
   if (a.count != null) e.count = a.count + k;            // +1 projectile per rank
   if (a.aoe != null) e.aoe = +(a.aoe * (1 + 0.12 * k)).toFixed(3);
   if (a.radius != null) e.radius = +(a.radius * (1 + 0.12 * k)).toFixed(3);
