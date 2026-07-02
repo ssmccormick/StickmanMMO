@@ -103,14 +103,43 @@ export class Combat {
     const c = this.player.pos.clone(); c.y += 1.3; return c;
   }
 
-  // The direction offensive skills travel: exactly where the crosshair POINTS.
-  // The shot leaves the weapon tip heading parallel to the camera's view ray
-  // (screen-centre = crosshair), so it flies in the direction you're looking —
-  // NOT bent toward whatever point the crosshair happens to rest on. Fully 3D
-  // (look up to fire up, down to fire down) and purely skill-based: no aim
-  // assist, no convergence, no snapping.
+  // The point the crosshair is actually on, found by marching the CAMERA's
+  // centre ray (screen-centre = crosshair). Enemy first (so aiming at a foe
+  // converges exactly on it), else the ground *only when you're aiming
+  // downward*, else a far point straight down the crosshair. Marched to a long
+  // reach — NOT the short ability range — so it never bends toward a nearby
+  // point; it just finds where the crosshair truly points.
+  _aimConvergePoint() {
+    const REACH = 220;
+    const C = this.cam.cam.position;
+    const dir = this.cam.aimForward();
+    let depth = REACH;
+    // Nearest enemy the ray passes through (its true depth) — this is what kills
+    // the "shots land beside the crosshair" offset when firing at a foe.
+    for (const e of this.enemies) {
+      if (!e.alive) continue;
+      const to = new THREE.Vector3().subVectors(e.pos.clone().setY(e.pos.y + 1), C);
+      const proj = to.dot(dir);
+      if (proj <= 0.5 || proj > depth) continue;
+      const perp = Math.sqrt(Math.max(0, to.lengthSq() - proj * proj));
+      if (perp <= (e.displayScale || 1) * 1.1 + 0.7) depth = proj;
+    }
+    // Ground, but only if genuinely aiming down — a level/upward shot must stay
+    // straight along the crosshair, not dive into distant terrain.
+    if (dir.y < -0.08) {
+      for (let d = 2; d <= depth; d += 2) {
+        if (C.y + dir.y * d <= heightAt(C.x + dir.x * d, C.z + dir.z * d)) { depth = d; break; }
+      }
+    }
+    return new THREE.Vector3(C.x + dir.x * depth, C.y + dir.y * depth, C.z + dir.z * depth);
+  }
+
+  // The direction offensive skills travel: from the weapon tip toward the point
+  // the crosshair is on, so the shot passes THROUGH the crosshair (no side
+  // offset from the shoulder-mounted camera) while still going where you aim.
+  // Fully 3D and skill-based — no aim assist, no snapping to off-crosshair foes.
   _aimDir(_range, _arc) {
-    return this.cam.aimForward();
+    return new THREE.Vector3().subVectors(this._aimConvergePoint(), this._muzzle()).normalize();
   }
 
   // Where a ground-targeted AoE lands: march the crosshair's ray to the ground,
