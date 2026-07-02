@@ -231,6 +231,22 @@ export { SEA_IN, SEA_OUT };
 export const EDGE_SHORE = WORLD_SIZE * 0.85;
 export const LEVIATHAN_RADIUS = WORLD_SIZE * 0.94;
 
+// The Arcanum Spire (great Mage Tower). Built straight into the heightfield as a
+// tall STEPPED cone so you can literally walk up its tiers to a big flat summit
+// arena (the movement snaps to heightAt, so stepped terrain is walkable). The
+// visual tower mesh + rampart colliders (world.js) match these numbers.
+export const MAGE_TOWER = { ...polar(210, WORLD_SIZE * 0.56), topR: 26, baseR: 96, height: 60, tiers: 12 };
+
+// The tower's foot elevation (terrain under its centre), sampled once WITHOUT
+// the tower's own contribution so tiers rise from real ground, not recursively.
+let _towerFoot = null, _inFootSample = false;
+function towerFoot() {
+  if (_towerFoot == null) { _inFootSample = true; _towerFoot = heightAt(MAGE_TOWER.x, MAGE_TOWER.z); _inFootSample = false; }
+  return _towerFoot;
+}
+// Absolute summit height of the tower (for spawning the boss/guards on top).
+export function mageTowerSummitY() { return towerFoot() + MAGE_TOWER.height; }
+
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
 // plateaus), all flattened to level ground around every town.
@@ -276,6 +292,30 @@ export function heightAt(x, z) {
   h *= flat;
   // Lift terrain so flattened towns sit at a consistent, walkable height.
   h += (1 - flat) * townBaseHeight(x, z);
+
+  // The Arcanum Spire: a tall stepped cone rising from the land to a broad flat
+  // summit. Walkable tier-by-tier (each step just pops you up), so you climb the
+  // tower to fight the boss on top. Skipped while sampling the foot height.
+  if (!_inFootSample) {
+    const mt = MAGE_TOWER;
+    const dr = Math.hypot(x - mt.x, z - mt.z);
+    if (dr < mt.baseR) {
+      const foot = towerFoot();
+      const summit = foot + mt.height;
+      let ty;
+      if (dr <= mt.topR) ty = summit; // flat summit arena
+      else {
+        const rr = (dr - mt.topR) / (mt.baseR - mt.topR);      // 0 at summit rim → 1 at foot
+        const tier = Math.floor((1 - rr) * mt.tiers);           // stepped tiers
+        ty = foot + (mt.height) * (tier / mt.tiers);
+      }
+      // Only ever raise the ground; blend the outermost tier into the terrain at
+      // the base so there's no wall to climb onto from the field.
+      const inside = 1 - smoothstep(mt.baseR - 14, mt.baseR, dr);
+      h = lerp(h, Math.max(h, ty), inside);
+      if (dr <= mt.topR) h = summit;
+    }
+  }
 
   // The Sundered Sea: a ring of deep water encircling the Nexus heartland, so
   // the central capital is an island and the eight reaches lie beyond the

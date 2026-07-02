@@ -698,6 +698,15 @@ export function spawnBossSites(scene, world) {
   });
 }
 
+// Guard packs that garrison hand-placed structures (castle courtyards, the mage
+// tower's tiers and summit). Positions carry their own Y via heightAt.
+export function spawnExtras(scene, world) {
+  return (world.extraSpawns || []).map((sp) => {
+    const home = new THREE.Vector3(sp.x, 0, sp.z);
+    return new Enemy(scene, world, sp.type, sp.level, home, { elite: !!sp.elite });
+  });
+}
+
 // Populate each dungeon with a pack of monsters and a dungeon Warden boss.
 export function spawnDungeons(scene, world) {
   const enemies = [];

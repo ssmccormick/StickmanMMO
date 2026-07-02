@@ -16,13 +16,13 @@ import {
   BIOME_LAYOUT, BIOME_SIZE, BIOME_REGIONS, biomeWeights, TOWNS, capOff, AREAS,
   CAMPS, BOSSES, areaAt, ROADS, roadDistance, DUNGEONS, DUNGEON_SITES, MOUNTAINS,
   CAVES, CAVE_SITES, SEA_IN, SEA_OUT, EDGE_SHORE, LEVIATHAN_RADIUS,
-  heightAt, townBaseHeight, BIOMES, biomeAt,
+  MAGE_TOWER, mageTowerSummitY, heightAt, townBaseHeight, BIOMES, biomeAt,
 } from './sim/terrain.js';
 
 // Re-export the world-data API that the rest of the game imports from world.js.
 export {
   WORLD_SIZE, WATER_LEVEL, TOWNS, AREAS, MOUNTAINS, BOSSES, DUNGEONS, CAVES,
-  EDGE_SHORE, LEVIATHAN_RADIUS, heightAt, areaAt, BIOMES,
+  EDGE_SHORE, LEVIATHAN_RADIUS, MAGE_TOWER, heightAt, areaAt, BIOMES,
 };
 
 const EMPTY_COLLIDERS = []; // shared empty list for resolveCircle grid misses
@@ -74,6 +74,7 @@ export class World {
     this.shrines = [];     // buff shrines
     this.landmarks = [];   // named map landmarks (castles, mage tower, fishing villages)
     this.bossSites = [];   // { x, z, type, level, name } — bosses spawned by main
+    this.extraSpawns = []; // { x, z, type, level, elite } — structure guards spawned by main
     this._build();
   }
 
@@ -974,6 +975,16 @@ export class World {
     this.spawnZones = AREAS.filter((a) => !a.safe).map((a) => ({
       center: new THREE.Vector3(a.x, 0, a.z), radius: a.r * 0.95, level: a.level, count: a.count || 9, name: a.name,
     }));
+    // Extra WILD spawn zones scattered through the now-vast open world, so the
+    // space between named areas isn't empty. Level scales with distance out.
+    for (let i = 0; i < 36; i++) {
+      const ang = hash2(i, 71) * Math.PI * 2;
+      const rad = (0.16 + hash2(i, 73) * 0.62) * WORLD_SIZE; // between the heartland and the shore
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (this.inSafeZone(x, z) || heightAt(x, z) < WATER_LEVEL + 0.5) continue;
+      const level = Math.max(1, Math.round(2 + (rad / WORLD_SIZE) * 44)); // farther = tougher
+      this.spawnZones.push({ center: new THREE.Vector3(x, 0, z), radius: 34, level, count: 6, name: null });
+    }
   }
 
   // ---- Safe zones (no monsters near towns) ----
@@ -1042,18 +1053,30 @@ export class World {
       if (p.y < WATER_LEVEL + 1) continue; // don't drop a castle in the sea
       this._castle(p.x, p.y, p.z, c.name);
       this.bossSites.push({ x: p.x, z: p.z, type: 'knight', level: c.level, name: `Lord of ${c.name}` });
+      // Garrison: a ring of knight/brute guards patrolling the courtyard + walls.
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const gr = 10 + (i % 3) * 9;
+        this.extraSpawns.push({ x: p.x + Math.cos(a) * gr, z: p.z + Math.sin(a) * gr, type: i % 3 === 0 ? 'brute' : 'knight', level: c.level - 3, elite: true });
+      }
       this.landmarks.push({ name: c.name, x: p.x, z: p.z, glyph: '🏰', color: '#c98a5a' });
     }
 
-    // --- The great Mage Tower: a tall, multi-tier climbable spire with an
-    //     Archmagus boss guarding its base. ---
+    // --- The great Mage Tower (Arcanum Spire): a colossal stepped spire (built
+    //     into the terrain — see MAGE_TOWER in terrain.js) that you climb tier by
+    //     tier to a broad flat summit where the Archmagus awaits, ringed by
+    //     ramparts so the fight stays on top. Guards defend the tiers. ---
     {
-      const p = landAt(polarPt(210, R * 0.56));
-      if (p.y > WATER_LEVEL + 1) {
-        this._mageTower(p.x, p.y, p.z);
-        this.bossSites.push({ x: p.x + 6, z: p.z + 6, type: 'hexer', level: 34, name: 'Archmagus Nyxaris' });
-        this.landmarks.push({ name: 'The Arcanum Spire', x: p.x, z: p.z, glyph: '🔮', color: '#b78bff' });
-      }
+      const mt = MAGE_TOWER;
+      const foot = heightAt(mt.x, mt.z) - mt.height; // heightAt at centre = summit; foot = summit - height
+      const summitY = heightAt(mt.x, mt.z);
+      this._mageTower(mt.x, foot, mt.z, summitY);
+      // The Archmagus stands at the centre of the summit arena.
+      this.bossSites.push({ x: mt.x, z: mt.z, type: 'hexer', level: 36, name: 'Archmagus Nyxaris', boss: true });
+      // Acolyte guards on the summit and partway down the tiers.
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.4; this.extraSpawns.push({ x: mt.x + Math.cos(a) * (mt.topR - 6), z: mt.z + Math.sin(a) * (mt.topR - 6), type: 'hexer', level: 33, elite: true }); }
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const rr = mt.topR + 22; this.extraSpawns.push({ x: mt.x + Math.cos(a) * rr, z: mt.z + Math.sin(a) * rr, type: i % 2 ? 'archer' : 'knight', level: 30, elite: true }); }
+      this.landmarks.push({ name: 'The Arcanum Spire', x: mt.x, z: mt.z, glyph: '🔮', color: '#b78bff' });
     }
 
     // --- Friendly fishing villages out on the coast (safe rest stops) ---
@@ -1131,32 +1154,58 @@ export class World {
     g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 
-  // A tall, multi-level mage tower: stacked tapering drums with balconies, arcane
-  // runes, and a glowing orb crowning the top.
-  _mageTower(cx, cy, cz) {
+  // The Arcanum Spire's visuals — decorating the walkable stepped cone that
+  // heightAt already carves (see MAGE_TOWER in terrain.js). Facade bands wrap
+  // each tier, and a crenellated rampart rings the flat summit (with an entry
+  // gap) — the ramparts are the only colliders, so they keep the boss and player
+  // from walking off the top while the tiers stay walkable.
+  _mageTower(cx, footY, cz, summitY) {
+    const mt = MAGE_TOWER;
     const stone = new THREE.MeshLambertMaterial({ color: 0x4a4668 });
-    const trim = new THREE.MeshLambertMaterial({ color: 0x6a5a9a });
-    const roofM = new THREE.MeshLambertMaterial({ color: 0x2e2a55 });
-    const g = new THREE.Group(); g.position.set(cx, cy, cz);
+    const stone2 = new THREE.MeshLambertMaterial({ color: 0x565080 });
+    const trim = new THREE.MeshLambertMaterial({ color: 0x7a6ab0 });
+    const g = new THREE.Group(); g.position.set(cx, 0, cz); // children use absolute Y
     this.group.add(g);
-    const tiers = 5;
-    let y = 0, rad = 9;
-    for (let t = 0; t < tiers; t++) {
-      const h = 9;
-      const drum = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.86, rad, h, 14), stone);
-      drum.position.y = y + h / 2; g.add(drum);
-      // A balcony ring at the top of each tier.
-      const ring = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.98, rad * 0.98, 0.8, 16), trim);
-      ring.position.y = y + h; g.add(ring);
-      drum.updateWorldMatrix(true, true); this._addBox(drum, true); // climbable — scale the spire
-      y += h; rad *= 0.82;
+
+    // Facade band at each tier's riser (visual only — the cone is the walkway).
+    for (let k = 1; k <= mt.tiers; k++) {
+      const tierTopY = footY + mt.height * (k / mt.tiers);
+      const rOuter = mt.topR + (1 - k / mt.tiers) * (mt.baseR - mt.topR);
+      const step = mt.height / mt.tiers;
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(rOuter, rOuter + 2.4, step + 0.6, 30, 1, true), k % 2 ? stone : stone2);
+      band.position.y = tierTopY - step / 2; g.add(band);
+      const lip = new THREE.Mesh(new THREE.TorusGeometry(rOuter, 0.35, 6, 32), trim);
+      lip.rotation.x = Math.PI / 2; lip.position.y = tierTopY; g.add(lip);
     }
-    // Conical roof + a glowing arcane orb beacon.
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(rad * 1.4, 8, 14), roofM);
-    roof.position.y = y + 4; g.add(roof);
-    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 0), new THREE.MeshBasicMaterial({ color: 0xb78bff }));
-    orb.position.y = y + 10; g.add(orb);
-    const glow = new THREE.PointLight(0xb78bff, 2.6, 40); glow.position.y = y + 10; g.add(glow);
+
+    // Crenellated rampart ring around the summit, with a gap on the +x side.
+    const rampR = mt.topR - 1.5, segs = 34;
+    for (let i = 0; i < segs; i++) {
+      const a = (i / segs) * Math.PI * 2;
+      if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a))) < 0.3) continue; // entry gap at +x
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(2.3, 3.4, 1.1), stone);
+      wall.position.set(Math.cos(a) * rampR, summitY + 1.7, Math.sin(a) * rampR); wall.rotation.y = -a;
+      g.add(wall);
+      wall.updateWorldMatrix(true, true); this._addBox(wall, false); // solid — keeps the fight on top
+      const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 1.1), stone2);
+      merlon.position.set(Math.cos(a) * rampR, summitY + 3.6, Math.sin(a) * rampR); merlon.rotation.y = -a; g.add(merlon);
+    }
+
+    // Four corner braziers on the summit for atmosphere.
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + Math.PI / 4;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 3, 6), trim);
+      post.position.set(Math.cos(a) * (mt.topR - 4), summitY + 1.5, Math.sin(a) * (mt.topR - 4)); g.add(post);
+      const flame = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 0), new THREE.MeshBasicMaterial({ color: 0xb78bff }));
+      flame.position.set(Math.cos(a) * (mt.topR - 4), summitY + 3.3, Math.sin(a) * (mt.topR - 4)); g.add(flame);
+      const bl = new THREE.PointLight(0xb78bff, 1.4, 26); bl.position.copy(flame.position); g.add(bl);
+    }
+
+    // A great arcane beacon floating high above the arena (no collider).
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2, 0), new THREE.MeshBasicMaterial({ color: 0xc7a4ff }));
+    orb.position.y = summitY + 26; g.add(orb);
+    const glow = new THREE.PointLight(0xb78bff, 3.2, 120); glow.position.y = summitY + 26; g.add(glow);
+    this._arcanumOrb = orb;
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   }
 
@@ -1639,6 +1688,7 @@ export class World {
     }
     if (this.water) this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.15;
     if (this._nexusOrb) { this._nexusOrb.rotation.y += dt; this._nexusOrb.rotation.x += dt * 0.5; }
+    if (this._arcanumOrb) { this._arcanumOrb.rotation.y += dt * 0.6; this._arcanumOrb.position.y += Math.sin(t * 1.2) * 0.02; }
 
     // The Leviathan rising from the deep.
     if (this._leviathan) {

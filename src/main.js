@@ -8,7 +8,7 @@ import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
 import { NetEnemies } from './netenemies.js';
 import { UI } from './ui.js';
@@ -140,6 +140,7 @@ function beginGame(classId, name, server, save, appearance) {
   enemies.push(...spawnCamps(scene, world)); // elite camp packs
   enemies.push(...spawnBosses(scene, world)); // world bosses
   enemies.push(...spawnBossSites(scene, world)); // castle lords + the Archmagus
+  enemies.push(...spawnExtras(scene, world));    // castle garrisons + mage-tower guards
   enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
   enemies.push(...spawnFlyers(scene, world));    // Sky Wraiths patrolling the air
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
