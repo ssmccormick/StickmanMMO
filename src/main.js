@@ -3,7 +3,7 @@
 // player, camera, enemies, combat, UI, audio, and networking.
 // ============================================================
 import * as THREE from 'three';
-import { World, areaAt, WATER_LEVEL, LEVIATHAN_RADIUS } from './world.js';
+import { World, areaAt, WATER_LEVEL, WORLD_SIZE, LEVIATHAN_RADIUS } from './world.js';
 import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
@@ -426,7 +426,10 @@ function animate() {
     // ---- The Leviathan Zone: swim too far past the coast and the beast wakes. ----
     if (player.alive) {
       const rad = Math.hypot(player.pos.x, player.pos.z);
-      const inZone = rad > LEVIATHAN_RADIUS;
+      // Only the overworld ocean band counts. Dungeon/cave instances live far
+      // off the map (radius ≫ the world), so exclude anything past the edge —
+      // otherwise porting into an instance reads as "deep in the Leviathan sea".
+      const inZone = rad > LEVIATHAN_RADIUS && rad < WORLD_SIZE * 1.2;
       const DUR = 8; // seconds in the zone before the Leviathan rises
       if (inZone && !leviathanTriggered) {
         leviathanT = Math.min(DUR, leviathanT + dt);
