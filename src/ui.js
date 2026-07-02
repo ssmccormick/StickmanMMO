@@ -445,6 +445,15 @@ export class UI {
     atk.className = 'slot ready';
     atk.innerHTML = `<span class="key">LMB</span>${def.ranged ? '🏹' : '⚔️'}`;
     this.el.hotbar.appendChild(atk);
+    // Health-potion quick-slot, right beside the main attack. Shows how many are
+    // in the bag; click (or press Q) to quaff one.
+    const pot = document.createElement('div');
+    pot.className = 'slot ready pot-slot';
+    pot.title = 'Quick heal (Q) — quaff a health potion';
+    pot.innerHTML = `<span class="key">Q</span>🧪<span class="cost pot-count">0</span>`;
+    pot.onclick = () => { if (this.onQuickHeal) this.onQuickHeal(); };
+    this.el.hotbar.appendChild(pot);
+    this._potSlot = pot; this._potCount = pot.querySelector('.pot-count');
     this.slots = [];
     player.learned.forEach((l, i) => {
       const a = player.ability(i); // rank-scaled
@@ -517,6 +526,14 @@ export class UI {
       const q = Quests.QUESTS[id]; const pr = Quests.progressOf(player, id); const done = pr >= q.count;
       return `<div class="qt ${done ? 'done' : ''}">📜 ${q.title} <b>${pr}/${q.count}</b>${done ? ' ✓ turn in' : ''}</div>`;
     }).join('');
+
+    // Potion quick-slot count (health potions in the bag; empty = greyed out).
+    if (this._potCount) {
+      const n = player.inventory.filter((it) => it.type === 'consumable' && it.kind === 'heal').length;
+      this._potCount.textContent = n;
+      this._potSlot.classList.toggle('ready', n > 0);
+      this._potSlot.style.opacity = n > 0 ? '1' : '0.45';
+    }
 
     // hotbar cooldowns
     if (this.slots) {
@@ -730,7 +747,8 @@ export class UI {
         <input id="set-ls" type="range" min="0.3" max="2.5" step="0.05" value="${s.lookSens}"></div>
       <div class="set-row set-check"><label><input id="set-inv" type="checkbox" ${s.invertY ? 'checked' : ''}> Invert look (Y axis)</label></div>
       <div class="set-row set-check"><label><input id="set-hint" type="checkbox" ${s.showHint ? 'checked' : ''}> Show controls hint</label></div>
-      <button class="set-reset">Reset to defaults</button>`;
+      <button class="set-reset">Reset to defaults</button>
+      <button class="set-quit" style="margin-top:10px;width:100%;padding:10px;background:#5a1f1f;color:#ffd7d7;border:1px solid #a13a3a;border-radius:6px;font-weight:bold;cursor:pointer;">⎋ Quit to Character Selection</button>`;
     const bind = (id, key, vid, fmt) => {
       const el = this.setBody.querySelector('#' + id);
       el.addEventListener('input', () => {
@@ -745,6 +763,22 @@ export class UI {
     this.setBody.querySelector('#set-inv').addEventListener('change', (e) => this.setSetting('invertY', e.target.checked));
     this.setBody.querySelector('#set-hint').addEventListener('change', (e) => this.setSetting('showHint', e.target.checked));
     this.setBody.querySelector('.set-reset').addEventListener('click', () => { this.settings = this._defaultSettings(); this._saveSettings(); this.applySettings(); this.renderSettings(); });
+    this.setBody.querySelector('.set-quit').addEventListener('click', () => { if (this.onQuitToMenu) this.onQuitToMenu(); });
+  }
+
+  // Close whichever menu/overlay is open (top-most). Returns true if one closed.
+  // Used by the ESC key: ESC closes an open window, else opens the options menu.
+  closeTopPanel() {
+    if (this._chatActive) { this._closeChat(); return true; }
+    const panels = [
+      ['inventoryOpen', 'closeInventory'], ['vendorOpen', 'closeVendor'], ['skillsOpen', 'closeSkills'],
+      ['questDialogOpen', 'closeQuestDialog'], ['questLogOpen', 'closeQuestLog'], ['charSheetOpen', 'closeCharSheet'],
+      ['worldMapOpen', 'closeWorldMap'], ['dialogueOpen', 'closeDialogue'], ['codexOpen', 'closeCodex'],
+      ['emotesOpen', 'closeEmotes'], ['achievementsOpen', 'closeAchievements'], ['wardrobeOpen', 'closeWardrobe'],
+      ['settingsOpen', 'closeSettings'],
+    ];
+    for (const [flag, fn] of panels) if (this[flag] && typeof this[fn] === 'function') { this[fn](); return true; }
+    return false;
   }
 
   // ---- Minimap ----
@@ -815,7 +849,10 @@ export class UI {
     // player (always center) with facing
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(-player.facing);
+    // Point the arrow the way the player faces. The apex starts pointing "up"
+    // (canvas −y); rotating by (π − facing) aims it along the facing direction
+    // in minimap space (world x,z map straight to canvas x,y).
+    ctx.rotate(Math.PI - player.facing);
     ctx.fillStyle = '#ffe27a';
     ctx.beginPath();
     ctx.moveTo(0, -6); ctx.lineTo(4, 5); ctx.lineTo(-4, 5); ctx.closePath();

@@ -197,6 +197,15 @@ function beginGame(classId, name, server, save, appearance) {
     : `Welcome, ${name} the ${classId}. Slay monsters and grow strong!`, 'sys');
   ui.log('Rest at a bonfire (orange flame, press E) to heal and SAVE your progress.', 'sys');
 
+  // Quit to character selection: save, drop the connection, and reload back to
+  // the roster/start screen (a clean teardown of world/enemies/network).
+  ui.onQuickHeal = () => quickHeal(); // clicking the Q potion slot also heals
+  ui.onQuitToMenu = () => {
+    try { if (player && player.saveId) Saves.write(player.toSave()); } catch { /* storage blocked */ }
+    try { network.disconnect(); } catch { /* ignore */ }
+    location.reload();
+  };
+
   network.connect(server, { name, classId, appearance: player.appearance, equip: player.equipVisual() });
   // Re-broadcast our look whenever gear or appearance changes, so other players
   // see our armor, weapon, and cosmetics update live.
@@ -212,6 +221,17 @@ ui.setupStart({
   onCreate: ({ name, classId, server, appearance }) => beginGame(classId, name, server, null, appearance),
   onContinue: (save, server) => beginGame(save.classId, save.name, server, save, save.appearance),
 });
+
+// Is an elite war-camp cleared (chest unlockable)? Solo counts the camp's own
+// elite members. In multiplayer those members are retired when the server takes
+// over the world's enemies, so instead we clear the camp once it's been engaged
+// (server-driven mobs were nearby) and none remain alive within its bounds.
+function campIsCleared(camp) {
+  if (!netMode) return world.campCleared(camp);
+  const near = enemies.some((e) => e.alive && e.pos.distanceTo(camp.pos) < 15);
+  if (near) camp._engaged = true;
+  return !!camp._engaged && !near;
+}
 
 // Quaff the first health potion in the bag (hotkey Q).
 function quickHeal() {
@@ -348,6 +368,8 @@ function animate() {
       if (w) followCam.handleZoom(w);
     }
 
+    // ESC closes the top open window; with none open it opens the options menu.
+    if (input.just('Escape')) { if (!ui.closeTopPanel()) ui.toggleSettings(player); }
     // Toggle panels & quick-use.
     if (input.just('KeyI')) ui.toggleInventory(player);
     if (input.just('KeyK')) ui.toggleSkills(player);
@@ -554,7 +576,7 @@ function animate() {
     } else if (camp) {
       if (camp.opened) {
         ui.hidePrompt();
-      } else if (world.campCleared(camp)) {
+      } else if (campIsCleared(camp)) {
         ui.showPrompt('Press <b>E</b> to open the treasure chest');
         if (input.just('KeyE')) {
           camp.opened = true;
