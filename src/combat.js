@@ -103,43 +103,14 @@ export class Combat {
     const c = this.player.pos.clone(); c.y += 1.3; return c;
   }
 
-  // The world point the crosshair is actually on. The crosshair is the CAMERA's
-  // centre ray (screen centre), so we march THAT ray — not one from the player —
-  // out to the first enemy body it crosses, else the ground, else maxRange. In
-  // the over-the-shoulder view the camera sits off to one side, so a point on
-  // its centre ray is where you visually see the crosshair; aiming the muzzle at
-  // this point makes shots converge on the crosshair instead of firing parallel
-  // (and landing beside it). No aim assist — it uses whatever the crosshair is
-  // literally pointing at, it does not snap to off-crosshair foes.
-  _aimConvergePoint(maxRange) {
-    const C = this.cam.cam.position;         // real (rendered) camera position
-    const dir = this.cam.aimForward();
-    // First, where the ray meets the ground (upper bound on depth).
-    let depth = maxRange;
-    for (let d = 1; d <= maxRange; d += 1) {
-      if (C.y + dir.y * d <= heightAt(C.x + dir.x * d, C.z + dir.z * d)) { depth = d; break; }
-    }
-    // Then pull the convergence in to the nearest enemy the ray passes through,
-    // so shots land at the foe's true depth (essential for close targets).
-    for (const e of this.enemies) {
-      if (!e.alive) continue;
-      const to = new THREE.Vector3().subVectors(e.pos.clone().setY(e.pos.y + 1), C);
-      const proj = to.dot(dir);              // distance along the ray to the enemy plane
-      if (proj <= 0.5 || proj > depth) continue;
-      const perp = Math.sqrt(Math.max(0, to.lengthSq() - proj * proj));
-      const hitR = (e.displayScale || 1) * 1.1 + 0.6; // generous body radius
-      if (perp <= hitR) depth = proj;
-    }
-    return new THREE.Vector3(C.x + dir.x * depth, C.y + dir.y * depth, C.z + dir.z * depth);
-  }
-
-  // The direction offensive skills should travel: from the weapon muzzle toward
-  // the point the crosshair is on. Fully 3D and skill-based — you hit exactly
-  // what the crosshair covers (flying foes and the dragon included), and the
-  // convergence cancels the shoulder offset so aim and crosshair agree.
-  _aimDir(range, _arc) {
-    const p = this._aimConvergePoint(Math.max(8, range || 40));
-    return new THREE.Vector3().subVectors(p, this._muzzle()).normalize();
+  // The direction offensive skills travel: exactly where the crosshair POINTS.
+  // The shot leaves the weapon tip heading parallel to the camera's view ray
+  // (screen-centre = crosshair), so it flies in the direction you're looking —
+  // NOT bent toward whatever point the crosshair happens to rest on. Fully 3D
+  // (look up to fire up, down to fire down) and purely skill-based: no aim
+  // assist, no convergence, no snapping.
+  _aimDir(_range, _arc) {
+    return this.cam.aimForward();
   }
 
   // Where a ground-targeted AoE lands: march the crosshair's ray to the ground,
