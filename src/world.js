@@ -16,7 +16,7 @@ import {
   BIOME_LAYOUT, BIOME_SIZE, BIOME_REGIONS, biomeWeights, TOWNS, capOff, AREAS,
   CAMPS, BOSSES, areaAt, ROADS, roadDistance, DUNGEONS, DUNGEON_SITES, MOUNTAINS,
   CAVES, CAVE_SITES, SEA_IN, SEA_OUT, EDGE_SHORE, LEVIATHAN_RADIUS,
-  MAGE_TOWER, mageTowerSummitY, heightAt, townBaseHeight, BIOMES, biomeAt,
+  MAGE_TOWER, mageTowerSummitY, CASTLES, heightAt, townBaseHeight, BIOMES, biomeAt,
 } from './sim/terrain.js';
 
 // Re-export the world-data API that the rest of the game imports from world.js.
@@ -1042,14 +1042,9 @@ export class World {
     // A safe-ish flat-enough anchor: nudge off water if the spot is submerged.
     const landAt = (p) => { let y = heightAt(p.x, p.z); return { ...p, y }; };
 
-    // --- Enemy castles (mid-ring, between the biome spokes) ---
-    const castleSpecs = [
-      { deg: 45, rad: R * 0.5, name: 'Ashguard Keep', level: 20 },
-      { deg: 165, rad: R * 0.52, name: 'Bleakstone Castle', level: 30 },
-      { deg: 285, rad: R * 0.5, name: 'Direwall Fortress', level: 38 },
-    ];
-    for (const c of castleSpecs) {
-      const p = landAt(polarPt(c.deg, c.rad));
+    // --- Enemy castles (positions + flattened pads defined in terrain.js) ---
+    for (const c of CASTLES) {
+      const p = { x: c.x, z: c.z, y: heightAt(c.x, c.z) }; // heightAt is the flat pad here
       if (p.y < WATER_LEVEL + 1) continue; // don't drop a castle in the sea
       this._castle(p.x, p.y, p.z, c.name);
       this.bossSites.push({ x: p.x, z: p.z, type: 'knight', level: c.level, name: `Lord of ${c.name}` });
@@ -1259,20 +1254,24 @@ export class World {
     const g = new THREE.Group(); g.position.set(cx, cy, cz);
     this.group.add(g);
     const N = 16, ringR = 9;
+    // Ground each piece to its OWN local terrain (relative to the group origin)
+    // so the palisade follows the slope instead of floating as a rigid ring.
+    const gy = (lx, lz) => heightAt(cx + lx, cz + lz) - cy;
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
       // Leave a gap for an entrance.
       if (Math.abs(a - Math.PI) < 0.5) continue;
+      const lx = Math.cos(a) * ringR, lz = Math.sin(a) * ringR, y0 = gy(lx, lz);
       const stake = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 3.4, 5), woodM);
-      stake.position.set(Math.cos(a) * ringR, 1.5, Math.sin(a) * ringR);
+      stake.position.set(lx, y0 + 1.5, lz);
       stake.rotation.z = (hash2(i, cx) - 0.5) * 0.2;
       const tip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 5), woodM);
-      tip.position.set(Math.cos(a) * ringR, 3.3, Math.sin(a) * ringR);
+      tip.position.set(lx, y0 + 3.3, lz);
       g.add(stake, tip);
     }
     for (const s of [[-3, -2], [3, 1]]) {
       const tent = new THREE.Mesh(new THREE.ConeGeometry(2.4, 2.6, 4), tentM);
-      tent.position.set(s[0], 1.3, s[1]); tent.rotation.y = Math.PI / 4; g.add(tent);
+      tent.position.set(s[0], gy(s[0], s[1]) + 1.3, s[1]); tent.rotation.y = Math.PI / 4; g.add(tent);
     }
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   }

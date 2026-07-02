@@ -247,6 +247,35 @@ function towerFoot() {
 // Absolute summit height of the tower (for spawning the boss/guards on top).
 export function mageTowerSummitY() { return towerFoot() + MAGE_TOWER.height; }
 
+// Enemy castles — positions live here so heightAt can flatten a level pad under
+// each (an 80×80 keep can't sit on a slope without floating). world.js reads
+// these to build the castles + their bosses/garrisons on the same spot.
+export const CASTLES = [
+  { ...polar(45, WORLD_SIZE * 0.5), name: 'Ashguard Keep', level: 20 },
+  { ...polar(165, WORLD_SIZE * 0.52), name: 'Bleakstone Castle', level: 30 },
+  { ...polar(285, WORLD_SIZE * 0.5), name: 'Direwall Fortress', level: 38 },
+];
+
+// Structures that need a FLATTENED pad so they sit level instead of floating or
+// sinking on sloped ground: the castles and every mountain base. Each pad is a
+// disc levelled to the natural terrain at its centre, blending back to the
+// surrounding land at its edge.
+export const FLATTEN_SITES = [
+  // Castle pads are wide enough that the whole 80×80 keep (corner towers at
+  // ~57u) sits inside the fully-flat core.
+  ...CASTLES.map((c) => ({ x: c.x, z: c.z, r: 74 })),
+  ...MOUNTAINS.map((m) => ({ x: m.x, z: m.z, r: m.r + 18 })),
+];
+
+// Base (natural terrain) height under a flatten site, sampled once WITHOUT any
+// structure flattening so pads level to the real ground, not to each other.
+const _flatBase = new Map();
+function flatBaseY(site) {
+  const k = site.x + ',' + site.z;
+  if (!_flatBase.has(k)) { _inFootSample = true; _flatBase.set(k, heightAt(site.x, site.z)); _inFootSample = false; }
+  return _flatBase.get(k);
+}
+
 // The single source of truth for ground elevation. Base rolling noise plus
 // per-biome character (snowy peaks, desert dunes, swamp lowlands, forest
 // plateaus), all flattened to level ground around every town.
@@ -292,6 +321,18 @@ export function heightAt(x, z) {
   h *= flat;
   // Lift terrain so flattened towns sit at a consistent, walkable height.
   h += (1 - flat) * townBaseHeight(x, z);
+
+  // Level a pad under big structures (castles, mountain bases) so they sit flat
+  // instead of floating/sinking on a slope. Skipped while sampling base heights.
+  if (!_inFootSample) {
+    for (const s of FLATTEN_SITES) {
+      const d = Math.hypot(x - s.x, z - s.z);
+      if (d < s.r) {
+        const t = smoothstep(s.r * 0.8, s.r, d); // fully flat out to 80% of the pad, then blend
+        h = lerp(flatBaseY(s), h, t);
+      }
+    }
+  }
 
   // The Arcanum Spire: a tall stepped cone rising from the land to a broad flat
   // summit. Walkable tier-by-tier (each step just pops you up), so you climb the
