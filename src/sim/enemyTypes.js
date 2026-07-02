@@ -21,6 +21,9 @@ export const TYPES = {
   archer:   { name: 'Bandit Archer',  color: 0x7a6a4a, accent: 0xffe27a, scale: 1.0, hp: 46,  dmg: 11, speed: 3.6, range: 2.0, xp: 32, aggro: 24, ranged: true, shootRange: 16, projSpeed: 17, projColor: 0xffe27a },
   hexer:    { name: 'Blight Hexer',   color: 0x4a3a64, accent: 0xb05aff, scale: 1.0, hp: 58,  dmg: 14, speed: 3.0, range: 2.0, xp: 40, aggro: 24, ranged: true, shootRange: 18, projSpeed: 13, projColor: 0xb05aff },
   gargoyle: { name: 'Spitfire Gargoyle', color: 0x4a4a55, accent: 0xff7a3c, scale: 1.05, hp: 64, dmg: 15, speed: 5.4, range: 2.2, xp: 46, aggro: 28, fly: true, ranged: true, shootRange: 19, projSpeed: 18, projColor: 0xff7a3c },
+  // Fish People — amphibious raiders that haunt the coastline and shallows.
+  fishman:  { name: 'Fishfolk Raider', color: 0x3a8a7a, accent: 0x9be0c8, scale: 1.05, hp: 68, dmg: 15, speed: 4.2, range: 2.4, xp: 40, aggro: 22 },
+  tidecaller: { name: 'Tidecaller', color: 0x2a6a8a, accent: 0x6fc8ff, scale: 1.0, hp: 60, dmg: 16, speed: 3.4, range: 2.0, xp: 46, aggro: 24, ranged: true, shootRange: 17, projSpeed: 15, projColor: 0x6fc8ff },
 };
 
 // Where the great dragon roosts — a far-north open expanse below the high peaks.
@@ -67,6 +70,10 @@ export const SPECIAL_SETS = {
   dragon: [ // Vetharion — a great sweeping bite and a crashing tail slam
     { id: 'cleave', shape: 'arc', minR: 0, maxR: 5.5, windup: 0.85, exec: 0.35, cd: [5, 8], range: 5.5, arc: 2.2, dmg: 1.4, color: 0xff5a3c },
     { id: 'slam', shape: 'ring', minR: 0, maxR: 7, windup: 1.1, exec: 0.45, cd: [8, 12], aoe: 4.6, dmg: 1.7, color: 0xff3030 },
+  ],
+  fishman: [ // Fishfolk Raider — a trident jab and a lunging spear dash
+    { id: 'trident', shape: 'arc', minR: 0, maxR: 3, windup: 0.42, exec: 0.22, cd: [3, 5], range: 2.9, arc: 1.4, dmg: 1.25, color: 0x9be0c8 },
+    { id: 'lunge', shape: 'lane', minR: 3, maxR: 8, windup: 0.5, exec: 0.26, cd: [5, 8], dashSpeed: 16, hitR: 1.4, width: 1.6, dmg: 1.35, color: 0x6fc8ff },
   ],
 };
 export function specialsFor(typeId, ranged) { return (!ranged && SPECIAL_SETS[typeId]) ? SPECIAL_SETS[typeId] : []; }

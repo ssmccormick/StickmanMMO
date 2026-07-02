@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { animateStickman } from './stickman.js';
 import { createCreature } from './creatures.js';
-import { heightAt, BOSSES } from './world.js';
+import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS } from './world.js';
 // Enemy archetypes + level-scaling live in a Three-free shared module so the
 // authoritative server simulates identical enemies. Re-export DRAGON_ROOST so
 // existing importers (main.js) keep working.
@@ -705,6 +705,28 @@ export function spawnExtras(scene, world) {
     const home = new THREE.Vector3(sp.x, 0, sp.z);
     return new Enemy(scene, world, sp.type, sp.level, home, { elite: !!sp.elite });
   });
+}
+
+// Fish People — amphibious raiders in packs all around the coast and shallows.
+export function spawnFishPeople(scene, world) {
+  const out = [];
+  const camps = 16;                       // coastal war-parties around the map
+  for (let i = 0; i < camps; i++) {
+    const ang = (i / camps) * Math.PI * 2 + Math.random() * 0.3;
+    // Sit right at the waterline: from just inland of the shore out into the
+    // shallows (but well short of the Leviathan's deep water).
+    const rad = Math.min(LEVIATHAN_RADIUS * 0.96, EDGE_SHORE * (0.92 + Math.random() * 0.14));
+    const cx = Math.cos(ang) * rad, cz = Math.sin(ang) * rad;
+    const lvl = 12 + Math.floor(Math.random() * 20);
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, d = Math.random() * 9;
+      const home = new THREE.Vector3(cx + Math.cos(a) * d, 0, cz + Math.sin(a) * d);
+      const type = k === 0 ? 'tidecaller' : 'fishman';
+      out.push(new Enemy(scene, world, type, lvl, home));
+    }
+  }
+  return out;
 }
 
 // Populate each dungeon with a pack of monsters and a dungeon Warden boss.

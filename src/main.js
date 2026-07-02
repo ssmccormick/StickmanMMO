@@ -8,7 +8,7 @@ import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnFishPeople, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
 import { NetEnemies } from './netenemies.js';
 import { UI } from './ui.js';
@@ -141,6 +141,7 @@ function beginGame(classId, name, server, save, appearance) {
   enemies.push(...spawnBosses(scene, world)); // world bosses
   enemies.push(...spawnBossSites(scene, world)); // castle lords + the Archmagus
   enemies.push(...spawnExtras(scene, world));    // castle garrisons + mage-tower guards
+  enemies.push(...spawnFishPeople(scene, world)); // Fish People war-parties along the coast
   enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
   enemies.push(...spawnFlyers(scene, world));    // Sky Wraiths patrolling the air
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
@@ -231,6 +232,17 @@ function campIsCleared(camp) {
   const near = enemies.some((e) => e.alive && e.pos.distanceTo(camp.pos) < 15);
   if (near) camp._engaged = true;
   return !!camp._engaged && !near;
+}
+
+// A castle vault unlocks once the castle is cleared: it must have been engaged
+// (enemies were within its bounds) and none remain alive there now. Works in
+// solo (the garrison is always present) and multiplayer (server mobs nearby).
+// Also stamps `_cleared` so world.update can shimmer the chest when ready.
+function castleIsCleared(chest) {
+  const near = enemies.some((e) => e.alive && e.pos.distanceTo(chest.pos) < chest.radius);
+  if (near) chest._engaged = true;
+  chest._cleared = !!chest._engaged && !near;
+  return chest._cleared;
 }
 
 // Quaff the first health potion in the bag (hotkey Q).
@@ -497,6 +509,9 @@ function animate() {
     const giverQuest = giver ? Quests.giverActiveQuest(player, giver.giver) : null;
     const villager = player.alive ? world.villagers.find((v) => v.pos.distanceTo(player.pos) < 3.5) : null;
     const camp = player.alive ? world.nearestCamp(player.pos, 5) : null;
+    // Keep nearby castle vaults' clear-state fresh so they shimmer once the
+    // castle is cleared (even before you walk right up to the chest).
+    for (const cc of world.castleChests) if (!cc.opened && cc.pos.distanceTo(player.pos) < 130) castleIsCleared(cc);
     const bonfire = world.nearestBonfire(player.pos, 4.5);
     if (menuOpen) {
       ui.hidePrompt();
@@ -572,6 +587,20 @@ function animate() {
           combat.openChest({ level: (c.level || 3) + 2, pos: c.chestPos });
           ui.log(`You loot the ${c.name} cache!`, 'xp');
         }
+      }
+    } else if (player.alive && world.nearestCastleChest(player.pos, 6)) {
+      const cc = world.nearestCastleChest(player.pos, 6);
+      if (cc.opened) ui.hidePrompt();
+      else if (castleIsCleared(cc)) {
+        ui.showPrompt('Press <b>E</b> to open the castle vault');
+        if (input.just('KeyE')) {
+          cc.opened = true;
+          combat.openChest({ level: cc.level, pos: cc.pos });
+          Quests.onChestOpened(player);
+          ui.log(`You breach the vault of <b>${cc.name}</b>!`, 'xp');
+        }
+      } else {
+        ui.showPrompt('Clear the castle to unlock the vault');
       }
     } else if (camp) {
       if (camp.opened) {
