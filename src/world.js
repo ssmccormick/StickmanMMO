@@ -12,7 +12,7 @@ import { GIVERS } from './quests.js';
 // module so the multiplayer server can run the same world. world.js owns only
 // the Three.js side (meshes, colours, collision, culling).
 import {
-  WORLD_SIZE, WATER_LEVEL, hash2, smoothNoise, smoothstep, DEG, polar,
+  WORLD_SIZE, WATER_LEVEL, SCALE, hash2, smoothNoise, smoothstep, DEG, polar,
   BIOME_LAYOUT, BIOME_SIZE, BIOME_REGIONS, biomeWeights, TOWNS, capOff, AREAS,
   CAMPS, BOSSES, areaAt, ROADS, roadDistance, DUNGEONS, DUNGEON_SITES, MOUNTAINS,
   CAVES, CAVE_SITES, SEA_IN, SEA_OUT, EDGE_SHORE, LEVIATHAN_RADIUS,
@@ -72,6 +72,7 @@ export class World {
     this.critters = [];    // ambient wandering creatures
     this.treasures = [];   // hidden loot chests scattered in the wild
     this.shrines = [];     // buff shrines
+    this.puzzles = [];     // rune-sequence puzzle chests
     this.landmarks = [];   // named map landmarks (castles, mage tower, fishing villages)
     this.bossSites = [];   // { x, z, type, level, name } — bosses spawned by main
     this.extraSpawns = []; // { x, z, type, level, elite } — structure guards spawned by main
@@ -100,6 +101,7 @@ export class World {
     this._swordInStone();
     this._shrines();
     this._treasures();
+    this._puzzles();
     this._ambientLife();
     this._aerial();
     this._setupCulling();
@@ -1031,14 +1033,15 @@ export class World {
       const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), lidMat); lidMesh.position.set(0, 0.25, 0);
       lid.position.set(0, 0.9, -0.6); lid.add(lidMesh);
       const lockGlow = new THREE.PointLight(0xffcf3a, 0, 8); lockGlow.position.y = 1.4;
-      chest.add(base, lid, lockGlow);
+      const lockRing = this._lockRing();
+      chest.add(base, lid, lockGlow, lockRing);
       chest.position.set(sp.x, y, sp.z);
       chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       this.group.add(chest);
       this.camps.push({
         id: sp.id, level: sp.level,
         pos: new THREE.Vector3(sp.x, y, sp.z),
-        chest, lid, glow: lockGlow, opened: false, members: [],
+        chest, lid, glow: lockGlow, ring: lockRing, opened: false, members: [],
       });
     }
   }
@@ -1181,12 +1184,13 @@ export class World {
     const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.8, 1.9), lidMat); lidMesh.position.set(0, 0.4, 0);
     lid.position.set(0, 1.5, -0.95); lid.add(lidMesh);
     const glow = new THREE.PointLight(0xffcf3a, 0, 14); glow.position.y = 2.2;
-    chest.add(base, lid, glow);
+    const ring = this._lockRing(); ring.scale.setScalar(1.3);
+    chest.add(base, lid, glow, ring);
     chest.position.set(vx, y, vz);
     chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     this.group.add(chest);
     this.castleChests.push({
-      pos: new THREE.Vector3(vx, y, vz), chest, lid, glow,
+      pos: new THREE.Vector3(vx, y, vz), chest, lid, glow, ring,
       opened: false, level: level + 3, name, radius: H + 12, _engaged: false,
     });
   }
@@ -1514,13 +1518,25 @@ export class World {
   // Buff shrines: one of each type, scattered so each region has one. Pray at
   // a shrine (E) for a long blessing; it then dims on a short cooldown.
   _shrines() {
+    // One shrine tucked beside each biome's low area, plus a spread of extra
+    // shrines scattered through the open world so exploration always pays off.
+    const sites = [];
     for (let i = 0; i < BIOME_LAYOUT.length; i++) {
       const b = BIOME_LAYOUT[i];
+      const p = polar(b.heading + b.low.off + 22, b.low.dist * SCALE + 26);
+      sites.push({ x: p.x, z: p.z });
+    }
+    for (let i = 0; i < 24; i++) {
+      const ang = hash2(i, 911) * Math.PI * 2;
+      const rad = (0.18 + hash2(i, 913) * 0.64) * WORLD_SIZE;
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (this.inSafeZone(x, z) || heightAt(x, z) < WATER_LEVEL + 1) continue;
+      sites.push({ x, z });
+    }
+    for (let i = 0; i < sites.length; i++) {
       const type = SHRINE_TYPES[i % SHRINE_TYPES.length];
-      // Tuck the shrine off to the side of the low area, a little hidden.
-      const p = polar(b.heading + b.low.off + 22, b.low.dist + 26);
-      let x = p.x, z = p.z, y = heightAt(x, z);
-      if (y < -3) { x = p.x * 0.85; z = p.z * 0.85; y = heightAt(x, z); }
+      let x = sites[i].x, z = sites[i].z, y = heightAt(x, z);
+      if (y < -3) { x *= 0.85; z *= 0.85; y = heightAt(x, z); }
       const g = new THREE.Group();
       const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.0, 0.5, 8), new THREE.MeshLambertMaterial({ color: 0x6a6a62 }));
       base.position.y = 0.25;
@@ -1579,6 +1595,101 @@ export class World {
   }
   nearestTreasure(pos, maxDist = 3.5) {
     for (const t of this.treasures) if (!t.opened && t.pos.distanceTo(pos) < maxDist) return t;
+    return null;
+  }
+
+  // Drive a lock ring's look: pulsing red while locked, steady gold once ready.
+  _setRing(ring, ready, t) {
+    if (!ring) return;
+    ring.visible = true;
+    if (ready) { ring.material.color.setHex(0xffcf3a); ring.material.opacity = 0.85; }
+    else { ring.material.color.setHex(0xff3b3b); ring.material.opacity = 0.5 + Math.sin(t * 3) * 0.3; }
+  }
+
+  // A glowing ring laid on the ground around a chest to show it's LOCKED (red)
+  // or ready-to-loot (gold). Added as a child of the chest group.
+  _lockRing() {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.13, 8, 30),
+      new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.8 }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.08;
+    ring.userData.noCull = false;
+    return ring;
+  }
+
+  // Rune-sequence puzzle chests: a sealed chest ringed by rune stones that pulse
+  // a sequence; touch the runes in that order to break the seal. Scattered in the
+  // open world so there's always something to solve and loot out there.
+  _puzzles() {
+    const chestMat = new THREE.MeshLambertMaterial({ color: 0xcaa64a });
+    const lidMat = new THREE.MeshLambertMaterial({ color: 0x9a7a2a });
+    const runeColors = [0x6fc8ff, 0xff8a5a, 0x9be36a, 0xc78bff];
+    let placed = 0;
+    for (let i = 0; i < 260 && placed < 16; i++) {
+      const ang = hash2(i, 811) * Math.PI * 2;
+      const rad = (0.18 + hash2(i, 813) * 0.6) * WORLD_SIZE;
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      const y = heightAt(x, z);
+      if (y < WATER_LEVEL + 1) continue;
+      if (this.inSafeZone(x, z) || roadDistance(x, z) < 8) continue;
+      const level = Math.max(4, Math.round((rad / WORLD_SIZE) * 44 + 4));
+      // Sealed chest with a lock ring.
+      const chest = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.0, 1.3), chestMat); base.position.y = 0.5;
+      const lid = new THREE.Group();
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 1.3), lidMat); lidMesh.position.set(0, 0.28, 0);
+      lid.position.set(0, 1.0, -0.65); lid.add(lidMesh);
+      const glow = new THREE.PointLight(0x6fc8ff, 0, 10); glow.position.y = 1.5;
+      const ring = this._lockRing();
+      chest.add(base, lid, glow, ring);
+      chest.position.set(x, y, z);
+      chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(chest);
+      // Three rune stones around it.
+      const stones = [];
+      const nStones = 3;
+      for (let k = 0; k < nStones; k++) {
+        const a = (k / nStones) * Math.PI * 2 + 0.5;
+        const sx = x + Math.cos(a) * 5, sz = z + Math.sin(a) * 5, sy = heightAt(sx, sz);
+        const sg = new THREE.Group();
+        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.9, 6), new THREE.MeshLambertMaterial({ color: 0x5a5a52 }));
+        pil.position.y = 0.95;
+        const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), new THREE.MeshBasicMaterial({ color: runeColors[k] }));
+        orb.position.y = 2.1;
+        sg.add(pil, orb); sg.position.set(sx, sy, sz);
+        sg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        this.group.add(sg);
+        this._addBox(pil, false);
+        stones.push({ orb, pos: new THREE.Vector3(sx, sy, sz) });
+      }
+      // A deterministic activation order (a shuffled permutation of the stones).
+      const seq = [0, 1, 2];
+      for (let s = seq.length - 1; s > 0; s--) { const j = Math.floor(hash2(i, 820 + s) * (s + 1)); const tmp = seq[s]; seq[s] = seq[j]; seq[j] = tmp; }
+      this.puzzles.push({ pos: new THREE.Vector3(x, y, z), level, chest, lid, glow, ring, stones, seq, progress: 0, solved: false, opened: false });
+      placed++;
+    }
+  }
+
+  // Touch a rune: advances the sequence, resets on a wrong touch, or solves it.
+  // Returns 'progress' | 'reset' | 'solved'.
+  activateRune(puzzle, stoneIndex) {
+    if (puzzle.solved) return 'solved';
+    if (puzzle.seq[puzzle.progress] === stoneIndex) {
+      puzzle.progress++;
+      if (puzzle.progress >= puzzle.seq.length) { puzzle.solved = true; return 'solved'; }
+      return 'progress';
+    }
+    puzzle.progress = 0;
+    return 'reset';
+  }
+  nearestPuzzleChest(pos, maxDist = 3.5) {
+    for (const p of this.puzzles) if (!p.opened && p.pos.distanceTo(pos) < maxDist) return p;
+    return null;
+  }
+  nearestPuzzleRune(pos, maxDist = 2.6) {
+    for (const p of this.puzzles) {
+      if (p.solved) continue;
+      for (let k = 0; k < p.stones.length; k++) if (p.stones[k].pos.distanceTo(pos) < maxDist) return { puzzle: p, index: k };
+    }
     return null;
   }
 
@@ -1750,9 +1861,11 @@ export class World {
       if (!c.chest) continue; // bandit bases have no loot chest
       if (c.opened) {
         c.lid.rotation.x = THREE.MathUtils.lerp(c.lid.rotation.x, -2.2, Math.min(1, dt * 6));
-        c.glow.intensity = 0;
-      } else if (this.campCleared(c)) {
-        c.glow.intensity = 1.4 + Math.sin(t * 5) * 0.5; // ready-to-open shimmer
+        c.glow.intensity = 0; if (c.ring) c.ring.visible = false;
+      } else {
+        const cleared = this.campCleared(c);
+        if (cleared) c.glow.intensity = 1.4 + Math.sin(t * 5) * 0.5; // ready-to-open shimmer
+        this._setRing(c.ring, cleared, t);
       }
     }
     // Dungeon chests behave the same once the dungeon is cleared.
@@ -1768,8 +1881,30 @@ export class World {
     // Castle vaults: dim while the castle still stands, bright once cleared
     // (main.js sets `_cleared`), lid swings open when looted.
     for (const c of this.castleChests) {
-      if (c.opened) { c.lid.rotation.x = THREE.MathUtils.lerp(c.lid.rotation.x, -2.2, Math.min(1, dt * 6)); c.glow.intensity = 0; }
-      else c.glow.intensity = c._cleared ? (1.8 + Math.sin(t * 5) * 0.6) : 0.25;
+      if (c.opened) { c.lid.rotation.x = THREE.MathUtils.lerp(c.lid.rotation.x, -2.2, Math.min(1, dt * 6)); c.glow.intensity = 0; if (c.ring) c.ring.visible = false; }
+      else { c.glow.intensity = c._cleared ? (1.8 + Math.sin(t * 5) * 0.6) : 0.25; this._setRing(c.ring, c._cleared, t); }
+    }
+    // Rune-puzzle chests: pulse the sequence hint through the stones while locked,
+    // keep solved stones lit, swing the lid open once looted.
+    for (const p of this.puzzles) {
+      if (p.opened) {
+        p.lid.rotation.x = THREE.MathUtils.lerp(p.lid.rotation.x, -2.2, Math.min(1, dt * 6));
+        p.glow.intensity = 0; if (p.ring) p.ring.visible = false;
+        continue;
+      }
+      this._setRing(p.ring, p.solved, t);
+      if (p.solved) {
+        p.glow.intensity = 1.6 + Math.sin(t * 5) * 0.5;
+        for (const s of p.stones) s.orb.scale.setScalar(1.35);
+      } else {
+        p.glow.intensity = 0.15;
+        const done = p.seq.slice(0, p.progress);
+        const hint = p.seq[Math.floor(t / 0.7) % p.seq.length]; // pulse through the required order
+        for (let k = 0; k < p.stones.length; k++) {
+          const isDone = done.includes(k);
+          p.stones[k].orb.scale.setScalar(isDone ? 1.3 : (k === hint ? 1.25 : 0.85));
+        }
+      }
     }
 
     // Fireflies: fade in from dusk through night and drift on the breeze.

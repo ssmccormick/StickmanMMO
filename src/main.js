@@ -642,6 +642,28 @@ function animate() {
           audio.play('rest');
         }
       }
+    } else if (player.alive && world.nearestPuzzleRune(player.pos)) {
+      const { puzzle, index } = world.nearestPuzzleRune(player.pos);
+      ui.showPrompt('Press <b>E</b> to touch the rune');
+      if (input.just('KeyE')) {
+        const r = world.activateRune(puzzle, index);
+        if (r === 'solved') { ui.log('The runes align — the seal shatters!', 'xp'); ui.floater('Seal broken!', 'xp', player.pos); audio.play('level'); }
+        else if (r === 'reset') { ui.log('Wrong rune — the seal flares and resets. Watch the pulsing order.', 'sys'); audio.play('hurt'); }
+        else { audio.play('cast'); }
+      }
+    } else if (player.alive && world.nearestPuzzleChest(player.pos)) {
+      const pz = world.nearestPuzzleChest(player.pos);
+      if (pz.solved) {
+        ui.showPrompt('Press <b>E</b> to open the sealed chest');
+        if (input.just('KeyE')) {
+          pz.opened = true;
+          combat.openChest({ level: pz.level + 2, pos: pz.pos });
+          Quests.onChestOpened(player);
+          ui.log('You claim the runewarded chest!', 'xp');
+        }
+      } else {
+        ui.showPrompt('A rune seal binds this chest — touch the runes in the pulsing order');
+      }
     } else if (player.alive && world.nearestTreasure(player.pos)) {
       const tr = world.nearestTreasure(player.pos);
       ui.showPrompt('Press <b>E</b> to open the hidden treasure');
