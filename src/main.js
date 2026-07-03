@@ -165,9 +165,16 @@ function beginGame(classId, name, server, save, appearance) {
   network.onAuthoritative = () => {
     if (netMode) return;
     netMode = true;
-    // Retire local enemies (clear the array IN PLACE so combat keeps its ref).
-    for (const e of enemies) { scene.remove(e.mesh); if (e._shockRing) scene.remove(e._shockRing); }
-    enemies.length = 0;
+    // The server owns the shared OPEN-WORLD enemies, so retire those. But KEEP
+    // the instanced/structure encounters (castle garrisons, camps, the mage
+    // tower, dungeons, Fish People) as local content — otherwise joining a server
+    // would empty every castle and camp. They keep running client-side.
+    const keep = [];
+    for (const e of enemies) {
+      if (e.persistent) { keep.push(e); continue; }
+      scene.remove(e.mesh); if (e._shockRing) scene.remove(e._shockRing);
+    }
+    enemies.length = 0; enemies.push(...keep);
     combat.target = null;
     clearEnemyShots(scene);
     netEnemies = new NetEnemies({ scene, world, enemies, player, network, combat });
@@ -436,8 +443,9 @@ function animate() {
     // Boss phase reactions: announce enrage and spawn minion adds. (Boss phases
     // are owned by the server in authoritative mode, so skip locally.)
     const newMinions = [];
-    if (!netMode) for (const e of enemies) {
-      if (!e.boss) continue;
+    for (const e of enemies) {
+      if (!e.boss || e._net) continue;               // server bosses handle their own phases
+      if (netMode && !e.persistent) continue;         // (only persistent local bosses remain)
       if (e._newPhase) { ui.floater('ENRAGED!', 'crit', e.pos); ui.log(`${e.bossName} enters phase ${e._newPhase}!`, 'death'); e._newPhase = 0; }
       if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
     }

@@ -691,10 +691,15 @@ export function spawnBosses(scene, world) {
 }
 
 // Bosses tied to hand-placed landmarks (castle lords, the Archmagus, etc.).
+// `persistent` keeps these client-side even in multiplayer (the server owns the
+// shared open-world mobs, but these instanced/structure encounters stay local so
+// castles, camps, the tower and the coast aren't emptied when the server takes
+// over the ambient enemies).
 export function spawnBossSites(scene, world) {
   return (world.bossSites || []).map((sp) => {
     const home = new THREE.Vector3(sp.x, 0, sp.z);
-    return new Enemy(scene, world, sp.type, sp.level, home, { boss: true, bossName: sp.name });
+    const e = new Enemy(scene, world, sp.type, sp.level, home, { boss: true, bossName: sp.name });
+    e.persistent = true; return e;
   });
 }
 
@@ -703,7 +708,8 @@ export function spawnBossSites(scene, world) {
 export function spawnExtras(scene, world) {
   return (world.extraSpawns || []).map((sp) => {
     const home = new THREE.Vector3(sp.x, 0, sp.z);
-    return new Enemy(scene, world, sp.type, sp.level, home, { elite: !!sp.elite });
+    const e = new Enemy(scene, world, sp.type, sp.level, home, { elite: !!sp.elite });
+    e.persistent = true; return e;
   });
 }
 
@@ -723,7 +729,8 @@ export function spawnFishPeople(scene, world) {
       const a = Math.random() * Math.PI * 2, d = Math.random() * 9;
       const home = new THREE.Vector3(cx + Math.cos(a) * d, 0, cz + Math.sin(a) * d);
       const type = k === 0 ? 'tidecaller' : 'fishman';
-      out.push(new Enemy(scene, world, type, lvl, home));
+      const e = new Enemy(scene, world, type, lvl, home); e.persistent = true;
+      out.push(e);
     }
   }
   return out;
@@ -739,12 +746,12 @@ export function spawnDungeons(scene, world) {
       const a = Math.random() * Math.PI * 2, r = 8 + Math.random() * 22;
       const home = new THREE.Vector3(d.center.x + Math.cos(a) * r, 0, d.center.z + Math.sin(a) * r);
       const e = new Enemy(scene, world, pool[Math.floor(Math.random() * pool.length)], d.level + Math.floor(Math.random() * 2), home);
-      d.members.push(e); enemies.push(e);
+      e.persistent = true; d.members.push(e); enemies.push(e);
     }
     // The Warden — a boss at the far end guarding the chest.
     const bossHome = new THREE.Vector3(d.chestPos.x, 0, d.chestPos.z + 6);
     const warden = new Enemy(scene, world, d.level >= 14 ? 'knight' : 'brute', d.level + 3, bossHome, { boss: true, bossName: `${d.name} Warden` });
-    d.members.push(warden); enemies.push(warden);
+    warden.persistent = true; d.members.push(warden); enemies.push(warden);
   }
   return enemies;
 }
@@ -760,6 +767,7 @@ export function spawnCamps(scene, world) {
       const home = new THREE.Vector3(camp.pos.x + Math.cos(a) * 5, 0, camp.pos.z + Math.sin(a) * 5);
       const typeId = pool[Math.floor(Math.random() * pool.length)];
       const e = new Enemy(scene, world, typeId, camp.level + 2, home, { elite: true, campId: camp.id });
+      e.persistent = true;
       camp.members.push(e);
       enemies.push(e);
     }

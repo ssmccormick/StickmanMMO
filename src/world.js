@@ -514,7 +514,7 @@ export class World {
   // Scattered ruins (broken pillars) out in the wild, per biome.
   _ruins() {
     const pillarMat = new THREE.MeshLambertMaterial({ color: 0x9a948a });
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 270; i++) {
       const ang = hash2(i, 201) * Math.PI * 2;
       const rad = 50 + hash2(i, 203) * (WORLD_SIZE - 70);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
@@ -548,7 +548,7 @@ export class World {
     const frondMats = [0x2f7e2a, 0x3a8e34, 0x256e22].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const crystalScatter = [0x7ab0ff, 0xb07bff, 0x9a8ad8].map((c) => new THREE.MeshBasicMaterial({ color: c }));
 
-    for (let i = 0; i < 1100; i++) {
+    for (let i = 0; i < 3300; i++) {
       const ang = hash2(i, 11) * Math.PI * 2;
       const rad = 24 + hash2(i, 13) * (WORLD_SIZE - 30);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
@@ -660,7 +660,7 @@ export class World {
     const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const forestAreas = AREAS.filter((a) => (a.biome === 'forest' || a.biome === 'jungle') && !a.safe);
     for (const fa of forestAreas) {
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 220; i++) {
         const a = hash2(i, fa.x + 7) * Math.PI * 2;
         const rad = Math.sqrt(hash2(i, fa.z + 3)) * fa.r * 0.96; // sqrt → even area fill
         const x = fa.x + Math.cos(a) * rad, z = fa.z + Math.sin(a) * rad;
@@ -693,7 +693,7 @@ export class World {
     const bushMats = [0x3f7d3a, 0x4f8f3f, 0x57752f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
     const flowerMats = [0xe85c8a, 0xf2c14e, 0xe8e8e8, 0x9a7bdc].map((c) => new THREE.MeshBasicMaterial({ color: c }));
 
-    for (let i = 0; i < 600; i++) {
+    for (let i = 0; i < 1800; i++) {
       const ang = hash2(i, 41) * Math.PI * 2;
       const rad = 18 + hash2(i, 43) * (WORLD_SIZE - 24);
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
@@ -1003,7 +1003,18 @@ export class World {
     // Elite war-camps: clusters of tough enemies guarding a loot chest.
     // The chest stays locked until every camp member is slain. Positions derive
     // from BIOME_LAYOUT (one per biome, between the town and the high area).
-    const specs = CAMPS;
+    // The eight biome camps, plus a spread of extra elite camps scattered across
+    // the now-vast open world (level scaling with distance from the heartland).
+    const scattered = [];
+    for (let i = 0; i < 18; i++) {
+      const ang = hash2(i, 311) * Math.PI * 2;
+      const rad = (0.2 + hash2(i, 313) * 0.6) * WORLD_SIZE;
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (this.inSafeZone(x, z) || heightAt(x, z) < WATER_LEVEL + 1) continue;
+      const level = Math.max(4, Math.round(6 + (rad / WORLD_SIZE) * 40));
+      scattered.push({ id: 'ecamp_' + i, level, x, z });
+    }
+    const specs = [...CAMPS, ...scattered];
     const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
     const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });
     for (const sp of specs) {
