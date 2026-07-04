@@ -12,7 +12,7 @@ import { applyArmorVisual } from './gear3d.js';
 import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
-  passiveAggregate, passivesFor,
+  passiveAggregateIds, passivesFor, passiveById,
 } from './classes.js';
 import { heightAt, WATER_LEVEL, WORLD_SIZE } from './world.js';
 import { sumStats, EQUIP_SLOTS, RARITY, SETS } from './items.js';
@@ -129,7 +129,8 @@ export class Player {
     this.achievements = {};    // achievement id -> tiers claimed
     this.achBonus = {};        // permanent stat bonuses earned (summed into gear bonus)
     this.passives = new Set(); // unlocked behaviour flags (windwalker, amphibious…)
-    this._passLevel = -1;      // cache guard for the class-passive aggregate (see get pass)
+    this.learnedPassives = []; // class passives CHOSEN at level-up (ids; see classes PASSIVES)
+    this._passDirty = true;    // recompute the passive aggregate on next read
     this.discoveredAreas = new Set(); // named areas seen (for the map + Cartographer)
     this.explored = new Set(); // explored map cells (z*MAP_GRID + x)
     this.mountSkin = 'horse';
@@ -320,10 +321,10 @@ export class Player {
   get effStr() { return Math.round((this.stats.str + (this.bonus.str || 0) + this._t('str')) * this.ssjMult); }
   get effDex() { return Math.round((this.stats.dex + (this.bonus.dex || 0) + this._t('dex')) * this.ssjMult); }
   get effInt() { return Math.round((this.stats.int + (this.bonus.int || 0) + this._t('int')) * this.ssjMult); }
-  // Aggregate of the always-on class passives unlocked at the current level
-  // (recomputed only when the level changes). See classes.js PASSIVES.
+  // Aggregate of the class passives the player has CHOSEN at level-up
+  // (recomputed only when the learned set changes). See classes.js PASSIVES.
   get pass() {
-    if (this._passLevel !== this.stats.level) { this._pass = passiveAggregate(this.classId, this.stats.level); this._passLevel = this.stats.level; }
+    if (this._passDirty) { this._pass = passiveAggregateIds(this.classId, this.learnedPassives); this._passDirty = false; }
     return this._pass;
   }
   get gearCrit() { return (this.bonus.crit || 0) + this.pass.crit; }
@@ -954,6 +955,7 @@ export class Player {
       maxHp: s.maxHp, maxMp: s.maxMp, maxSp: s.maxSp,
       str: s.str, dex: s.dex, int: s.int,
       learned: this.learned.map((l) => ({ id: l.id, rank: l.rank })),
+      learnedPassives: [...this.learnedPassives],
       respawn: { x: this.respawn.x, y: this.respawn.y, z: this.respawn.z },
       gear: this.gear,             // plain item objects, JSON-serializable
       inventory: this.inventory,
@@ -983,6 +985,7 @@ export class Player {
       this.learned = save.learned.map((l) => ({ id: l.id, rank: l.rank }));
       this.cooldowns = this.learned.map(() => 0);
     }
+    if (Array.isArray(save.learnedPassives)) { this.learnedPassives = save.learnedPassives.slice(); this._passDirty = true; }
     if (save.respawn) {
       this.respawn = new THREE.Vector3(save.respawn.x, save.respawn.y, save.respawn.z);
       this.pos.copy(this.respawn);
@@ -1047,6 +1050,12 @@ export class Player {
           desc: `Rank ${l.rank} → ${l.rank + 1}: more damage, shorter cooldown.` });
       }
     }
+    // Learnable passives: an always-on perk you pick like a skill (it doesn't
+    // take a hotbar slot). Offered once its level requirement is met.
+    const ownedP = new Set(this.learnedPassives);
+    for (const pv of passivesFor(this.classId, this.stats.level)) {
+      if (!ownedP.has(pv.id)) skills.push({ type: 'passive', id: pv.id, name: pv.name, glyph: pv.glyph, desc: pv.desc });
+    }
     return { attrs, skills };
   }
 
@@ -1060,6 +1069,8 @@ export class Player {
       } else if (skill.type === 'upgrade') {
         const l = this.learned.find((x) => x.id === skill.id);
         if (l && l.rank < MAX_RANK) l.rank++;
+      } else if (skill.type === 'passive') {
+        if (!this.learnedPassives.includes(skill.id)) { this.learnedPassives.push(skill.id); this._passDirty = true; }
       }
     }
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);

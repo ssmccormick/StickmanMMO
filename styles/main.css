@@ -245,6 +245,8 @@ html, body {
 }
 .lu-card:hover { background: rgba(255,255,255,0.09); transform: translateY(-2px); }
 .lu-card.sel { border-color: var(--gold); background: rgba(216,178,74,0.16); box-shadow: 0 0 0 1px var(--gold) inset; }
+.lu-card.lu-passive { border-color: rgba(122,216,143,0.45); }
+.lu-card.lu-passive .lu-name { color: #8fe0a0; }
 .lu-glyph { font-size: 26px; }
 .lu-name { font-weight: bold; font-size: 13.5px; margin-top: 2px; }
 .lu-desc { font-size: 11.5px; opacity: 0.65; margin-top: 3px; line-height: 1.35; }
@@ -450,6 +452,7 @@ html, body {
 .skills-body { display: flex; flex-direction: column; gap: 10px; padding: 12px 18px 20px; overflow-y: auto; }
 .sk-card { background: rgba(255,255,255,0.04); border: 1px solid var(--panel-edge); border-radius: 10px; padding: 11px 13px; }
 .sk-card.locked { opacity: 0.5; }
+.sk-section { grid-column: 1 / -1; margin: 10px 2px 2px; font-weight: bold; font-size: 13px; letter-spacing: 0.04em; color: var(--gold); text-transform: uppercase; opacity: 0.85; }
 .sk-head { display: flex; align-items: center; gap: 11px; }
 .sk-glyph { font-size: 26px; }
 .sk-name { font-weight: bold; font-size: 15px; }

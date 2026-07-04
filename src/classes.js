@@ -303,13 +303,18 @@ export const PASSIVES = {
                 { id: 'warriorpride', name: 'Warrior Pride', glyph: '⚡', reqLevel: 10, dmg: 0.14, desc: 'A Saiyan\'s pride: +14% damage.' } ],
 };
 
-// Every passive the class has unlocked by `level`, and their summed effect.
+// Passives the class OFFERS at/under `level` (for the level-up choice list).
 export function passivesFor(classId, level) {
   return (PASSIVES[classId] || []).filter((p) => level >= p.reqLevel);
 }
-export function passiveAggregate(classId, level) {
+export function passiveById(classId, id) {
+  return (PASSIVES[classId] || []).find((p) => p.id === id) || null;
+}
+// Summed effect of a set of LEARNED passive ids (passives are now chosen at
+// level-up, like skills — not granted automatically).
+export function passiveAggregateIds(classId, ids) {
   const agg = { crit: 0, dmg: 0, hpRegen: 0, spRegen: 0, mpRegen: 0, speed: 0, lifesteal: 0, cdr: 0 };
-  for (const p of passivesFor(classId, level)) for (const k in agg) if (p[k]) agg[k] += p[k];
+  for (const id of ids || []) { const p = passiveById(classId, id); if (p) for (const k in agg) if (p[k]) agg[k] += p[k]; }
   return agg;
 }
 

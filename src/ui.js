@@ -3,7 +3,7 @@
 // with cooldowns, minimap, floating combat text, combat log,
 // interaction prompts, target frame, death screen, and chat.
 // ============================================================
-import { CLASSES, CLASS_ORDER, passivesFor } from './classes.js';
+import { CLASSES, CLASS_ORDER, passiveById, PASSIVES } from './classes.js';
 import { Saves } from './save.js';
 import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import { WEAPON_SKINS } from './weapons.js';
@@ -492,10 +492,11 @@ export class UI {
       this.el.hotbar.appendChild(s);
       this.slots.push({ el: s, cd: s.querySelector('.cd') });
     });
-    // Always-on class passives — shown as non-interactive chips so the player
-    // can see the perks they've unlocked (they don't take a hotbar slot).
-    const passives = passivesFor(player.classId, player.stats.level);
-    for (const pv of passives) {
+    // Always-on class passives the player has CHOSEN at level-up — shown as
+    // non-interactive chips (they don't take a hotbar slot).
+    for (const id of (player.learnedPassives || [])) {
+      const pv = passiveById(player.classId, id);
+      if (!pv) continue;
       const c = document.createElement('div');
       c.className = 'slot ready passive-slot';
       c.title = `${pv.name} (passive) — ${pv.desc}`;
@@ -665,12 +666,13 @@ export class UI {
     ).join('');
     const skillCards = skillEmpty
       ? `<div class="lu-empty">All skills learned & maxed — enjoy the extra attributes!</div>`
-      : choices.skills.map((s, i) =>
-        `<div class="lu-card" data-kind="skill" data-i="${i}">
+      : choices.skills.map((s, i) => {
+        const tag = s.type === 'learn' ? 'Learn' : s.type === 'passive' ? 'Passive' : `Upgrade →R${s.rank + 1}`;
+        return `<div class="lu-card${s.type === 'passive' ? ' lu-passive' : ''}" data-kind="skill" data-i="${i}">
            <div class="lu-glyph">${s.glyph}</div>
-           <div class="lu-name">${s.type === 'learn' ? 'Learn' : `Upgrade →R${s.rank + 1}`}: ${s.name}</div>
+           <div class="lu-name">${tag}: ${s.name}</div>
            <div class="lu-desc">${s.desc}</div>
-         </div>`).join('');
+         </div>`; }).join('');
 
     wrap.innerHTML = `
       <div class="lu-panel">
@@ -705,7 +707,9 @@ export class UI {
       wrap.remove();
       this.levelModalOpen = false;
       if (selSkill) {
-        this.log(selSkill.type === 'learn' ? `Learned ${selSkill.name}!` : `Upgraded ${selSkill.name}!`, 'xp');
+        const verb = selSkill.type === 'upgrade' ? 'Upgraded' : 'Learned';
+        const tail = selSkill.type === 'passive' ? ' (passive)' : '';
+        this.log(`${verb} ${selSkill.name}${tail}!`, 'xp');
       }
       onDone();
     };
@@ -1164,6 +1168,25 @@ export class UI {
           <div class="sk-desc">${a.desc}</div>
         </div>`;
     });
+    // Passive perks: always-on, chosen at level-up like a skill (no hotbar slot).
+    const pdefs = PASSIVES[player.classId] || [];
+    if (pdefs.length) {
+      const ownedP = new Set(player.learnedPassives || []);
+      html += `<div class="sk-section">Passive Skills</div>`;
+      for (const pv of pdefs) {
+        const have = ownedP.has(pv.id);
+        const ready = player.stats.level >= pv.reqLevel;
+        const meta = have ? '◆ Active · always on'
+          : ready ? '🔒 Choose at your next level-up' : `🔒 Unlocks at level ${pv.reqLevel}`;
+        html += `
+          <div class="sk-card${have ? '' : ' locked'}">
+            <div class="sk-head"><span class="sk-glyph">${pv.glyph}</span>
+              <div><div class="sk-name">${pv.name}</div>
+              <div class="sk-meta">${meta}</div></div></div>
+            <div class="sk-desc">${pv.desc}</div>
+          </div>`;
+      }
+    }
     this.skillsBody.innerHTML = html;
   }
 
