@@ -484,12 +484,12 @@ export class Player {
       // blade just follows the grip — a light straighten through a slash, and a
       // full forward point on the stab (comboStep 2) so the tip leads the thrust.
       if (attacking) {
+        // Straighten the blade IN LINE with the arm through the swing so it
+        // sweeps the arc (slash) / leads the thrust (stab) instead of staying
+        // angled in the grip — then eases back to the upright ready pose.
         const arc = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 over the swing
-        if ((this.comboStep | 0) === 2) {
-          w.rotation.set(base[0] - 1.15 * arc, base[1], base[2] * (1 - arc));
-        } else {
-          w.rotation.set(base[0] - 0.35 * arc, base[1], base[2]);
-        }
+        const ext = Math.PI * 0.92;                            // blade in line with the arm
+        w.rotation.set(base[0] + (ext - base[0]) * arc, base[1], base[2] * (1 - arc));
       } else {
         w.rotation.set(base[0], base[1], base[2]);
       }

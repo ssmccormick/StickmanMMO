@@ -43,8 +43,8 @@ export const WEAPON_HOLD = {
   throwaxe:   { pos: [0, -0.6, 0.04], rot: [0.1, 0, -0.1] },
   revolver: { pos: [-0.02, -0.6, 0.05], rot: [0.15, 0, 0] },   // pistol, held forward
   rifle:    { pos: [-0.04, -0.66, 0.1], rot: [0.08, 0, 0] },   // long gun, levelled
-  dagger:   { pos: [0, -0.56, 0], rot: [0, 0, Math.PI / 2.4] },
-  default:  { pos: [0, -0.62, 0], rot: [0, 0, Math.PI / 2.5] },  // sword/axe/mace
+  dagger:   { pos: [0, -0.56, 0], rot: [-0.32, 0, 0.22] },       // held upright, ready
+  default:  { pos: [0, -0.62, 0], rot: [-0.36, 0, 0.18] },       // sword/axe/mace, upright ready stance
 };
 
 // ---- Weapon skins: recolour a weapon's materials without changing its shape.

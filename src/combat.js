@@ -208,11 +208,14 @@ export class Combat {
         // A quick swing: hit the best-aimed foe (forgiving reach).
         const e = this._aimEnemy(range, 1.0);
         if (e) this._strike(e, p.apower * mult, { crit: this.def.critBonus || 0 });
+        // Show the swing: a swish arc tracing the reach (thin streak on the stab).
+        this._swishFx(this.player.pos, dir, range + 0.6, p.comboStep, this.def.accent);
       } else {
         // A charged swing: a wide cleave that hits everything in front.
         const arc = 1.6 + t * 2.2;
         for (const e of this._inArc(this.player.pos, dir, range, arc)) this._strike(e, p.apower * mult, { crit: this.def.critBonus || 0 });
-        this._coneFx(this.player.pos, dir, range, 1.6 + t * 2.2, this.def.accent);
+        this._coneFx(this.player.pos, dir, range, arc, this.def.accent);
+        this._swishFx(this.player.pos, dir, range + 0.6, 1, this.def.accent);
       }
       this._emitAction('swing');
     }
@@ -882,9 +885,31 @@ export class Combat {
   _slashFx(origin, dir, range, color = 0xffffff) {
     const m = new THREE.Mesh(new THREE.RingGeometry(range * 0.4, range, 16, 1, -0.8, 1.6),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
-    m.rotation.x = -Math.PI / 2; m.position.copy(origin); m.position.y += 0.6;
+    m.rotation.x = -Math.PI / 2; m.position.copy(origin); m.position.y += 1.05;
     m.rotation.z = -Math.atan2(dir.x, dir.z);
     this._tempMesh(m, 0.22);
+  }
+  // A quick "swish" that traces a melee swing at chest height, so every swing
+  // shows the arc/area it sweeps. Slashes fan out; the stab is a forward streak.
+  _swishFx(origin, dir, range, combo = 0, color = 0xffffff) {
+    const heading = Math.atan2(dir.x, dir.z);
+    const y = 1.15;
+    if (combo === 2) {
+      // Stab: a thin forward streak from the chest out to the point.
+      const pos = [0, y, 0, Math.sin(heading) * range, y, Math.cos(heading) * range];
+      const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
+      line.position.copy(origin); line.userData.baseOpacity = 0.95;
+      this._tempMesh(line, 0.16);
+      return;
+    }
+    // Slash: a bright ribbon arc sweeping through the swing.
+    const half = 1.0;
+    const m = new THREE.Mesh(new THREE.RingGeometry(range * 0.55, range, 22, 1, -half, half * 2),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.copy(origin); m.position.y += y;
+    m.rotation.z = -heading; m.userData.baseOpacity = 0.8;
+    this._tempMesh(m, 0.2);
   }
   // A filled ground cone/wedge that shows EXACTLY where a melee arc lands —
   // apex at the player, spreading `arc` radians around `dir` out to `range`.
@@ -909,13 +934,15 @@ export class Combat {
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
       color, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
     }));
-    m.position.copy(origin); m.userData.baseOpacity = 0.55;
+    // Lift the wedge to knee/waist height so it never sinks under sloped or
+    // raised terrain ahead (it read as "under the ground" at foot level).
+    m.position.copy(origin); m.position.y += 0.9; m.userData.baseOpacity = 0.55;
     this._tempMesh(m, 0.3);
     // A bright outline (apex → arc rim → apex) makes the wedge crisp and clear.
     const edge = [0, y, 0, ...rim, 0, y, 0];
     const lgeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
     const line = new THREE.Line(lgeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }));
-    line.position.copy(origin); line.userData.baseOpacity = 0.95;
+    line.position.copy(origin); line.position.y += 0.9; line.userData.baseOpacity = 0.95;
     this._tempMesh(line, 0.3);
   }
   _healFx(pos, color = 0x7bf08a) {
