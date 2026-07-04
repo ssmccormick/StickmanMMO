@@ -772,6 +772,20 @@ body.touch-mode .controls-hint { bottom: 70px; font-size: 11px; max-width: 70vw;
 .set-reset { margin-top: 4px; padding: 10px; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.06); border: 1px solid var(--panel-edge); color: var(--ink); font-size: 13px; }
 .set-reset:hover { background: rgba(255,255,255,0.12); }
 
+/* ---- Ability hotkey rebinding ---- */
+.set-keybinds-head { font-size: 14px; font-weight: bold; color: var(--gold); margin-top: 4px; }
+.set-hint-sm { font-size: 11px; opacity: 0.6; margin-top: -8px; }
+.kb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.kb-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kb-label { font-size: 13px; opacity: 0.85; }
+.kb-btn {
+  min-width: 62px; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,0.06); border: 1px solid var(--panel-edge);
+  color: var(--ink); font-size: 13px; font-weight: bold; text-align: center;
+}
+.kb-btn:hover { background: rgba(255,255,255,0.12); }
+.kb-btn.listening { background: rgba(216,178,74,0.25); border-color: var(--gold); color: var(--gold); }
+
 /* ============================================================
    Character customiser (creation screen + in-game wardrobe)
    ============================================================ */

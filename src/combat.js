@@ -58,8 +58,10 @@ export class Combat {
           const chg = this._charge || 0; this._charge = 0;
           this.autoAttack(chg);
         }
-        const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8'];
-        for (let i = 0; i < keys.length; i++) if (input.just(keys[i])) this.useAbility(i);
+        // Ability hotkeys are player-remappable (see UI keybinds); read the live
+        // binding each frame. Fall back to defaults if the UI isn't wired.
+        const keys = (this.ui && this.ui.abilityKeys) ? this.ui.abilityKeys() : ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8'];
+        for (let i = 0; i < keys.length; i++) if (keys[i] && input.just(keys[i])) this.useAbility(i);
       } else if (this.charging) { this.charging = false; p.charging = false; this._charge = 0; }
     } else if (this.charging) { this.charging = false; p.charging = false; this._charge = 0; }
     this._updateChargeFx();

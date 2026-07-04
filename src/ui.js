@@ -22,6 +22,29 @@ import {
 
 const LORE_LINES = TOWN_CHATTER;
 
+// Remappable ability hotkeys. The 8 hotbar ability slots default to keys 1..8;
+// the options menu lets the player rebind each to any key. combat.js reads the
+// live binding (ui.abilityKeys()) rather than a hardcoded list.
+export const ABILITY_SLOTS = 8;
+export const DEFAULT_ABILITY_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8'];
+
+// A short human label for a KeyboardEvent.code (e.g. 'Digit1'→'1', 'KeyQ'→'Q').
+export function keyLabel(code) {
+  if (!code) return '—';
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'Num' + code.slice(6);
+  if (code.startsWith('Key')) return code.slice(3);
+  const named = {
+    Space: '␣', Escape: 'Esc', Enter: '⏎', Backquote: '`', Minus: '-', Equal: '=',
+    BracketLeft: '[', BracketRight: ']', Backslash: '\\', Semicolon: ';', Quote: "'",
+    Comma: ',', Period: '.', Slash: '/', Tab: '⇥',
+    ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+    ShiftLeft: 'LShift', ShiftRight: 'RShift', ControlLeft: 'LCtrl', ControlRight: 'RCtrl',
+    AltLeft: 'LAlt', AltRight: 'RAlt',
+  };
+  return named[code] || code;
+}
+
 export class UI {
   constructor() {
     this.el = {
@@ -439,8 +462,10 @@ export class UI {
   // Rebuild the hotbar from the player's LEARNED abilities (called on
   // entry and whenever a new skill is learned / ranked up).
   refreshHotbar(player) {
+    this._player = player; // remembered so the keybind editor can refresh labels
     this.el.hotbar.innerHTML = '';
     const def = CLASSES[player.classId];
+    const abKeys = this.abilityKeys();
     const atk = document.createElement('div');
     atk.className = 'slot ready';
     atk.innerHTML = `<span class="key">LMB</span>${def.ranged ? '🏹' : '⚔️'}`;
@@ -461,7 +486,7 @@ export class UI {
       const s = document.createElement('div');
       s.className = 'slot ready';
       s.title = `${a.name} (Rank ${l.rank}) — ${a.desc}`;
-      s.innerHTML = `<span class="key">${i + 1}</span>${a.glyph}` +
+      s.innerHTML = `<span class="key">${keyLabel(abKeys[i])}</span>${a.glyph}` +
         `<span class="cost">${a.cost}${a.costType}</span>` +
         `<span class="rank">${pips}</span><div class="cd hidden"></div>`;
       this.el.hotbar.appendChild(s);
@@ -705,13 +730,23 @@ export class UI {
       lookSens: 1,                             // camera look multiplier
       invertY: false,
       showHint: !this.touchDevice,             // hide the wordy hint on phones
+      abilityKeys: DEFAULT_ABILITY_KEYS.slice(), // remappable ability-slot keys (1..8)
     };
   }
   _loadSettings() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('smmo_settings')) || {}; } catch (e) { saved = {}; }
     this.settings = Object.assign(this._defaultSettings(), saved);
+    this._sanitizeKeybinds();
   }
+  // Guarantee exactly ABILITY_SLOTS ability-key entries (older saves / bad data
+  // fall back to the default for that slot).
+  _sanitizeKeybinds() {
+    const cur = Array.isArray(this.settings.abilityKeys) ? this.settings.abilityKeys : [];
+    this.settings.abilityKeys = DEFAULT_ABILITY_KEYS.map((d, i) => (typeof cur[i] === 'string' && cur[i]) ? cur[i] : d);
+  }
+  // The key code currently bound to ability slot i (used by combat.js + hotbar).
+  abilityKeys() { return this.settings.abilityKeys; }
   _saveSettings() {
     try { localStorage.setItem('smmo_settings', JSON.stringify(this.settings)); } catch (e) { /* ignore */ }
   }
@@ -757,6 +792,9 @@ export class UI {
         <input id="set-ls" type="range" min="0.3" max="2.5" step="0.05" value="${s.lookSens}"></div>
       <div class="set-row set-check"><label><input id="set-inv" type="checkbox" ${s.invertY ? 'checked' : ''}> Invert look (Y axis)</label></div>
       <div class="set-row set-check"><label><input id="set-hint" type="checkbox" ${s.showHint ? 'checked' : ''}> Show controls hint</label></div>
+      <div class="set-keybinds-head">Ability Hotkeys</div>
+      <div class="set-hint-sm">Click a key, then press a new one to rebind it (Esc cancels).</div>
+      <div id="set-keybinds" class="kb-grid"></div>
       <button class="set-reset">Reset to defaults</button>
       <button class="set-quit" style="margin-top:10px;width:100%;padding:10px;background:#5a1f1f;color:#ffd7d7;border:1px solid #a13a3a;border-radius:6px;font-weight:bold;cursor:pointer;">⎋ Quit to Character Selection</button>`;
     const bind = (id, key, vid, fmt) => {
@@ -772,8 +810,54 @@ export class UI {
     bind('set-ls', 'lookSens', 'set-ls-v', pct);
     this.setBody.querySelector('#set-inv').addEventListener('change', (e) => this.setSetting('invertY', e.target.checked));
     this.setBody.querySelector('#set-hint').addEventListener('change', (e) => this.setSetting('showHint', e.target.checked));
-    this.setBody.querySelector('.set-reset').addEventListener('click', () => { this.settings = this._defaultSettings(); this._saveSettings(); this.applySettings(); this.renderSettings(); });
+    this.setBody.querySelector('.set-reset').addEventListener('click', () => { this.settings = this._defaultSettings(); this._saveSettings(); this.applySettings(); this.renderSettings(); if (this._player) this.refreshHotbar(this._player); });
     this.setBody.querySelector('.set-quit').addEventListener('click', () => { if (this.onQuitToMenu) this.onQuitToMenu(); });
+    this._renderKeybinds();
+  }
+
+  // Build the ability-hotkey rows and their click-to-rebind behaviour.
+  _renderKeybinds() {
+    const host = this.setBody && this.setBody.querySelector('#set-keybinds');
+    if (!host) return;
+    const keys = this.abilityKeys();
+    host.innerHTML = '';
+    for (let i = 0; i < ABILITY_SLOTS; i++) {
+      const row = document.createElement('div');
+      row.className = 'kb-row';
+      row.innerHTML = `<span class="kb-label">Ability ${i + 1}</span><button class="kb-btn" data-i="${i}">${keyLabel(keys[i])}</button>`;
+      host.appendChild(row);
+    }
+    host.querySelectorAll('.kb-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this._beginRebind(+btn.dataset.i, btn));
+    });
+  }
+
+  // Listen (once) for the next key press and assign it to ability slot i.
+  _beginRebind(i, btn) {
+    if (this._rebinding) this._rebinding(); // cancel any in-flight rebind
+    btn.textContent = 'Press a key…';
+    btn.classList.add('listening');
+    const onKey = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      cleanup();
+      if (e.code === 'Escape') { btn.textContent = keyLabel(this.abilityKeys()[i]); return; }
+      const keys = this.abilityKeys().slice();
+      // Avoid two slots sharing a key: clear whichever slot already held it.
+      for (let j = 0; j < keys.length; j++) if (keys[j] === e.code && j !== i) keys[j] = '';
+      keys[i] = e.code;
+      this.settings.abilityKeys = keys;
+      this._saveSettings();
+      this._renderKeybinds();
+      if (this._player) this.refreshHotbar(this._player); // update hotbar key labels
+    };
+    const cleanup = () => {
+      window.removeEventListener('keydown', onKey, true);
+      btn.classList.remove('listening');
+      this._rebinding = null;
+    };
+    this._rebinding = cleanup;
+    // Capture phase + stopPropagation keeps this press from reaching game input.
+    window.addEventListener('keydown', onKey, true);
   }
 
   // Close whichever menu/overlay is open (top-most). Returns true if one closed.
