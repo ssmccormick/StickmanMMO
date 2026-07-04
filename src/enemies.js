@@ -10,7 +10,7 @@ import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS, biomeKeyAt } from './wo
 // Enemy archetypes + level-scaling live in a Three-free shared module so the
 // authoritative server simulates identical enemies. Re-export DRAGON_ROOST so
 // existing importers (main.js) keep working.
-import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, SPECIAL_SETS, specialsFor, typesForBiome } from './sim/enemyTypes.js';
+import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, SPECIAL_SETS, specialsFor, typesForBiome, findSpecial, bossThemeAt } from './sim/enemyTypes.js';
 export { DRAGON_ROOST };
 
 let NEXT_ID = 1;
@@ -88,9 +88,12 @@ export class Enemy {
     this.xp = st.xp;
     this.displayScale = st.displayScale;
 
+    // Bosses take on their reach's palette (fire in the ash, rime in the snow,
+    // …) so an Archfiend or Lieutenant reads as part of its area at a glance.
+    const bt = this.boss ? bossThemeAt(home.x, home.z) : null;
     this.mesh = createCreature(this.typeId, {
-      color: this.boss ? 0x1f1320 : this.elite ? 0x2a2a2a : this.type.color,
-      accent: this.boss ? 0xff3030 : this.elite ? 0xffcf3a : this.type.accent,
+      color: bt ? bt.color : this.elite ? 0x2a2a2a : this.type.color,
+      accent: bt ? bt.accent : this.elite ? 0xffcf3a : this.type.accent,
       scale: this.displayScale,
     });
     // Each creature carries its own poser; fall back to the humanoid animator.
@@ -136,8 +139,9 @@ export class Enemy {
 
     // Telegraphed specials: a menu of charged attacks for this type (melee only;
     // ranged mobs keep firing). `charge` holds an in-progress wind-up/execution.
-    this.specials = specialsFor(typeId, this.ranged);
+    this.specials = specialsFor(typeId, this.ranged, this.boss);
     this.specialCd = 2.5 + Math.random() * 3;
+    this._specialIdx = 0;   // bosses cycle their attack rotation in order
     this.charge = null;
     this._jumpArc = 0;
 
@@ -238,9 +242,9 @@ export class Enemy {
     // then takes over movement + damage via _updateCharge.
     if (this.specials.length && this.specialCd <= 0 && player.alive && dist < this.type.aggro
         && (this.state === 'attack' || this.state === 'chase')) {
-      const ready = this.specials.filter((s) => dist >= s.minR && dist <= s.maxR);
-      if (ready.length) {
-        this._startCharge(ready[(Math.random() * ready.length) | 0], player);
+      const pick = this._pickSpecial(dist);
+      if (pick) {
+        this._startCharge(pick, player);
         this._finish(dt);
         return;
       }
@@ -326,12 +330,29 @@ export class Enemy {
     if (this.state === 'chase' || this.state === 'attack') this.state = 'return';
   }
 
+  // Choose the next special to fire. Bosses march their rotation in order
+  // (skipping any that are out of range), so the fight reads as a deliberate
+  // cycle of big attacks; lesser foes just pick a ready special at random.
+  _pickSpecial(dist) {
+    const inRange = (s) => dist >= s.minR && dist <= s.maxR;
+    if (this.boss) {
+      for (let n = 0; n < this.specials.length; n++) {
+        const idx = (this._specialIdx + n) % this.specials.length;
+        const sp = this.specials[idx];
+        if (inRange(sp)) { this._specialIdx = (idx + 1) % this.specials.length; return sp; }
+      }
+      return null;
+    }
+    const ready = this.specials.filter(inRange);
+    return ready.length ? ready[(Math.random() * ready.length) | 0] : null;
+  }
+
   // ---- Telegraphed special attacks ----
   _startCharge(sp, player) {
     const dx = player.pos.x - this.pos.x, dz = player.pos.z - this.pos.z;
     const l = Math.hypot(dx, dz) || 1;
     this.charge = { sp, phase: 'windup', t: 0, dur: sp.windup, dx: dx / l, dz: dz / l,
-                    tx: player.pos.x, tz: player.pos.z, applied: false, execT: 0 };
+                    tx: player.pos.x, tz: player.pos.z, cx: this.pos.x, cz: this.pos.z, applied: false, execT: 0 };
     this.facing = Math.atan2(dx, dz);
     this.attackAnim = 0.4; // brace/wind-up pose
     this._speed01 = 0;
@@ -389,7 +410,35 @@ export class Enemy {
         const cx = sp.id === 'jump' ? this.pos.x : c.tx, cz = sp.id === 'jump' ? this.pos.z : c.tz;
         if (player.alive && Math.hypot(player.pos.x - cx, player.pos.z - cz) <= sp.aoe) this._hitPlayer(player, sp.dmg);
       }
-    } else {                                       // arc: cleave / slash
+    } else if (sp.shape === 'multicone') {        // BOSS: fan of several cones
+      if (!c.applied) {
+        c.applied = true;
+        const dx = player.pos.x - this.pos.x, dz = player.pos.z - this.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (player.alive && d <= sp.range + 0.5) {
+          const ang = Math.atan2(dx, dz);
+          const base = Math.atan2(c.dx, c.dz), n = sp.cones || 3;
+          for (let i = 0; i < n; i++) {
+            const ca = base + (i - (n - 1) / 2) * (sp.spread || 0.8);
+            let diff = Math.abs(((ang - ca + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+            if (diff <= sp.arc / 2 + 0.15) { this._hitPlayer(player, sp.dmg); break; }
+          }
+        }
+      }
+    } else if (sp.shape === 'shockwave') {        // BOSS: expanding ring — jump it!
+      const r = (c.execT / sp.exec) * sp.waveMax;
+      this._shockR = r;
+      this._updateShockRing(sp);
+      if (!c.applied && player.alive) {
+        const pd = Math.hypot(player.pos.x - c.cx, player.pos.z - c.cz);
+        if (Math.abs(pd - r) <= sp.band) {
+          const clr = player.pos.y - heightAt(player.pos.x, player.pos.z);
+          if (clr < 1.1) { c.applied = true; this._hitPlayer(player, sp.dmg); } // grounded → hit
+        }
+      }
+    } else if (sp.shape === 'nova') {             // BOSS: radial bullet-hell burst
+      if (!c.applied) { c.applied = true; this._spawnNova(sp); }
+    } else {                                       // arc: cleave / slash / massive cone
       if (!c.applied) {
         c.applied = true;
         const dx = player.pos.x - this.pos.x, dz = player.pos.z - this.pos.z;
@@ -399,6 +448,22 @@ export class Enemy {
           if (diff <= sp.arc / 2 + 0.2) this._hitPlayer(player, sp.dmg);
         }
       }
+    }
+  }
+
+  // Bullet-hell: fling `count` dodgeable projectiles out in a full radial ring.
+  _spawnNova(sp) {
+    const n = sp.count || 16, y = heightAt(this.pos.x, this.pos.z) + 1.2 + (this._jumpArc || 0);
+    const col = sp.projColor || sp.color || 0xc07bff;
+    const dmg = Math.round(this.dmg * sp.dmg);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const dir = new THREE.Vector3(Math.sin(a), 0, Math.cos(a));
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+      mesh.position.set(this.pos.x + dir.x * 1.2, y, this.pos.z + dir.z * 1.2);
+      mesh.add(new THREE.PointLight(col, 1.0, 6));
+      this.scene.add(mesh);
+      ENEMY_SHOTS.push({ mesh, dir, speed: sp.projSpeed || 12, range: sp.range || 20, traveled: 0, dmg, owner: this });
     }
   }
 
@@ -428,9 +493,9 @@ export class Enemy {
       if (this._renderChargeId) { this._clearTelegraph(); this._renderChargeId = null; this.charge = null; }
       return;
     }
-    const sp = (SPECIAL_SETS[this.typeId] || []).find((s) => s.id === cg.s);
+    const sp = findSpecial(this.typeId, cg.s);
     if (!sp) return;
-    this.charge = { sp, dx: cg.dx || 0, dz: cg.dz || 1, tx: cg.tx != null ? cg.tx : this.pos.x, tz: cg.tz != null ? cg.tz : this.pos.z };
+    this.charge = { sp, dx: cg.dx || 0, dz: cg.dz || 1, tx: cg.tx != null ? cg.tx : this.pos.x, tz: cg.tz != null ? cg.tz : this.pos.z, cx: cg.tx != null ? cg.tx : this.pos.x, cz: cg.tz != null ? cg.tz : this.pos.z };
     if (this._renderChargeId !== cg.s) { this._showTelegraph(sp); this._renderChargeId = cg.s; }
     if (this._chargeFill) {
       this._chargeFill.scale.x = Math.max(0.0001, cg.pr || 0);
@@ -468,14 +533,47 @@ export class Enemy {
     if (this._indicator) { this.scene.remove(this._indicator); this._disposeObj(this._indicator); }
     const g = new THREE.Group();
     const mat = new THREE.MeshBasicMaterial({ color: sp.color, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false });
-    let mesh;
-    if (sp.shape === 'ring') { mesh = new THREE.Mesh(new THREE.CircleGeometry(sp.aoe, 28), mat); mesh.rotation.x = -Math.PI / 2; }
-    else if (sp.shape === 'arc') { mesh = new THREE.Mesh(new THREE.CircleGeometry(sp.range * 0.62, 22), mat); mesh.rotation.x = -Math.PI / 2; mesh.position.z = sp.range * 0.5; }
-    else { mesh = new THREE.Mesh(new THREE.PlaneGeometry(sp.width, sp.maxR), mat); mesh.rotation.x = -Math.PI / 2; mesh.position.z = sp.maxR / 2; }
-    g.add(mesh);
+    if (sp.shape === 'ring') { const m = new THREE.Mesh(new THREE.CircleGeometry(sp.aoe, 28), mat); m.rotation.x = -Math.PI / 2; g.add(m); }
+    else if (sp.shape === 'arc') { const m = new THREE.Mesh(new THREE.CircleGeometry(sp.range * 0.62, 22), mat); m.rotation.x = -Math.PI / 2; m.position.z = sp.range * 0.5; g.add(m); }
+    else if (sp.shape === 'multicone') {           // several forward damage cones
+      const n = sp.cones || 3, len = sp.range, w = Math.max(1.4, sp.range * (sp.arc || 0.5) * 0.9);
+      for (let i = 0; i < n; i++) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, len), mat.clone());
+        m.rotation.x = -Math.PI / 2;
+        const ca = (i - (n - 1) / 2) * (sp.spread || 0.8);
+        m.position.set(Math.sin(ca) * len / 2, 0, Math.cos(ca) * len / 2);
+        m.rotation.z = -ca;
+        g.add(m);
+      }
+    }
+    else if (sp.shape === 'shockwave') {           // full danger disc; wave expands within it
+      const m = new THREE.Mesh(new THREE.CircleGeometry(sp.waveMax, 40), mat); m.rotation.x = -Math.PI / 2; g.add(m);
+    }
+    else if (sp.shape === 'nova') {                // burst-radius disc
+      const m = new THREE.Mesh(new THREE.CircleGeometry(4.2, 32), mat); m.rotation.x = -Math.PI / 2; g.add(m);
+    }
+    else { const m = new THREE.Mesh(new THREE.PlaneGeometry(sp.width, sp.maxR), mat); m.rotation.x = -Math.PI / 2; m.position.z = sp.maxR / 2; g.add(m); }
     this.scene.add(g);
     this._indicator = g;
     this._positionIndicator(sp);
+  }
+
+  // The bright expanding wavefront ring for a shockwave (call each exec frame).
+  _updateShockRing(sp) {
+    const r = Math.max(0.3, this._shockR || 0.3);
+    if (!this._shockRing) {
+      const mat = new THREE.MeshBasicMaterial({ color: sp.color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+      this._shockRing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1.0, 48), mat);
+      this._shockRing.rotation.x = -Math.PI / 2;
+      this.scene.add(this._shockRing);
+    }
+    const c = this.charge;
+    this._shockRing.position.set(c.cx, heightAt(c.cx, c.cz) + 0.08, c.cz);
+    this._shockRing.scale.setScalar(r);
+  }
+  _clearShockRing() {
+    if (this._shockRing) { this.scene.remove(this._shockRing); this._disposeObj(this._shockRing); this._shockRing = null; }
+    this._shockR = 0;
   }
   _positionIndicator(sp) {
     const g = this._indicator; if (!g) return;
@@ -491,6 +589,7 @@ export class Enemy {
     if (this._chargeBar) this._chargeBar.visible = false;
     if (this._chargeFill) { this._chargeFill.material.color.setHex(0xff3020); this._chargeFill.scale.x = 0.0001; }
     if (this._indicator) { this.scene.remove(this._indicator); this._disposeObj(this._indicator); this._indicator = null; }
+    this._clearShockRing();
   }
   _disposeObj(o) { o.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); }); }
 

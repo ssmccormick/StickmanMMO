@@ -52,9 +52,11 @@ class SimEnemy {
     this.attackTimer = 0;
     this.wanderTarget = this._randomNear(this.home, 7);
 
-    // Telegraphed specials (shared defs with the client).
-    this.specials = specialsFor(typeId, this.ranged);
+    // Telegraphed specials (shared defs with the client). Bosses use the shared
+    // boss rotation and cycle it in order.
+    this.specials = specialsFor(typeId, this.ranged, this.boss);
     this.specialCd = 2.5 + Math.random() * 3;
+    this._specialIdx = 0;
     this.charge = null;
   }
 
@@ -92,8 +94,8 @@ class SimEnemy {
     // Commit to a telegraphed special when ready and in range.
     if (this.specials.length && this.specialCd <= 0 && target && dist < this.type.aggro
         && (this.state === 'attack' || this.state === 'chase')) {
-      const ready = this.specials.filter((s) => dist >= s.minR && dist <= s.maxR);
-      if (ready.length) { this._startCharge(ready[(Math.random() * ready.length) | 0], target); return null; }
+      const pick = this._pickSpecial(dist);
+      if (pick) { this._startCharge(pick, target); return null; }
     }
 
     const evs = [];
@@ -149,10 +151,23 @@ class SimEnemy {
   }
 
   // ---- Telegraphed specials (server-authoritative) ----
+  _pickSpecial(dist) {
+    const inRange = (s) => dist >= s.minR && dist <= s.maxR;
+    if (this.boss) {
+      for (let n = 0; n < this.specials.length; n++) {
+        const idx = (this._specialIdx + n) % this.specials.length;
+        const sp = this.specials[idx];
+        if (inRange(sp)) { this._specialIdx = (idx + 1) % this.specials.length; return sp; }
+      }
+      return null;
+    }
+    const ready = this.specials.filter(inRange);
+    return ready.length ? ready[(Math.random() * ready.length) | 0] : null;
+  }
   _startCharge(sp, target) {
     const dx = target.x - this.x, dz = target.z - this.z, l = Math.hypot(dx, dz) || 1;
     this.charge = { sp, phase: 'w', t: 0, dur: sp.windup, dx: dx / l, dz: dz / l,
-                    tx: target.x, tz: target.z, applied: false, execT: 0 };
+                    tx: target.x, tz: target.z, cx: this.x, cz: this.z, applied: false, execT: 0 };
     this.facing = Math.atan2(dx, dz);
   }
   _updateCharge(dt, players) {
@@ -186,7 +201,28 @@ class SimEnemy {
       let cx = c.tx, cz = c.tz;
       if (sp.id === 'jump') { this.x += (c.tx - this.x) * Math.min(1, dt * 7); this.z += (c.tz - this.z) * Math.min(1, dt * 7); cx = this.x; cz = this.z; }
       if (!c.applied && c.execT >= sp.exec * 0.72) { c.applied = true; for (const p of players) if (p.alive && Math.hypot(p.x - cx, p.z - cz) <= sp.aoe) hit(p); }
-    } else {                                       // arc: cleave / slash
+    } else if (sp.shape === 'multicone') {        // BOSS: fan of cones
+      if (!c.applied) { c.applied = true;
+        const base = Math.atan2(c.dx, c.dz), n = sp.cones || 3;
+        for (const p of players) { if (!p.alive) continue; const dx = p.x - this.x, dz = p.z - this.z, d = Math.hypot(dx, dz);
+          if (d > sp.range + 0.5) continue; const ang = Math.atan2(dx, dz);
+          for (let i = 0; i < n; i++) { const ca = base + (i - (n - 1) / 2) * (sp.spread || 0.8);
+            const diff = Math.abs(((ang - ca + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+            if (diff <= sp.arc / 2 + 0.15) { hit(p); break; } } } }
+    } else if (sp.shape === 'shockwave') {        // BOSS: expanding ring, jump to avoid
+      const r = (c.execT / sp.exec) * sp.waveMax;
+      if (!c.applied) for (const p of players) { if (!p.alive) continue;
+        const pd = Math.hypot(p.x - c.cx, p.z - c.cz);
+        if (Math.abs(pd - r) <= sp.band && (p.y || 0) - heightAt(p.x, p.z) < 1.1) { hit(p); c.applied = true; } }
+    } else if (sp.shape === 'nova') {             // BOSS: radial bullet-hell burst
+      if (!c.applied) { c.applied = true; const n = sp.count || 16, rng = sp.range || 20;
+        const fy = this.y + 1.2;
+        for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, sx = Math.sin(a), sz = Math.cos(a);
+          out.push({ shot: { enemyId: this.id, x: +this.x.toFixed(2), y: +fy.toFixed(2), z: +this.z.toFixed(2),
+            targetId: 0, tx: +(this.x + sx * rng).toFixed(2), ty: +fy.toFixed(2), tz: +(this.z + sz * rng).toFixed(2),
+            speed: sp.projSpeed || 12, color: sp.projColor || sp.color || 0xc07bff,
+            dmg: Math.round(this.dmg * sp.dmg), range: rng } }); } }
+    } else {                                       // arc: cleave / slash / massive cone
       if (!c.applied) { c.applied = true; for (const p of players) { if (!p.alive) continue; const dx = p.x - this.x, dz = p.z - this.z, d = Math.hypot(dx, dz); if (d <= sp.range + 0.5) { const diff = Math.abs(((Math.atan2(dx, dz) - this.facing + Math.PI * 3) % (Math.PI * 2)) - Math.PI); if (diff <= sp.arc / 2 + 0.2) hit(p); } } }
     }
     return out.length ? out : null;

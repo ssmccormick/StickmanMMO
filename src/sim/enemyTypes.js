@@ -124,10 +124,55 @@ export const SPECIAL_SETS = {
 const DEFAULT_MELEE = [
   { id: 'strike', shape: 'arc', minR: 0, maxR: 3, windup: 0.45, exec: 0.22, cd: [3, 5], range: 2.9, arc: 1.5, dmg: 1.2, color: 0xffd0a0 },
 ];
-export function specialsFor(typeId, ranged) {
+
+// ---- Boss attack rotation ----
+// Every named boss (Archfiend + Lieutenant) cycles through this fixed sequence of
+// big, readable, telegraphed attacks instead of the small per-type specials. New
+// telegraph shapes drive them (handled in both the client renderer and the
+// authoritative server sim so multiplayer stays identical):
+//   • 'multicone' — winds up, then fans out several damage cones at once
+//   • 'lane'      — a long, wide charging dash across a large area
+//   • 'shockwave' — an expanding ground ring you must JUMP over to avoid
+//   • 'arc'       — one massive frontal cone
+//   • 'nova'      — a bullet-hell burst of many radial projectiles
+export const BOSS_SPECIALS = [
+  { id: 'b_multicone', shape: 'multicone', minR: 0, maxR: 16, windup: 1.05, exec: 0.32, cd: [4.5, 6.5], cones: 3, spread: 0.85, range: 12, arc: 0.52, dmg: 1.4, color: 0xff7a2a },
+  { id: 'b_dash',      shape: 'lane',      minR: 4, maxR: 22, windup: 0.85, exec: 0.42, cd: [4.5, 6.5], dashSpeed: 27, hitR: 2.7, width: 4.2, maxR: 22, dmg: 1.7, color: 0xff5a3c },
+  { id: 'b_shock',     shape: 'shockwave', minR: 0, maxR: 18, windup: 1.0,  exec: 0.95, cd: [5, 7],     waveMax: 15, band: 2.0, dmg: 1.6, color: 0xffd23c },
+  { id: 'b_cone',      shape: 'arc',       minR: 0, maxR: 13, windup: 0.95, exec: 0.32, cd: [4.5, 6.5], range: 12, arc: 1.5, dmg: 1.8, color: 0xff3030 },
+  { id: 'b_nova',      shape: 'nova',      minR: 0, maxR: 24, windup: 1.0,  exec: 0.35, cd: [5, 7],     count: 20, projSpeed: 12, projColor: 0xc07bff, range: 22, dmg: 1.05, color: 0xc07bff },
+];
+
+export function specialsFor(typeId, ranged, boss) {
+  if (boss) return BOSS_SPECIALS;
   if (ranged) return [];
   return SPECIAL_SETS[typeId] || DEFAULT_MELEE;
 }
+
+// Look a special definition up by id across every known set (per-type, default,
+// and boss) — used by the multiplayer client to resolve a server-sent telegraph.
+export function findSpecial(typeId, id) {
+  const pools = [BOSS_SPECIALS, SPECIAL_SETS[typeId] || [], DEFAULT_MELEE];
+  for (const pool of pools) { const s = pool.find((x) => x.id === id); if (s) return s; }
+  return null;
+}
+
+// Per-biome boss colouring so an Archfiend/Lieutenant looks like it belongs to
+// its reach (fire-scorched in the ash, rimed in the snow, and so on). Applied
+// wherever a boss mesh is built, keyed off the boss's map position.
+import { biomeKeyAt } from './terrain.js';
+export const BOSS_THEME = {
+  meadow:   { color: 0x2a1a30, accent: 0xff3030 },
+  forest:   { color: 0x244a1f, accent: 0x9be36a },
+  snow:     { color: 0xafe0f4, accent: 0x6fc8ff },
+  desert:   { color: 0xbfa05a, accent: 0xffcf6a },
+  swamp:    { color: 0x2f3f22, accent: 0x8fd86a },
+  ash:      { color: 0x3a1610, accent: 0xff5a2a },
+  jungle:   { color: 0x1f3a1a, accent: 0x6fd86a },
+  crystal:  { color: 0x7a6ad0, accent: 0xcdf2ff },
+  badlands: { color: 0x6a3f22, accent: 0xffb060 },
+};
+export function bossThemeAt(x, z) { return BOSS_THEME[biomeKeyAt(x, z)] || BOSS_THEME.meadow; }
 
 // The single derivation of an enemy's level-scaled combat stats — used by both
 // the client Enemy and the server SimEnemy so they always agree.
