@@ -105,6 +105,7 @@ export class Player {
     this.attackTimer = 0;
     this.attackAnim = 0;
     this.comboStep = 0;      // alternates the swing on quick successive melee hits
+    this._exhausted = false; // true after stamina hits 0 until it fully refills
     this._lungeT = 0;        // brief forward lunge on the stab (combo step 2)
     this._lungeDir = { x: 0, z: 1 };
     this.charging = false;   // winding up a charged basic attack (crawls to a stop)
@@ -544,7 +545,9 @@ export class Player {
     if (moving) move.normalize();
 
     const wantSprint = input.down('ShiftLeft') || input.down('ShiftRight');
-    const sprinting = wantSprint && moving && this.stats.sp > 1 && this.state !== 'climb';
+    // No sprinting while exhausted (drained to empty) or mounted (the steed is
+    // already your speed — stacking a sprint on top was far too fast).
+    const sprinting = wantSprint && moving && this.stats.sp > 1 && !this._exhausted && !this.mounted && this.state !== 'climb';
 
     const groundHere = heightAt(this.pos.x, this.pos.z);
     const inWater = groundHere < WATER_LEVEL - 0.6 && this.pos.y < WATER_LEVEL + 1.2;
@@ -556,7 +559,7 @@ export class Player {
     } else {
       let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
-      if (this.mounted) speed *= 2.6 * (this.passives.has('trailblazer') ? 1.25 : 1); // gallop
+      if (this.mounted) speed *= 1.75 * (this.passives.has('trailblazer') ? 1.25 : 1); // steady canter
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1); }
       if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
       if (this.charging) speed *= 0.18; // winding up a charged attack — a near standstill
@@ -699,21 +702,48 @@ export class Player {
   // ---- Mount ----
   _buildSteed() {
     const g = new THREE.Group();
-    const hide = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
-    const mane = new THREE.MeshLambertMaterial({ color: 0x3a2a1a });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 1.1, 4, 8), hide);
-    body.rotation.z = Math.PI / 2; body.position.set(0, 1.0, 0);
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.9, 6), hide);
-    neck.position.set(0, 1.4, 0.7); neck.rotation.x = 0.7;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.6), hide);
-    head.position.set(0, 1.7, 1.05);
-    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.12, 0.8, 5), mane);
-    tail.position.set(0, 1.1, -0.8); tail.rotation.x = -0.6;
-    g.add(body, neck, head, tail);
+    const hide = new THREE.MeshLambertMaterial({ color: 0x7a5334 });
+    const hide2 = new THREE.MeshLambertMaterial({ color: 0x8a6340 });
+    const mane = new THREE.MeshLambertMaterial({ color: 0x2e2013 });
+    const leather = new THREE.MeshLambertMaterial({ color: 0x4a2f1c });
+    const blanket = new THREE.MeshLambertMaterial({ color: 0x8a3a3a });
+    const hoof = new THREE.MeshLambertMaterial({ color: 0x241a12 });
+
+    // Barrel body + a rounded chest and haunches for a fuller silhouette.
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 1.05, 6, 12), hide);
+    body.rotation.z = Math.PI / 2; body.position.set(0, 1.12, 0);
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 10), hide); chest.position.set(0, 1.12, 0.55); chest.scale.set(0.9, 0.95, 0.8);
+    const rump = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), hide); rump.position.set(0, 1.14, -0.55); rump.scale.set(0.95, 1.0, 0.85);
+    g.add(body, chest, rump);
+
+    // Neck + head with muzzle, ears and a forelock.
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 0.95, 8), hide); neck.position.set(0, 1.5, 0.78); neck.rotation.x = 0.62;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.44), hide2); head.position.set(0, 1.86, 1.16); head.rotation.x = 0.25;
+    const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.26), hide2); muzzle.position.set(0, 1.74, 1.4); muzzle.rotation.x = 0.25;
+    g.add(neck, head, muzzle);
+    for (const s of [1, -1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 5), hide2); ear.position.set(s * 0.09, 2.06, 1.06); g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshBasicMaterial({ color: 0x120b06 })); eye.position.set(s * 0.13, 1.9, 1.32); g.add(eye);
+    }
+    // Mane crest along the neck + a flowing tail.
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.62), mane); crest.position.set(0, 1.68, 0.82); crest.rotation.x = 0.62; g.add(crest);
+    const forelock = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 5), mane); forelock.position.set(0, 2.0, 1.2); forelock.rotation.x = 0.5; g.add(forelock);
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.14, 0.9, 6), mane); tail.position.set(0, 1.05, -0.95); tail.rotation.x = -0.5; g.add(tail);
+
+    // Saddle blanket + saddle + a pommel the rider sits behind.
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 0.9), blanket); pad.position.set(0, 1.42, 0.05); g.add(pad);
+    const saddle = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.5, 4, 8), leather); saddle.rotation.z = Math.PI / 2; saddle.position.set(0, 1.5, 0.05); saddle.scale.set(1, 1, 0.9); g.add(saddle);
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), leather); pommel.position.set(0, 1.6, 0.4); g.add(pommel);
+    // Reins running from the bit up toward the pommel (where the rider's hands go).
+    const rein = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1.0, 4), leather); rein.position.set(0, 1.62, 0.78); rein.rotation.x = -0.7; g.add(rein);
+
+    // Legs with hooves; the trot animator swings these (userData.legs).
     const legs = [];
-    for (const [lx, lz] of [[0.25, 0.5], [-0.25, 0.5], [0.25, -0.5], [-0.25, -0.5]]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1, 5), hide);
-      leg.position.set(lx, 0.5, lz);
+    for (const [lx, lz] of [[0.24, 0.52], [-0.24, 0.52], [0.24, -0.52], [-0.24, -0.52]]) {
+      const leg = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 1.05, 6), hide); upper.position.y = -0.52; leg.add(upper);
+      const shoe = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.14, 6), hoof); shoe.position.y = -1.02; leg.add(shoe);
+      leg.position.set(lx, 1.05, lz);
       g.add(leg); legs.push(leg);
     }
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
@@ -781,7 +811,10 @@ export class Player {
     this.steed.visible = wasMounted;
     this.scene.add(this.steed);
   }
-  canMount() { return this.alive && (this.state === 'ground' || this.state === 'air'); }
+  // A mount must be EARNED first (the base steed from the Marathoner achievement,
+  // or the Slime/Dragon mounts from their capstones).
+  get hasMount() { return this.passives.has('steed') || this.passives.has('slimemount') || this.passives.has('dragonmount'); }
+  canMount() { return this.hasMount && this.alive && (this.state === 'ground' || this.state === 'air'); }
   toggleMount() {
     if (this.mounted) { this.dismount(); return false; }
     if (!this.canMount()) return false;
@@ -860,12 +893,22 @@ export class Player {
       this.ssjAura.scale.y = (0.85 + this.ssjLevel * 0.22) * (1 + Math.sin(this._clock * 12) * 0.05);
     }
 
-    // Mount: sit the rider higher and trot the steed beneath.
+    // Mount: seat the rider ON the saddle (straddling, hands to the reins) and
+    // trot the steed beneath.
     if (this.mounted) {
-      this.mesh.position.y += 0.85;
+      const sd = this.steed.userData;
+      const seat = sd.dragon ? 1.55 : sd.slime ? 1.5 : 1.4; // saddle height for this mount
+      this.mesh.position.y += seat - 1.0;                   // the rider's hip (local +1) rests at the saddle
+      // Sitting pose: thighs forward and splayed to straddle, hands forward on
+      // the reins, a slight forward lean — instead of legs dangling straight.
+      const rj = this.mesh.userData.joints;
+      if (rj) {
+        rj.legL.rotation.set(-1.2, 0, 0.34); rj.legR.rotation.set(-1.2, 0, -0.34);
+        rj.armL.rotation.set(-0.5, 0, 0.12); rj.armR.rotation.set(-0.5, 0, -0.12);
+        rj.torso.rotation.x = 0.14;
+      }
       this.steed.position.set(this.pos.x, this.pos.y, this.pos.z);
       this.steed.rotation.y = this.mesh.rotation.y;
-      const sd = this.steed.userData;
       sd.phase += dt * (4 + this._speed01 * 14);
       sd.legs.forEach((leg, i) => { leg.rotation.x = Math.sin(sd.phase + (i % 2) * Math.PI) * 0.5 * (0.3 + this._speed01); });
       if (sd.slime) {
@@ -878,8 +921,7 @@ export class Player {
         // Beat the wings and ride a little higher off the ground.
         const flap = Math.sin(sd.phase * 1.6) * 0.6 + 0.15;
         sd.wings[0].rotation.z = -flap; sd.wings[1].rotation.z = flap;
-        this.steed.position.y += 0.4 + Math.sin(sd.phase) * 0.08;
-        this.mesh.position.y += 0.5;
+        this.steed.position.y += 0.35 + Math.sin(sd.phase) * 0.08;
       }
     }
   }
@@ -891,13 +933,18 @@ export class Player {
     // Air refills on land.
     if (this.state !== 'swim') this.air = this.maxAir;
     const pass = this.pass; // always-on class passives (regen bonuses)
-    if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + (16 + pass.spRegen) * dt);
+    const spWasEmpty = s.sp <= 0.5; // captured BEFORE regen tops it back up
+    if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + (8 + pass.spRegen) * dt);
     else if (pass.spRegen) s.sp = Math.min(this.effMaxSp, s.sp + pass.spRegen * dt);
     s.mp = Math.min(this.effMaxMp, s.mp + (1.5 + this.effInt * 0.05 + pass.mpRegen) * dt);
     // Passive HP regen ticks anywhere; the standing-still bonus stacks on top.
     if (pass.hpRegen) s.hp = Math.min(this.effMaxHp, s.hp + pass.hpRegen * dt);
     if (this.state === 'ground' && this._speed01 < 0.1) s.hp = Math.min(this.effMaxHp, s.hp + 2.0 * dt);
     s.sp = Math.max(0, s.sp);
+    // Exhaustion: run stamina fully dry and you can't spend ANY until it has
+    // recharged all the way back up (no more tapping the last sliver to sprint).
+    if (spWasEmpty) this._exhausted = true;
+    else if (this._exhausted && s.sp >= this.effMaxSp - 0.5) this._exhausted = false;
     for (let i = 0; i < this.cooldowns.length; i++) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
     if (this.attackTimer > 0) this.attackTimer -= dt;
 

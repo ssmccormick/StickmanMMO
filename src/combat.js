@@ -265,6 +265,7 @@ export class Combat {
     if (!ab) return;
     if (p.cooldowns[i] > 0) { this.ui.log(`${ab.name} on cooldown`, 'sys'); return; }
     const pool = ab.costType === 'sp' ? 'sp' : 'mp';
+    if (pool === 'sp' && p._exhausted) { this.ui.log('Too exhausted — catch your breath first!', 'sys'); return; }
     if (p.stats[pool] < ab.cost) { this.ui.log(`Not enough ${pool.toUpperCase()}`, 'sys'); return; }
     // Ascending costs a FULL Ki gauge, not MP/SP — block it (without burning the
     // cooldown) until the gauge is full and there's a higher form to reach.

@@ -404,7 +404,10 @@ function animate() {
     }
     if (input.just('KeyO')) ui.toggleSettings(player);
     if (input.just('KeyT')) ui.toggleEmotes(player);
-    if (input.just('KeyR')) { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
+    if (input.just('KeyR')) {
+      if (!player.hasMount) ui.log('You have no steed yet — travel far on foot (see the Marathoner achievement) to earn one.', 'sys');
+      else { const on = player.toggleMount(); ui.log(on ? 'You whistle for your steed and ride off.' : 'You dismount.', 'sys'); }
+    }
     if (input.just('KeyQ')) quickHeal();
     // Tab swaps between your two weapons (e.g. melee ↔ a bow for flying foes).
     if (input.just('Tab')) {

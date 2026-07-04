@@ -166,6 +166,9 @@ html, body {
 .bar.hp .fill { background: linear-gradient(180deg, #ef6b65, var(--hp)); }
 .bar.mp .fill { background: linear-gradient(180deg, #6fa4ef, var(--mp)); }
 .bar.sp .fill { background: linear-gradient(180deg, #74c878, var(--sp)); }
+/* Stamina drained to empty: locked out until it fully refills — pulse red. */
+.bar.sp .fill.exhausted { background: linear-gradient(180deg, #d86a4a, #a5381f); animation: sp-exhausted 0.7s ease-in-out infinite; }
+@keyframes sp-exhausted { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
 .bar.xp { height: 10px; }
 .bar.xp .fill { background: linear-gradient(180deg, #e6c860, var(--xp)); }
 .bar.small { height: 10px; width: 180px; }

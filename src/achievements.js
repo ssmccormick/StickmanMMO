@@ -12,6 +12,7 @@
 
 // Unique end-of-tree rewards. `stat` is permanent; `passive` is a flag.
 export const SPECIALS = {
+  steed:      { name: 'Faithful Steed',    glyph: '🐎', passive: 'steed', desc: 'You\'ve earned a steed of your own — press R to mount and ride the roads.' },
   slimemount: { name: 'Slime Mount',       glyph: '🟢', passive: 'slimemount', desc: 'A bouncy slime steed — press R to ride it.' },
   windwalker: { name: 'Windwalker',        glyph: '🌬️', passive: 'windwalker', stat: { speed: 0.12 }, desc: '+12% move speed; sprinting drains far less stamina.' },
   trailblazer:{ name: 'Trailblazer',       glyph: '🐎', passive: 'trailblazer', desc: 'Your mount gallops 25% faster.' },
@@ -59,7 +60,7 @@ export const ACHIEVEMENTS = [
   {
     id: 'marathoner', name: 'Marathoner', glyph: '👣', cat: 'Travel', counter: 'walk', noun: 'paces walked',
     tiers: [
-      { count: 1500,  reward: { speed: 0.05 } },
+      { count: 1500,  reward: { special: 'steed' } },
       { count: 5000,  reward: { maxSp: 50 } },
       { count: 12000, reward: { speed: 0.05 } },
       { count: 30000, reward: { special: 'windwalker' } },

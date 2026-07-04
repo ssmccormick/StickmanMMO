@@ -516,6 +516,8 @@ export class UI {
     this._bar(this.el.hpFill, this.el.hpText, s.hp, player.effMaxHp);
     this._bar(this.el.mpFill, this.el.mpText, s.mp, player.effMaxMp);
     this._bar(this.el.spFill, this.el.spText, s.sp, player.effMaxSp);
+    // Exhausted: stamina drained to empty and locked until it fully refills.
+    if (this.el.spFill) this.el.spFill.classList.toggle('exhausted', !!player._exhausted);
     this.el.charLevel.textContent = s.level;
     const xpPct = (s.xp / s.xpNext) * 100;
     this.el.xpFill.style.width = `${xpPct}%`;
