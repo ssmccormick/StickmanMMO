@@ -50,14 +50,14 @@ export const CODEX = [
   },
   {
     id: 'reaches', title: 'The Reaches', icon: '🗺️', entries: [
-      { title: 'The Greenwood (Forest)', body: 'A vast, overgrown wood watched over by the town of Thornhollow and its rangers. Beautiful and deadly — even the wolves have turned. The stag-lord Gorath rules its depths.' },
-      { title: 'The Frostpeaks (Snow)', body: 'A range of bitter cold and old stone, anchored by the fortress-town of Frostgard, whose walls have never fallen. The dead walk thick here, marshalled by the Fallen Lord, Frosthelm.' },
-      { title: 'The Dunes (Desert)', body: 'An endless burning waste, crossed only by the caravans of Dustmarket. Hill-giants and worse roam it, and beneath the sand hunts the Devourer, Sandmaw.' },
-      { title: 'The Mire (Swamp)', body: 'The oldest wound of the Sundering — a drowned, rotting fen ringed by sunken Gloomfen. The Blight is densest here, coiled around the thing at its heart: the Mirelord.' },
-      { title: 'The Emberwastes (Ash)', body: 'A scorched volcanic waste of charred trees and ember-lit ash, where the Blight burns rather than rots. The forge-town of Cinderhold endures the heat; the Emberwyrm Pyraxis prowls its molten reaches.' },
-      { title: 'The Verdant Wilds (Jungle)', body: 'A riotous, suffocating jungle of towering palms and tangled vine, ruled from the canopy-town of Verdanthul. Older and hungrier than the Greenwood — and Mossfang the Ancient is older still.' },
-      { title: 'Shardspire Highlands (Crystal)', body: 'Pale, glittering highlands of crystal spires that hum with Ember-light, anchored by Prismhold. The light here is no comfort: Vael, the Prism Tyrant, bends it to cruel ends.' },
-      { title: 'The Scarlands (Badlands)', body: 'A cracked country of rust-red mesas and bone-dry canyons, held by the frontier-town of Rustmarket. The farthest, harshest reach — and the Bonelord Skarn rules its dead canyons.' },
+      { title: 'The Greenwood (Forest)', body: 'A vast, overgrown wood watched over by the town of Thornhollow and its rangers. Beautiful and deadly — even the wolves have turned. The herald Bramblehorn guards the near thickets; the stag-lord Gorath rules its depths.' },
+      { title: 'The Frostpeaks (Snow)', body: 'A range of bitter cold and old stone, anchored by the fortress-town of Frostgard, whose walls have never fallen. The white alpha Rimefang prowls the passes; deeper still, the dead walk thick, marshalled by the Fallen Lord, Frosthelm.' },
+      { title: 'The Dunes (Desert)', body: 'An endless burning waste, crossed only by the caravans of Dustmarket. The Scarab Queen Khareth breeds in the near dunes; beneath the deep sand hunts the Devourer, Sandmaw.' },
+      { title: 'The Mire (Swamp)', body: 'The oldest wound of the Sundering — a drowned, rotting fen ringed by sunken Gloomfen. The brood-father Grulmog guards the shallows; the Blight is densest at the heart, coiled around the thing that rules it: the Mirelord.' },
+      { title: 'The Emberwastes (Ash)', body: 'A scorched volcanic waste of charred trees and ember-lit ash, where the Blight burns rather than rots. The forge-town of Cinderhold endures the heat; the forge-hound Cindermaw runs the ashfields, and the Emberwyrm Pyraxis prowls the molten deep.' },
+      { title: 'The Verdant Wilds (Jungle)', body: 'A riotous, suffocating jungle of towering palms and tangled vine, ruled from the canopy-town of Verdanthul. The Blood-Panther Shaggath stalks the near canopy; older and hungrier than any of them, Mossfang the Ancient roots at its heart.' },
+      { title: 'Shardspire Highlands (Crystal)', body: 'Pale, glittering highlands of crystal spires that hum with Ember-light, anchored by Prismhold. The Facet-Warden Prismis guards the approach; upon the spire, Vael, the Prism Tyrant, bends the light to cruel ends.' },
+      { title: 'The Scarlands (Badlands)', body: 'A cracked country of rust-red mesas and bone-dry canyons, held by the frontier-town of Rustmarket. The Scrap-Tyrant Rustfang seals the upper canyons; at the very bottom, the Bonelord Skarn rules the endless dead.' },
     ],
   },
   {
@@ -70,6 +70,19 @@ export const CODEX = [
       { title: 'Mossfang the Ancient', body: 'A primordial thing that woke in the jungle\'s heart when the world broke, vast and root-bound. Its shard pulses beneath layers of bark and moss.' },
       { title: 'Vael the Prism Tyrant', body: 'A being of fractured Ember-light that rules the crystal highlands, splitting the flame into a hundred cruel colors. Its shard is the brightest — and the coldest.' },
       { title: 'Skarn the Bonelord', body: 'The marshal of the Scarlands\' endless dead, throned in bone at the bottom of Bonechew Canyon. Its shard is the last and most distant of all — and with its fall, the eight are whole.' },
+    ],
+  },
+  {
+    id: 'heralds', title: 'The Heralds', icon: '🩸', entries: [
+      { title: 'The Lieutenants', body: 'No Archfiend rules its reach alone. Each has raised a Herald — a lesser champion of the Blight — to terrorize the near country, blood the reach\'s beasts, and break any Ashbound long before they reach the deep lair. Fell a Herald, and its Archfiend is left weakened, blinded, or exposed.' },
+      { title: 'Bramblehorn the Thorn-Tyrant', body: 'Gorath\'s herald: an old boar-king swollen into a wall of thorn and muscle. The Wildking sends it ahead to gore anything that nears the deep wood.' },
+      { title: 'Rimefang the White Alpha', body: 'Frosthelm\'s hound: a white wolf the size of a bear, its breath cold enough to still a heart. It keeps the living penned in Frostgard while the dead marshal above.' },
+      { title: 'Khareth the Scarab Queen', body: 'Sandmaw\'s breeder: a bloated horror that lays the whole Dunes\' swarm. The Devourer suffers her broods because they soften his prey.' },
+      { title: 'Grulmog the Bog-Devourer', body: 'The Mirelord\'s gatekeeper: a Bog Lurker grown vast on a century of drowned dead. It swallows anything wading toward the swamp\'s heart, so the Mirelord need never move.' },
+      { title: 'Cindermaw the Ashen Hound', body: 'Pyraxis\'s hunting-hound: a beast the size of a wagon, its hide cracked open and glowing like a forge. It runs down anything fleeing the molten deep.' },
+      { title: 'Shaggath the Blood-Panther', body: 'Mossfang\'s claw: the one moving part of an Ancient that cannot move, sent to rend anything nearing the heartwood.' },
+      { title: 'Prismis the Facet-Warden', body: 'Vael\'s warden: the Prism Tyrant\'s own light given legs, cutting fresh soldiers from the crystal flats and blinding all who climb toward the throne.' },
+      { title: 'Rustfang the Scrap-Tyrant', body: 'Skarn\'s foreman: a Bonewalker fused with a mountain of scrap iron, building the walls that seal Bonechew Canyon at the Bonelord\'s command.' },
     ],
   },
   {

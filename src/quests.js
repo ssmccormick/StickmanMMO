@@ -144,6 +144,108 @@ export const QUESTS = {
     outro: 'The Sky-Tyrant falls from the heavens, and the long shadow it cast over Aethelgard lifts at last. The Emberheart blazes whole and unthreatened, the Embers brighten in every reach, and the world remembers how to hope. You are no longer the last Ashbound — you are the first hero of the age to come. Aethelgard will sing your name beside the First Heroes, for as long as the flame remembers. And it will remember you forever.',
     reward: { xp: 9000, gold: 5000, item: { rarityBoost: 4.0 } } },
 
+  // ===================== AREA LIEUTENANT LINES =====================
+  // A second quest line per reach, given by a local specialist, hunting the
+  // Archfiend's Lieutenant — a lesser champion that terrorizes the near country
+  // before the Archfiend's own deep lair. Each is a two-step chain (thin the
+  // herald's beasts, then fell the herald) and runs parallel to the main line.
+
+  // --- Thornhollow (forest): Houndmaster Cael ---
+  q_forest_hunt: { title: 'The Bramble Hunt', type: 'kill', target: 'boar', count: 8,
+    desc: 'Drive off 8 Tuskchargers from the Greenwood trails.',
+    intro: 'You smell that? Rot and crushed bramble. Something big is churning up the near wood and driving the Tuskchargers wild — eight of them gored my hounds this week alone. Thin the herd for me, Ashbound, and we\'ll track the thing that spooked them to its lair.',
+    outro: 'The trails are safe to walk again. And now I know what stirred them: Bramblehorn, a thorn-crowned tyrant the Blight grew out of an old boar-king. It nests in the thickets between here and the deep wood.',
+    reward: { xp: 240, gold: 110, potion: 'hp_minor', potionCount: 2 } },
+  q_boss_bramblehorn: { title: 'Herald of the Wildking', requires: 'q_forest_hunt', type: 'boss', target: 'Bramblehorn the Thorn-Tyrant', count: 1,
+    desc: 'Slay Bramblehorn the Thorn-Tyrant in the near thickets.',
+    intro: 'Bramblehorn is Gorath\'s herald — the Wildking sends it ahead to break anything that dares approach the deep wood. A wall of thorn and muscle. Put it down, Ashbound, and you\'ll have cleared the road to the Wildking himself.',
+    outro: 'The Thorn-Tyrant lies still, and the deep wood\'s door stands open. Gorath will feel that loss. Go finish what you started — the Greenwood is counting on you.',
+    reward: { xp: 520, gold: 260, item: { rarityBoost: 1.4 } } },
+
+  // --- Frostgard (snow): Huntress Signe ---
+  q_snow_hunt: { title: 'The White Hunt', type: 'kill', target: 'frostwolf', count: 8,
+    desc: 'Bring down 8 Frost Fangs stalking the Frostpeaks.',
+    intro: 'The Frost Fangs have gone from wary to fearless — they circle Frostgard\'s walls in daylight now, and only one thing makes a wolf that bold: a bigger wolf leading it. Cull eight of the pack, Ashbound, and flush their leader into the open.',
+    outro: 'Good hunting. The pack breaks without its numbers — and its leader is no ordinary wolf. Rimefang, a white alpha the size of a bear, its breath cold enough to still a heart. It dens in the passes above the town.',
+    reward: { xp: 360, gold: 170, potion: 'hp_major', potionCount: 1 } },
+  q_boss_rimefang: { title: 'The White Alpha', requires: 'q_snow_hunt', type: 'boss', target: 'Rimefang the White Alpha', count: 1,
+    desc: 'Slay Rimefang the White Alpha in the high passes.',
+    intro: 'Rimefang is Frosthelm\'s hound — the Fallen Lord loosed it to keep the living penned in Frostgard while the dead marshal in the peaks. End the alpha, Ashbound, and Frosthelm loses his eyes on the pass.',
+    outro: 'The great wolf falls silent in the snow. Frosthelm hunts blind now. The peaks are yours to climb — go and lay the old Lord to rest.',
+    reward: { xp: 700, gold: 340, item: { rarityBoost: 1.5 } } },
+
+  // --- Dustmarket (desert): Digger Tavi ---
+  q_desert_hunt: { title: 'The Scarab Swarm', type: 'kill', target: 'scarab', count: 8,
+    desc: 'Crush 8 War Scarabs boiling up from the Dunes.',
+    intro: 'They come up out of the sand in waves now — War Scarabs, big as shields, chewing through our dig-sites and our diggers alike. Eight of them, Ashbound. Crush the shells and something will come up to defend the brood. It always does.',
+    outro: 'The digs can breathe again. And you were right to leave one alive to run — it led straight to her. Khareth, the Scarab Queen, a bloated horror that lays the whole swarm. She burrows the near dunes.',
+    reward: { xp: 620, gold: 300, item: { rarityBoost: 1.3 } } },
+  q_boss_khareth: { title: 'The Brood-Queen', requires: 'q_desert_hunt', type: 'boss', target: 'Khareth the Scarab Queen', count: 1,
+    desc: 'Slay Khareth the Scarab Queen in the near dunes.',
+    intro: 'Khareth feeds the whole reach\'s swarms — every scarab in the Dunes is her spawn, and Sandmaw the Devourer lets her breed because her broods soften his prey. Kill the Queen, Ashbound, and you starve the Devourer of his army.',
+    outro: 'The Queen is gutted and her broods die in the sand with her. Sandmaw hunts alone now. Go find the Devourer in the deep desert — he\'ll be hungrier, and angrier, than ever.',
+    reward: { xp: 1000, gold: 500, item: { rarityBoost: 1.8 } } },
+
+  // --- Gloomfen (swamp): Fenwise Mup ---
+  q_swamp_hunt: { title: 'Drain the Lurkers', type: 'kill', target: 'bogling', count: 8,
+    desc: 'Put down 8 Bog Lurkers in the shallows of the Mire.',
+    intro: 'The Bog Lurkers are massing, Ashbound — hulking things of mud and hate, and they only gather thick when their brood-father calls them close. Put eight of them back in the muck. Draw out the one that\'s pulling their strings.',
+    outro: 'The shallows still. And there it is on the water — Grulmog, a Lurker grown vast on a century of drowned dead, the brood-father of the whole fen. It squats between here and the Mire\'s black heart.',
+    reward: { xp: 840, gold: 400, item: { rarityBoost: 1.5 } } },
+  q_boss_grulmog: { title: 'The Brood-Father', requires: 'q_swamp_hunt', type: 'boss', target: 'Grulmog the Bog-Devourer', count: 1,
+    desc: 'Destroy Grulmog the Bog-Devourer in the deep shallows.',
+    intro: 'Grulmog is the Mirelord\'s gatekeeper — a wall of rotted flesh that swallows anything wading toward the swamp\'s heart. The Mirelord has never needed to move because Grulmog eats its enemies first. Cut the gatekeeper down, Ashbound, and the heart lies open.',
+    outro: 'The brood-father sinks into the muck it was born from. Nothing guards the Mire\'s heart now but the Mirelord itself. Steel yourself — the oldest wound of the Sundering waits just beyond.',
+    reward: { xp: 1400, gold: 720, item: { rarityBoost: 2.0 } } },
+
+  // --- Cinderhold (ash): Slag-Warden Orun ---
+  q_ash_hunt: { title: 'Hounds of Cinder', type: 'kill', target: 'emberhound', count: 10,
+    desc: 'Break 10 Ember Hounds prowling the Emberwastes.',
+    intro: 'The Ember Hounds run in burning packs across the slag, and lately they hunt with purpose — herding our forge-crews toward the deep vents. Something is using them as beaters on a hunt, Ashbound. Kill ten and find out what.',
+    outro: 'Tempered work. The pack answered to a bigger fire all along: Cindermaw, a hound the size of a wagon, its hide cracked open and glowing like a forge. It dens in the near ashfields.',
+    reward: { xp: 1600, gold: 760, item: { rarityBoost: 1.8 } } },
+  q_boss_cindermaw: { title: 'The Forge-Hound', requires: 'q_ash_hunt', type: 'boss', target: 'Cindermaw the Ashen Hound', count: 1,
+    desc: 'Slay Cindermaw the Ashen Hound in the near ashfields.',
+    intro: 'Cindermaw is Pyraxis\'s hunting-hound — the Emberwyrm looses it to run down anything that tries to reach the molten deep. Snuff its fire, Ashbound, and Pyraxis will have no one to chase you but itself.',
+    outro: 'The Forge-Hound gutters and goes cold. The road to the molten deep is clear. Go quench Pyraxis — and mind the heat.',
+    reward: { xp: 2200, gold: 1100, item: { rarityBoost: 2.4 } } },
+
+  // --- Verdanthul (jungle): Trapper Yiss ---
+  q_jungle_hunt: { title: 'Eyes in the Green', type: 'kill', target: 'panther', count: 10,
+    desc: 'Hunt 10 Shadowpanthers in the Verdant Wilds.',
+    intro: 'You never see the Shadowpanthers until they\'re on you — and lately there are far too many, all slinking toward one dark grove. Something has drawn them together, ash-walker. Thin them to ten fewer, and follow the trail they leave.',
+    outro: 'The green has fewer eyes now. And the trail led true — to Shaggath, a panther grown black and vast, its claws wet with the blood of my whole trapping-line. It stalks the near canopy.',
+    reward: { xp: 1750, gold: 830, item: { rarityBoost: 1.85 } } },
+  q_boss_shaggath: { title: 'The Blood-Panther', requires: 'q_jungle_hunt', type: 'boss', target: 'Shaggath the Blood-Panther', count: 1,
+    desc: 'Fell Shaggath the Blood-Panther in the near canopy.',
+    intro: 'Shaggath is Mossfang\'s claw — the one moving part of an Ancient that cannot move, sent to rend anything that nears the heartwood. Kill the claw, Ashbound, and Mossfang is left blind and rooted, waiting for you.',
+    outro: 'The Blood-Panther bleeds out among the roots. Mossfang has no reach left but its own slow hunger. Go to the jungle\'s heart and cut the shard from the Ancient.',
+    reward: { xp: 2400, gold: 1200, item: { rarityBoost: 2.4 } } },
+
+  // --- Prismhold (crystal): Cutter Vane ---
+  q_crystal_hunt: { title: 'Shatter the Golems', type: 'kill', target: 'shardling', count: 10,
+    desc: 'Shatter 10 Shard Golems on the crystal flats.',
+    intro: 'The Shard Golems are growing — the flats grow more of them every night, marching in ranks toward the spire. Something is quarrying our own crystal into an army, Ashbound. Break ten of them and dull the light that\'s shaping them.',
+    outro: 'Ten less marchers. And now I see the shape behind them: Facet-Warden Prismis, a golem grown into a walking prism, cutting new soldiers from the flats. It guards the near approach to the Shardspire.',
+    reward: { xp: 2000, gold: 950, item: { rarityBoost: 1.9 } } },
+  q_boss_prismis: { title: 'The Facet-Warden', requires: 'q_crystal_hunt', type: 'boss', target: 'Prismis the Facet-Warden', count: 1,
+    desc: 'Break Prismis the Facet-Warden on the crystal approach.',
+    intro: 'Prismis is Vael\'s warden — the Prism Tyrant\'s own light given legs, set to cut and blind any who climb toward the throne. Shatter the Warden, Ashbound, and Vael loses the wall of false light it hides behind.',
+    outro: 'The Warden bursts into a rain of dead crystal. The approach to the throne is dark and open now. Climb the Shardspire and break the Tyrant\'s cold crown.',
+    reward: { xp: 2700, gold: 1350, item: { rarityBoost: 2.5 } } },
+
+  // --- Rustmarket (badlands): Bonepicker Sela ---
+  q_badlands_hunt: { title: 'Rattle the Bones', type: 'kill', target: 'bonewalker', count: 10,
+    desc: 'Put down 10 Bonewalkers in the Scarlands canyons.',
+    intro: 'The Bonewalkers are stacking themselves into something, Ashbound — dragging bone to bone in the canyons, building toward a shape none of us wants to see finished. Put ten back down as loose bones, and rattle whatever\'s assembling them.',
+    outro: 'That\'s ten fewer to worry about. And the thing that\'s stacking them showed itself: Rustfang, a Bonewalker fused with a mountain of scrap and rusted iron. It patrols the canyons above Bonechew.',
+    reward: { xp: 2300, gold: 1100, item: { rarityBoost: 2.0 } } },
+  q_boss_rustfang: { title: 'The Scrap-Tyrant', requires: 'q_badlands_hunt', type: 'boss', target: 'Rustfang the Scrap-Tyrant', count: 1,
+    desc: 'Cast down Rustfang the Scrap-Tyrant in the upper canyons.',
+    intro: 'Rustfang is Skarn\'s foreman — the Bonelord\'s will made of scrap iron and stolen bone, building the walls that seal Bonechew Canyon. Tear the foreman apart, Ashbound, and the last road to the last Archfiend lies open.',
+    outro: 'The Scrap-Tyrant collapses into the junk it was raised from. Nothing stands between you and Bonechew\'s bottom now — nothing but Skarn, and the eighth shard. This is the end of the long road.',
+    reward: { xp: 3000, gold: 1500, item: { rarityBoost: 2.6 } } },
+
   // ===================== SIDE QUESTS =====================
   q_angler: { title: 'A Quiet Hour', requires: 'q_chest', type: 'fish', count: 12,
     desc: 'Reel in 12 fish from the waters of Aethelgard.',
@@ -163,14 +265,22 @@ export const GIVERS = [
   { name: 'Captain Stane', town: 'The Nexus', dx: -8, dz: 8, color: 0x9aa4b2, accent: 0xd8423c, quests: ['q_bandits', 'q_knights', 'q_proving'] },
   { name: 'Finn the Fence', town: 'The Nexus', dx: 8, dz: -7, color: 0x5a4f6a, accent: 0xc07bff, quests: ['q_chest', 'q_angler'] },
   { name: 'Ranger Elowen', town: 'Thornhollow', dx: 0, dz: 5, color: 0x4d8a3a, accent: 0x9bd86a, quests: ['q_forest', 'q_boss_gorath'] },
+  { name: 'Houndmaster Cael', town: 'Thornhollow', dx: 7, dz: -4, color: 0x6a5a3a, accent: 0xd8b26a, quests: ['q_forest_hunt', 'q_boss_bramblehorn'] },
   { name: 'Warden Bram', town: 'Frostgard', dx: 0, dz: 5, color: 0x9aa6c2, accent: 0x9fe0ff, quests: ['q_snow', 'q_boss_frosthelm'] },
+  { name: 'Huntress Signe', town: 'Frostgard', dx: 7, dz: -4, color: 0xbfc8d8, accent: 0xe0f0ff, quests: ['q_snow_hunt', 'q_boss_rimefang'] },
   { name: 'Sister Dune', town: 'Dustmarket', dx: 0, dz: 5, color: 0xd9c486, accent: 0xffcf6a, quests: ['q_desert', 'q_boss_sandmaw'] },
+  { name: 'Digger Tavi', town: 'Dustmarket', dx: 7, dz: -4, color: 0xc2a05a, accent: 0x8a6a3a, quests: ['q_desert_hunt', 'q_boss_khareth'] },
   { name: 'Old Cregg', town: 'Gloomfen', dx: 0, dz: 5, color: 0x6a7a52, accent: 0xb05aff, quests: ['q_swamp', 'q_boss_mirelord'] },
-  // The Outer Four — one giver per end-game town.
+  { name: 'Fenwise Mup', town: 'Gloomfen', dx: 7, dz: -4, color: 0x4a5a3a, accent: 0x7fae5a, quests: ['q_swamp_hunt', 'q_boss_grulmog'] },
+  // The Outer Four — two givers per end-game town (main line + lieutenant line).
   { name: 'Emberwright Hadda', town: 'Cinderhold', dx: 0, dz: 5, color: 0x8a4a2a, accent: 0xff8a2a, quests: ['q_ash', 'q_boss_pyraxis'] },
+  { name: 'Slag-Warden Orun', town: 'Cinderhold', dx: 7, dz: -4, color: 0x6a3a2a, accent: 0xff5a2a, quests: ['q_ash_hunt', 'q_boss_cindermaw'] },
   { name: 'Vinespeaker Oba', town: 'Verdanthul', dx: 0, dz: 5, color: 0x2f6e2a, accent: 0x9bd86a, quests: ['q_jungle', 'q_boss_mossfang'] },
+  { name: 'Trapper Yiss', town: 'Verdanthul', dx: 7, dz: -4, color: 0x3a5a2a, accent: 0x6fd86a, quests: ['q_jungle_hunt', 'q_boss_shaggath'] },
   { name: 'Lumen the Refracted', town: 'Prismhold', dx: 0, dz: 5, color: 0x8a9ad0, accent: 0xb2a8e2, quests: ['q_crystal', 'q_boss_vael'] },
+  { name: 'Cutter Vane', town: 'Prismhold', dx: 7, dz: -4, color: 0x9a8ad8, accent: 0xcdf2ff, quests: ['q_crystal_hunt', 'q_boss_prismis'] },
   { name: 'Scrap-Captain Dol', town: 'Rustmarket', dx: 0, dz: 5, color: 0xb0663a, accent: 0xc98a4a, quests: ['q_badlands', 'q_boss_skarn'] },
+  { name: 'Bonepicker Sela', town: 'Rustmarket', dx: 7, dz: -4, color: 0xcabf9a, accent: 0x8a7a5a, quests: ['q_badlands_hunt', 'q_boss_rustfang'] },
   // The Keeper of the Flame, at the Nexus, offers the final trial.
   { name: 'Keeper Aelith', town: 'The Nexus', dx: -8, dz: -7, color: 0xd8b24a, accent: 0xff6a2a, quests: ['q_dragon'] },
 ];

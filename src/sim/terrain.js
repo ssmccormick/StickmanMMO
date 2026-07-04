@@ -54,42 +54,50 @@ export const BIOME_LAYOUT = [
     low: { name: 'Whisperwood Glade', level: 1, off: -14, dist: 105, r: 42, count: 9 },
     high: { name: 'Tanglethorn Deep', level: 10, off: 18, dist: 255, r: 52, count: 12 },
     camp: { id: 'camp_forest', level: 5, off: 9, dist: 215 },
+    lieut: { name: 'Bramblehorn the Thorn-Tyrant', type: 'boar', level: 7, off: -6, dist: 150 },
     boss: { name: 'Gorath the Wildking', type: 'brute', level: 12 } },
   { biome: 'snow', heading: 98, dist: 185, town: 'Frostgard', townDist: 175,
     low: { name: 'Frostfang Pass', level: 3, off: -16, dist: 108, r: 42, count: 9 },
     high: { name: 'Glacial Reach', level: 13, off: 14, dist: 252, r: 52, count: 12 },
     camp: { id: 'camp_snow', level: 7, off: 11, dist: 212 },
+    lieut: { name: 'Rimefang the White Alpha', type: 'frostwolf', level: 10, off: -7, dist: 152 },
     boss: { name: 'Frosthelm the Fallen', type: 'knight', level: 16 } },
   { biome: 'desert', heading: 200, dist: 195, town: 'Dustmarket', townDist: 182,
     low: { name: 'Sunscar Flats', level: 5, off: 14, dist: 110, r: 42, count: 9 },
     high: { name: 'The Bonewaste', level: 17, off: -18, dist: 258, r: 54, count: 13 },
     camp: { id: 'camp_desert', level: 10, off: -8, dist: 218 },
+    lieut: { name: 'Khareth the Scarab Queen', type: 'scarab', level: 14, off: 7, dist: 154 },
     boss: { name: 'Sandmaw the Devourer', type: 'brute', level: 21 } },
   { biome: 'swamp', heading: 288, dist: 180, town: 'Gloomfen', townDist: 170,
     low: { name: 'Murkmire', level: 7, off: -12, dist: 102, r: 42, count: 9 },
     high: { name: 'Rotheart Hollow', level: 22, off: 20, dist: 250, r: 54, count: 13 },
     camp: { id: 'camp_swamp', level: 14, off: 7, dist: 210 },
+    lieut: { name: 'Grulmog the Bog-Devourer', type: 'bogling', level: 19, off: -6, dist: 146 },
     boss: { name: 'The Mirelord', type: 'knight', level: 27 } },
   // --- Four farther reaches (end-game), interleaved between the first four ---
   { biome: 'ash', heading: 56, dist: 188, town: 'Cinderhold', townDist: 178,
     low: { name: 'Cinderfields', level: 24, off: -15, dist: 108, r: 46, count: 12 },
     high: { name: 'The Ashen Reach', level: 33, off: 17, dist: 256, r: 56, count: 14 },
     camp: { id: 'camp_ash', level: 28, off: 8, dist: 214 },
+    lieut: { name: 'Cindermaw the Ashen Hound', type: 'emberhound', level: 30, off: -6, dist: 152 },
     boss: { name: 'Pyraxis the Emberwyrm', type: 'brute', level: 36 } },
   { biome: 'jungle', heading: 142, dist: 182, town: 'Verdanthul', townDist: 172,
     low: { name: 'Tanglevine Basin', level: 26, off: -14, dist: 106, r: 46, count: 12 },
     high: { name: 'Heartroot Hollow', level: 35, off: 18, dist: 252, r: 56, count: 14 },
     camp: { id: 'camp_jungle', level: 30, off: 9, dist: 212 },
+    lieut: { name: 'Shaggath the Blood-Panther', type: 'panther', level: 32, off: -6, dist: 150 },
     boss: { name: 'Mossfang the Ancient', type: 'brute', level: 38 } },
   { biome: 'crystal', heading: 244, dist: 190, town: 'Prismhold', townDist: 180,
     low: { name: 'Glimmerfront', level: 28, off: 14, dist: 110, r: 46, count: 12 },
     high: { name: 'The Shardspire', level: 37, off: -17, dist: 256, r: 56, count: 14 },
     camp: { id: 'camp_crystal', level: 32, off: -8, dist: 216 },
+    lieut: { name: 'Prismis the Facet-Warden', type: 'shardling', level: 34, off: 7, dist: 154 },
     boss: { name: 'Vael the Prism Tyrant', type: 'knight', level: 40 } },
   { biome: 'badlands', heading: 332, dist: 184, town: 'Rustmarket', townDist: 174,
     low: { name: 'Rustgulch', level: 30, off: -13, dist: 104, r: 46, count: 12 },
     high: { name: 'Bonechew Canyon', level: 40, off: 19, dist: 254, r: 56, count: 14 },
     camp: { id: 'camp_badlands', level: 34, off: 7, dist: 210 },
+    lieut: { name: 'Rustfang the Scrap-Tyrant', type: 'bonewalker', level: 41, off: -6, dist: 148 },
     boss: { name: 'Skarn the Bonelord', type: 'knight', level: 44 } },
 ];
 
@@ -147,7 +155,16 @@ export const AREAS = [
 // Elite war-camps and world bosses (one per biome) — camps sit between the town
 // and the high area; bosses lurk in the high area.
 export const CAMPS = BIOME_LAYOUT.map((b) => ({ id: b.camp.id, level: b.camp.level, ...polar(b.heading + capOff(b.camp.off), b.camp.dist * SCALE) }));
-export const BOSSES = BIOME_LAYOUT.map((b) => ({ name: b.boss.name, type: b.boss.type, level: b.boss.level, ...polar(b.heading + capOff(b.high.off), b.high.dist * SCALE) }));
+// Each reach now fields TWO named bosses: an Archfiend deep in its high area, and
+// a Lieutenant nearer the town (a lower-level warm-up boss). Both derive from the
+// one BIOME_LAYOUT table so the client and the authoritative server spawn the
+// identical roster.
+export const BOSSES = BIOME_LAYOUT.flatMap((b) => [
+  { name: b.boss.name, type: b.boss.type, level: b.boss.level, biome: b.biome, archfiend: true,
+    ...polar(b.heading + capOff(b.high.off), b.high.dist * SCALE) },
+  { name: b.lieut.name, type: b.lieut.type, level: b.lieut.level, biome: b.biome, lieutenant: true,
+    ...polar(b.heading + capOff(b.lieut.off), b.lieut.dist * SCALE) },
+]);
 
 // Find the named area a point is in (nearest area whose radius contains it).
 export function areaAt(x, z) {
