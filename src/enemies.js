@@ -227,10 +227,10 @@ export class Enemy {
     // ---- FSM ----
     // Ranged mobs engage from afar (shootRange); melee mobs must close in.
     const engageRange = this.ranged ? this.shootRange : this.type.range;
-    if (player.alive && dist < this.type.aggro) {
+    if (player.alive && !player.isStealthed && dist < this.type.aggro) {
       this.state = dist <= engageRange ? 'attack' : 'chase';
-    } else if (this.state !== 'idle' && dist > this.type.aggro * 1.4) {
-      this.state = 'return';
+    } else if (this.state !== 'idle' && (dist > this.type.aggro * 1.4 || player.isStealthed)) {
+      this.state = 'return'; // lose the player when they slip into stealth
     }
 
     // Commit to a telegraphed special when one is ready and in range (dash-type

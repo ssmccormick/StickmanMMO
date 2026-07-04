@@ -309,7 +309,7 @@ export function buildHair(style, mat) {
 // Pose a stickman for this frame.
 //   speed01: 0..1 how fast it's moving (drives walk cycle)
 //   dt: seconds, state: { attack, climbing, dead, airborne }
-export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing = false, airborne = false, dead = false, emote = null } = {}) {
+export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing = false, airborne = false, dead = false, emote = null, combo = 0, charging = false } = {}) {
   const a = group.userData.anim;
   const j = group.userData.joints;
 
@@ -349,12 +349,26 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     group.children[0].position.y = 1.0 + Math.abs(Math.sin(a.phase)) * 0.04 * speed01;
   }
 
-  // Attack swing overrides the right arm for a moment.
+  // Attack swing overrides the right arm for a moment — and the swing STYLE
+  // alternates on quick successive hits (a 3-hit combo): overhead chop → cross
+  // slash → rising backhand. Charging holds a cocked wind-up pose.
   if (attack > 0) {
-    const t = 1 - attack; // 0..1 progress
-    const swingAngle = Math.sin(t * Math.PI) * 2.4;
-    j.armR.rotation.x = -swingAngle;
-    j.armR.rotation.z = Math.sin(t * Math.PI) * 0.6;
+    const s = Math.sin((1 - attack) * Math.PI); // 0→1→0 over the swing
+    if (combo === 1) {          // cross slash (horizontal)
+      j.armR.rotation.x = -s * 1.3;
+      j.armR.rotation.z = 0.35 - s * 1.5;
+    } else if (combo === 2) {   // rising backhand
+      j.armR.rotation.x = -s * 2.0;
+      j.armR.rotation.z = -0.2 + s * 1.2;
+    } else {                    // overhead chop
+      j.armR.rotation.x = -s * 2.4;
+      j.armR.rotation.z = s * 0.6;
+    }
+  } else if (charging) {
+    // Wind-up: cock the weapon arm back and lean into the coming blow.
+    j.armR.rotation.x = THREE.MathUtils.lerp(j.armR.rotation.x, -2.5, Math.min(1, dt * 9));
+    j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, -0.55, Math.min(1, dt * 9));
+    j.torso.rotation.x = 0.18;
   } else {
     j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, 0, Math.min(1, dt * 10));
   }

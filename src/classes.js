@@ -5,7 +5,7 @@
 // partly automatically and partly via player choice at level-up.
 // ============================================================
 
-export const MAX_RANK = 3;
+export const MAX_RANK = 5; // spells/abilities keep leveling up to rank 5
 
 // ---- Ability "kind" → how combat.js resolves it ----
 //   melee      — instant hit in a forward arc
@@ -79,6 +79,7 @@ export const CLASSES = {
       { id: 'poison', name: 'Envenom', kind: 'dot', glyph: '🧪', cost: 14, costType: 'sp', cooldown: 8, reqLevel: 6, radius: 2.4, dotDps: 12, dotDur: 6, color: 0x6fae54, desc: 'Coat blades in venom — poisons foes.' },
       { id: 'roll', name: 'Evasive Roll', kind: 'dash', glyph: '🤸', cost: 12, costType: 'sp', cooldown: 4, reqLevel: 8, range: 6, arc: 0, mult: 0, iframes: 0.5, color: 0xffffff, desc: 'Dodge roll with brief invulnerability.' },
       { id: 'assassinate', name: 'Assassinate', kind: 'melee', glyph: '☠️', cost: 22, costType: 'sp', cooldown: 10, reqLevel: 11, arc: 0.45, range: 3.2, mult: 5.6, crit: 0.7, color: 0xff3030, desc: 'A razor cone straight ahead — devastating, near-guaranteed killing blow.' },
+      { id: 'shadowmeld', name: 'Shadowmeld', kind: 'stealth', glyph: '🌑', cost: 20, costType: 'sp', cooldown: 16, reqLevel: 14, dur: 7, dmg: 2.0, speed: 1.4, color: 0x6a6a9a, desc: 'Vanish into shadow: foes lose you, you move quicker, and your next strikes hit for +100%. Attacking breaks stealth.' },
     ],
   },
 

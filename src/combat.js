@@ -47,11 +47,22 @@ export class Combat {
       if (input.just('KeyF')) this.cycleTarget(); // Tab now swaps weapons (handled in main)
       // Auto-attacks and new abilities are locked out while charging or channelling.
       if (!this.casting && !this.channeling) {
-        if (input.lmb && p.attackTimer <= 0) this.autoAttack();
+        // Charged basic attack: HOLD LMB to wind up (movement crawls to a stop),
+        // RELEASE to strike. A quick tap is a normal swing; a full 3s charge is a
+        // devastating blow that also widens a melee swing into a cleave.
+        if (input.lmb && p.attackTimer <= 0) {
+          this._charge = Math.min(3, (this._charge || 0) + dt);
+          this.charging = true; p.charging = true;
+        } else if (this.charging) {
+          this.charging = false; p.charging = false;
+          const chg = this._charge || 0; this._charge = 0;
+          this.autoAttack(chg);
+        }
         const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
         for (let i = 0; i < keys.length; i++) if (input.just(keys[i])) this.useAbility(i);
-      }
-    }
+      } else if (this.charging) { this.charging = false; p.charging = false; this._charge = 0; }
+    } else if (this.charging) { this.charging = false; p.charging = false; this._charge = 0; }
+    this._updateChargeFx();
 
     this._updateProjectiles(dt);
     this._updatePatches(dt);
@@ -84,7 +95,7 @@ export class Combat {
       if (!e.alive) continue;
       const to = new THREE.Vector3().subVectors(e.pos.clone().setY(e.pos.y + 1), origin);
       const d = to.length();
-      if (d > range) continue;
+      if (d > range + (e.displayScale || 1) + 0.8) continue; // reach the body, not the centre
       to.normalize();
       const ang = Math.acos(THREE.MathUtils.clamp(to.dot(fwd), -1, 1));
       if (ang > arc) continue;
@@ -162,28 +173,63 @@ export class Combat {
   }
 
   // ---- Auto attack ----
-  autoAttack() {
+  autoAttack(charge = 0) {
     const p = this.player;
     // The wielded weapon decides melee vs. ranged (so a melee class with a bow
     // or throwing weapon equipped fires projectiles instead of swinging).
     const prof = p.attackProfile ? p.attackProfile() : { ranged: this.def.ranged, range: this.def.range, speed: 24, shape: 'orb', projColor: this.def.projColor };
-    p.attackTimer = this.def.attackSpeed;
+    const t = Math.min(3, charge) / 3;             // 0 = tap, 1 = full 3s charge
+    const mult = 1 + t * 2.4;                        // up to ~3.4x on a full charge
+    p.attackTimer = this.def.attackSpeed * (1 + t * 0.5);
     p.attackAnim = 1;
+    // Combo counter: alternate the swing on quick successive melee hits.
+    if (p.clock - (this._lastSwing || -9) < 1.1) p.comboStep = ((p.comboStep || 0) + 1) % 3;
+    else p.comboStep = 0;
+    this._lastSwing = p.clock;
     if (this.audio) this.audio.play('swing');
     if (prof.ranged) {
       const dir = this._aimDir(prof.range, 0.8);
       this._face(dir);
       this.spawnProjectile(this._muzzle(), dir, {
-        speed: prof.speed || 24, mult: 1, color: prof.projColor || 0xffffff,
-        shape: prof.shape || 'orb', range: prof.range,
+        speed: (prof.speed || 24) * (1 + t * 0.6), mult, color: prof.projColor || 0xffffff,
+        shape: prof.shape || 'orb', range: (prof.range || 30) * (1 + t * 0.5), pierce: t > 0.6,
+        aoe: t > 0.85 ? 2.5 : 0,
       });
       this._emitAction('bolt', prof.projColor || 0xffffff, this._muzzle(), dir);
     } else {
       this._faceCam();
-      const e = this._aimEnemy(prof.range || this.def.range, 1.3);
-      if (e) this._strike(e, p.apower, { crit: this.def.critBonus || 0 });
+      const dir = this.cam.forward();
+      const range = (prof.range || this.def.range) + t * 2.0;
+      if (t < 0.15) {
+        // A quick swing: hit the best-aimed foe (forgiving reach).
+        const e = this._aimEnemy(range, 1.0);
+        if (e) this._strike(e, p.apower * mult, { crit: this.def.critBonus || 0 });
+      } else {
+        // A charged swing: a wide cleave that hits everything in front.
+        const arc = 1.6 + t * 2.2;
+        for (const e of this._inArc(this.player.pos, dir, range, arc)) this._strike(e, p.apower * mult, { crit: this.def.critBonus || 0 });
+        this._coneFx(this.player.pos, dir, range, 1.6 + t * 2.2, this.def.accent);
+      }
       this._emitAction('swing');
     }
+  }
+
+  // A growing orb at the weapon muzzle while a charged attack winds up.
+  _updateChargeFx() {
+    if (this.charging && (this._charge || 0) > 0.12) {
+      if (!this._chargeOrb) {
+        this._chargeOrb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 10),
+          new THREE.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.7, depthWrite: false }));
+        this._chargeOrb.add(new THREE.PointLight(0xffd27a, 1.2, 6));
+        this.scene.add(this._chargeOrb);
+      }
+      const t = (this._charge || 0) / 3;
+      this._chargeOrb.position.copy(this._muzzle());
+      this._chargeOrb.visible = true;
+      this._chargeOrb.scale.setScalar(0.3 + t * 1.2);
+      this._chargeOrb.material.color.setHex(t > 0.66 ? 0xff5a2a : (t > 0.33 ? 0xffb24a : 0xffe27a));
+      this._chargeOrb.material.opacity = 0.5 + t * 0.4;
+    } else if (this._chargeOrb) { this._chargeOrb.visible = false; }
   }
 
   // Tell the network layer the local player just attacked/cast, so other players
@@ -262,6 +308,7 @@ export class Combat {
       case 'beam': this._kBeam(ab); break;
       case 'instantstep': this._kInstantStep(ab); break;
       case 'transform': this._kTransform(ab); break;
+      case 'stealth': this._kStealth(ab); break;
     }
   }
 
@@ -530,16 +577,36 @@ export class Combat {
   }
 
   // ---- Helpers ----
+  // Rogue Shadowmeld: vanish into stealth. Nearby foes instantly lose you, your
+  // model fades, you move faster, and your next strikes hit far harder. Attacking
+  // reveals you (the ambush) but the damage window lingers a moment.
+  _kStealth(ab) {
+    const p = this.player;
+    const dur = ab.dur || 6;
+    p.stealthUntil = p.clock + dur;
+    if (p.setStealth) p.setStealth(true);
+    for (const e of this.enemies) {
+      if (e.alive && e.pos.distanceTo(p.pos) < 34 && (e.state === 'chase' || e.state === 'attack')) e.state = 'return';
+    }
+    p.timed = (p.timed || []).filter((b) => b.label !== ab.name);
+    p.timed.push({ dmgMult: ab.dmg || 1.9, speedMult: ab.speed || 1.35, until: p.clock + dur, label: ab.name, glyph: ab.glyph, color: '#8a8ad0', dur });
+    this.ui.floater('Vanish!', 'heal', p.pos);
+    if (this._novaFx) this._novaFx(p.pos, 0x6a6a9a);
+  }
+
   _inArc(origin, dir, range, arc) {
     const out = [];
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const to = new THREE.Vector3().subVectors(e.pos, origin);
       const d = to.length();
-      if (d > range) continue;
+      // Reach to the enemy's BODY, not its centre — big foes and near-misses that
+      // clearly should connect now land (melee was frustrating without this).
+      if (d > range + (e.displayScale || 1) + 0.8) continue;
       to.y = 0; to.normalize();
       const ang = Math.acos(THREE.MathUtils.clamp(to.dot(dir), -1, 1));
-      if (ang <= arc / 2) out.push(e);
+      // Widen the effective arc a touch for close foes so point-blank swings hit.
+      if (ang <= arc / 2 + (d < 2.5 ? 0.5 : 0)) out.push(e);
     }
     return out;
   }
@@ -555,6 +622,9 @@ export class Combat {
 
   // ---- Damage application ----
   _strike(enemy, amount, { crit = 0, silent = false }) {
+    // Attacking breaks stealth (the ambush) — but the damage buff lingers.
+    const pl = this.player;
+    if (pl.stealthUntil && pl.clock < pl.stealthUntil) { pl.stealthUntil = 0; if (pl.setStealth) pl.setStealth(false); }
     // Giantslayer (Boss Slayer reward): extra punishment against bosses.
     if (enemy.boss && this.player.passives && this.player.passives.has('giantslayer')) amount *= 1.25;
     const isCrit = Math.random() < (0.05 + crit + this.player.gearCrit);

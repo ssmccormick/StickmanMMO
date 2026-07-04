@@ -103,6 +103,9 @@ export class Player {
 
     this.attackTimer = 0;
     this.attackAnim = 0;
+    this.comboStep = 0;      // alternates the swing on quick successive melee hits
+    this.charging = false;   // winding up a charged basic attack (crawls to a stop)
+    this.stealthUntil = 0;   // rogue Shadowmeld: stealthed while clock < this
     this.buffs = { dmg: 1, speed: 1, shield: 0, until: 0, shieldUntil: 0 };
     this.iframeUntil = 0;
 
@@ -444,16 +447,27 @@ export class Player {
     }
   }
 
-  // Ranged/caster weapons rest upright but THRUST FORWARD when attacking or
-  // casting, so the staff/bow/thrown weapon points outward at the target rather
-  // than staying glued to the arm. Melee keeps the normal arm swing.
+  // Weapons rest in the hand at the hip and EXTEND OUTWARD when used: ranged
+  // weapons thrust/level toward the target, and melee blades swing out from the
+  // cross-body ready pose so the strike reaches forward instead of hugging the arm.
   _poseHeldWeapon() {
     const w = this._heldWeapon;
     const kind = this._heldKind;
-    if (!w || !isRangedWeaponKind(kind)) return;
+    if (!w) return;
     const j = this.mesh.userData.joints;
     const base = (WEAPON_HOLD[kind] || WEAPON_HOLD.default).rot;
     const attacking = this.attackAnim > 0;
+    if (!isRangedWeaponKind(kind)) {
+      // Melee: straighten the blade out along the swing so it extends forward,
+      // then settle back to the resting hip pose.
+      if (attacking) {
+        const tt = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 over the swing
+        w.rotation.set(base[0] - 0.5 * tt, base[1], base[2] * (1 - tt * 0.85));
+      } else {
+        w.rotation.set(base[0], base[1], base[2]);
+      }
+      return;
+    }
     if (kind === 'bow' || kind === 'crossbow') {
       // A bow/crossbow is levelled and loosed, not thrust like a spear: raise the
       // arm to aim it forward on release; the weapon keeps its steady orientation
@@ -518,6 +532,7 @@ export class Player {
       if (this.mounted) speed *= 2.6 * (this.passives.has('trailblazer') ? 1.25 : 1); // gallop
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1); }
       if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
+      if (this.charging) speed *= 0.18; // winding up a charged attack — a near standstill
 
       this.vel.x = move.x * speed;
       this.vel.z = move.z * speed;
@@ -797,8 +812,11 @@ export class Player {
     animateStickman(this.mesh, dt, {
       speed01: this._speed01, attack: this.attackAnim,
       climbing: this.state === 'climb', airborne: this.state === 'air', emote,
+      combo: this.comboStep || 0, charging: this.charging,
     });
     this._poseHeldWeapon();
+    // Fade stealth out when it expires.
+    if (this.stealthUntil && this._clock >= this.stealthUntil) { this.stealthUntil = 0; this.setStealth(false); }
 
     // Super Saiyan aura: flicker the flame and let the hair shimmer.
     if (this.ssjActive && this.ssjAura) {
@@ -1010,4 +1028,15 @@ export class Player {
   }
 
   get clock() { return this._clock; }
+  get isStealthed() { return this._clock < this.stealthUntil; }
+
+  // Fade the hero to a translucent shadow while stealthed (rogue Shadowmeld).
+  setStealth(on) {
+    const setOp = (mat) => { if (!mat) return; mat.transparent = on; mat.opacity = on ? 0.3 : 1; };
+    const m = this.mesh && this.mesh.userData.mats;
+    if (m) { setOp(m.body); setOp(m.accent); setOp(m.hair); }
+    if (this.mesh) this.mesh.traverse((o) => {
+      if (o.isMesh && o.material && o.material.type === 'MeshLambertMaterial') setOp(o.material);
+    });
+  }
 }
