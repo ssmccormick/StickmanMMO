@@ -16,13 +16,13 @@ import {
   BIOME_LAYOUT, BIOME_SIZE, BIOME_REGIONS, biomeWeights, TOWNS, capOff, AREAS,
   CAMPS, BOSSES, areaAt, ROADS, roadDistance, DUNGEONS, DUNGEON_SITES, MOUNTAINS,
   CAVES, CAVE_SITES, SEA_IN, SEA_OUT, EDGE_SHORE, LEVIATHAN_RADIUS,
-  MAGE_TOWER, mageTowerSummitY, CASTLES, heightAt, townBaseHeight, BIOMES, biomeAt,
+  MAGE_TOWER, mageTowerSummitY, CASTLES, heightAt, townBaseHeight, BIOMES, biomeAt, biomeKeyAt,
 } from './sim/terrain.js';
 
 // Re-export the world-data API that the rest of the game imports from world.js.
 export {
   WORLD_SIZE, WATER_LEVEL, TOWNS, AREAS, MOUNTAINS, BOSSES, DUNGEONS, CAVES,
-  EDGE_SHORE, LEVIATHAN_RADIUS, MAGE_TOWER, heightAt, areaAt, BIOMES,
+  EDGE_SHORE, LEVIATHAN_RADIUS, MAGE_TOWER, heightAt, areaAt, BIOMES, biomeKeyAt,
 };
 
 const EMPTY_COLLIDERS = []; // shared empty list for resolveCircle grid misses
@@ -976,13 +976,14 @@ export class World {
     // Spawn zones are the named, level-gated areas (no enemies in safe areas).
     // Use nearly the whole area radius so packs spread out rather than bunching.
     this.spawnZones = AREAS.filter((a) => !a.safe).map((a) => ({
-      center: new THREE.Vector3(a.x, 0, a.z), radius: a.r * 0.95, level: a.level, count: a.count || 9, name: a.name,
+      center: new THREE.Vector3(a.x, 0, a.z), radius: a.r * 0.95, level: a.level, count: a.count || 9, name: a.name, biome: a.biome,
     }));
-    // Extra WILD spawn zones scattered through the now-vast open world, so the
-    // space between named areas isn't empty. Level scales with distance out.
-    for (let i = 0; i < 60; i++) {
+    // Extra WILD spawn zones scattered through the now-vast open world, filling
+    // the space between named areas from the heartland all the way to the coast.
+    // Level scales with distance out; each zone's creatures theme to its biome.
+    for (let i = 0; i < 80; i++) {
       const ang = hash2(i, 71) * Math.PI * 2;
-      const rad = (0.14 + hash2(i, 73) * 0.66) * WORLD_SIZE; // between the heartland and the shore
+      const rad = (0.14 + hash2(i, 73) * 0.70) * WORLD_SIZE; // out to ~the shore
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       if (this.inSafeZone(x, z) || heightAt(x, z) < WATER_LEVEL + 0.5) continue;
       const level = Math.max(1, Math.round(2 + (rad / WORLD_SIZE) * 44)); // farther = tougher

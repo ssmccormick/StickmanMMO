@@ -24,7 +24,49 @@ export const TYPES = {
   // Fish People — amphibious raiders that haunt the coastline and shallows.
   fishman:  { name: 'Fishfolk Raider', color: 0x3a8a7a, accent: 0x9be0c8, scale: 1.05, hp: 68, dmg: 15, speed: 4.2, range: 2.4, xp: 40, aggro: 22 },
   tidecaller: { name: 'Tidecaller', color: 0x2a6a8a, accent: 0x6fc8ff, scale: 1.0, hp: 60, dmg: 16, speed: 3.4, range: 2.0, xp: 46, aggro: 24, ranged: true, shootRange: 17, projSpeed: 15, projColor: 0x6fc8ff },
+
+  // ---- Biome-themed fauna (fills each region with its own creatures) ----
+  // Forest / Greenwood
+  boar:      { name: 'Tuskcharger',   color: 0x8a6a3a, accent: 0x5a3a1a, scale: 1.2, hp: 80,  dmg: 16, speed: 4.6, range: 2.6, xp: 34, aggro: 18 },
+  sprite:    { name: 'Thorn Sprite',  color: 0x7fce5a, accent: 0xcfffa0, scale: 0.85, hp: 40, dmg: 11, speed: 4.4, range: 2.0, xp: 30, aggro: 22, ranged: true, shootRange: 15, projSpeed: 18, projColor: 0x9be36a },
+  // Snow / Frostpeaks
+  frostwolf: { name: 'Frost Fang',    color: 0xcfe0ee, accent: 0x9fd0ff, scale: 0.95, hp: 58, dmg: 14, speed: 5.6, range: 2.0, xp: 34, aggro: 22 },
+  frostcaster:{ name: 'Rime Warden',  color: 0xbfeaff, accent: 0x6fc8ff, scale: 1.0, hp: 62,  dmg: 15, speed: 3.0, range: 2.0, xp: 44, aggro: 24, ranged: true, shootRange: 18, projSpeed: 13, projColor: 0x9fe0ff },
+  // Desert / Dunes
+  scarab:    { name: 'War Scarab',    color: 0xc7a866, accent: 0x8a6a3a, scale: 0.9, hp: 46,  dmg: 12, speed: 5.0, range: 1.9, xp: 28, aggro: 20 },
+  sandstalker:{ name: 'Dune Stalker', color: 0xd9c486, accent: 0xe0b060, scale: 1.05, hp: 60, dmg: 14, speed: 3.4, range: 2.0, xp: 42, aggro: 24, ranged: true, shootRange: 17, projSpeed: 16, projColor: 0xe0c060 },
+  // Swamp / Mire
+  bogling:   { name: 'Bog Lurker',    color: 0x4a5a3a, accent: 0x3a4a2a, scale: 1.25, hp: 100, dmg: 18, speed: 2.6, range: 2.8, xp: 46, aggro: 16 },
+  mirecaster:{ name: 'Mire Hexer',    color: 0x5a6a4a, accent: 0x9be36a, scale: 1.0, hp: 62,  dmg: 15, speed: 2.9, range: 2.0, xp: 48, aggro: 24, ranged: true, shootRange: 18, projSpeed: 12, projColor: 0x8fd86a },
+  // Ash / Emberwastes
+  emberhound:{ name: 'Ember Hound',   color: 0x5a2a1a, accent: 0xff5a2a, scale: 1.0, hp: 66,  dmg: 17, speed: 5.4, range: 2.2, xp: 44, aggro: 26 },
+  cindermage:{ name: 'Cinder Adept',  color: 0x4a2a2a, accent: 0xff7a3c, scale: 1.0, hp: 64,  dmg: 16, speed: 3.0, range: 2.0, xp: 50, aggro: 26, ranged: true, shootRange: 19, projSpeed: 17, projColor: 0xff7a3c },
+  // Jungle / Verdant Wilds
+  panther:   { name: 'Shadowpanther', color: 0x2a3a2a, accent: 0x6fd86a, scale: 1.0, hp: 70,  dmg: 18, speed: 6.2, range: 2.2, xp: 46, aggro: 28 },
+  blowpiper: { name: 'Vine Piper',    color: 0x3f6a2a, accent: 0x9be36a, scale: 1.0, hp: 58,  dmg: 15, speed: 3.6, range: 2.0, xp: 48, aggro: 24, ranged: true, shootRange: 17, projSpeed: 18, projColor: 0x9be36a },
+  // Crystal / Shardspire
+  shardling: { name: 'Shard Golem',   color: 0x9a8ad8, accent: 0xcdf2ff, scale: 1.2, hp: 108, dmg: 19, speed: 3.0, range: 2.6, xp: 54, aggro: 18 },
+  prismcaster:{ name: 'Prism Seer',   color: 0x8a9ad0, accent: 0xb2a8e2, scale: 1.0, hp: 66,  dmg: 16, speed: 3.0, range: 2.0, xp: 56, aggro: 26, ranged: true, shootRange: 19, projSpeed: 15, projColor: 0xc7a4ff },
+  // Badlands / Scarlands
+  bonewalker:{ name: 'Bonewalker',    color: 0xcabf9a, accent: 0x8a7a5a, scale: 1.05, hp: 78, dmg: 17, speed: 3.4, range: 2.4, xp: 50, aggro: 20 },
+  scrapshot: { name: 'Scrap Gunner',  color: 0xb0663a, accent: 0xffe27a, scale: 1.0, hp: 64,  dmg: 16, speed: 3.2, range: 2.0, xp: 52, aggro: 26, ranged: true, shootRange: 18, projSpeed: 22, projColor: 0xffd27a },
 };
+
+// Which creatures inhabit each biome (a melee bruiser + a ranged caster + a
+// generic filler). Spawns pick from the pool of whatever biome they land in, so
+// the world reads as distinct regions from the heartland out to the coast.
+export const BIOME_TYPES = {
+  meadow:   ['slime', 'grunt', 'wolf'],
+  forest:   ['boar', 'sprite', 'wolf', 'grunt'],
+  snow:     ['frostwolf', 'frostcaster', 'knight'],
+  desert:   ['scarab', 'sandstalker', 'grunt'],
+  swamp:    ['bogling', 'mirecaster', 'hexer'],
+  ash:      ['emberhound', 'cindermage', 'brute'],
+  jungle:   ['panther', 'blowpiper', 'brute'],
+  crystal:  ['shardling', 'prismcaster', 'knight'],
+  badlands: ['bonewalker', 'scrapshot', 'brute'],
+};
+export function typesForBiome(biomeKey) { return BIOME_TYPES[biomeKey] || BIOME_TYPES.meadow; }
 
 // Where the great dragon roosts — a far-north open expanse below the high peaks.
 // Scaled with the world (see terrain.js SCALE) so it stays near the northern
@@ -76,7 +118,16 @@ export const SPECIAL_SETS = {
     { id: 'lunge', shape: 'lane', minR: 3, maxR: 8, windup: 0.5, exec: 0.26, cd: [5, 8], dashSpeed: 16, hitR: 1.4, width: 1.6, dmg: 1.35, color: 0x6fc8ff },
   ],
 };
-export function specialsFor(typeId, ranged) { return (!ranged && SPECIAL_SETS[typeId]) ? SPECIAL_SETS[typeId] : []; }
+// A basic telegraphed strike every melee foe falls back to, so the many themed
+// creatures without a bespoke special still attack (enemies only deal damage via
+// telegraphed specials). Ranged foes attack with projectiles and get none.
+const DEFAULT_MELEE = [
+  { id: 'strike', shape: 'arc', minR: 0, maxR: 3, windup: 0.45, exec: 0.22, cd: [3, 5], range: 2.9, arc: 1.5, dmg: 1.2, color: 0xffd0a0 },
+];
+export function specialsFor(typeId, ranged) {
+  if (ranged) return [];
+  return SPECIAL_SETS[typeId] || DEFAULT_MELEE;
+}
 
 // The single derivation of an enemy's level-scaled combat stats — used by both
 // the client Enemy and the server SimEnemy so they always agree.

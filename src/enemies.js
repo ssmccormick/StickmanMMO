@@ -6,11 +6,11 @@
 import * as THREE from 'three';
 import { animateStickman } from './stickman.js';
 import { createCreature } from './creatures.js';
-import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS } from './world.js';
+import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS, biomeKeyAt } from './world.js';
 // Enemy archetypes + level-scaling live in a Three-free shared module so the
 // authoritative server simulates identical enemies. Re-export DRAGON_ROOST so
 // existing importers (main.js) keep working.
-import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, SPECIAL_SETS, specialsFor } from './sim/enemyTypes.js';
+import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, SPECIAL_SETS, specialsFor, typesForBiome } from './sim/enemyTypes.js';
 export { DRAGON_ROOST };
 
 let NEXT_ID = 1;
@@ -627,14 +627,16 @@ export class Enemy {
 export function spawnEnemies(scene, world) {
   const enemies = [];
   for (const zone of world.spawnZones) {
-    const pool = TYPE_BY_LEVEL(zone.level);
     for (let i = 0; i < zone.count; i++) {
       // sqrt(random) → uniform coverage over the whole disc (no center clumping).
       const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * zone.radius;
-      const home = new THREE.Vector3(zone.center.x + Math.cos(a) * d, 0, zone.center.z + Math.sin(a) * d);
+      const x = zone.center.x + Math.cos(a) * d, z = zone.center.z + Math.sin(a) * d;
+      // The creatures that live HERE — themed to the biome the spawn lands in, so
+      // each region has its own fauna from the heartland out to the coast.
+      const pool = typesForBiome(zone.biome || biomeKeyAt(x, z));
       const typeId = pool[Math.floor(Math.random() * pool.length)];
       const lvl = zone.level + Math.floor(Math.random() * 2);
-      enemies.push(new Enemy(scene, world, typeId, lvl, home));
+      enemies.push(new Enemy(scene, world, typeId, lvl, new THREE.Vector3(x, 0, z)));
     }
   }
   return enemies;

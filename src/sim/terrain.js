@@ -415,10 +415,14 @@ export const BIOMES = {
 
 // Discrete biome (for prop choice / camps) — the dominant weight, distorted
 // so prop regions interleave at borders to match the blended terrain.
-export function biomeAt(x, z) {
-  if (Math.hypot(x, z) < 22 * SCALE) return BIOMES.meadow;
+export function biomeAt(x, z) { return BIOMES[biomeKeyAt(x, z)]; }
+
+// The dominant biome KEY at a point ('forest','snow',…,'meadow'). Used to pick
+// biome-themed enemy spawns as well as props.
+export function biomeKeyAt(x, z) {
+  if (Math.hypot(x, z) < 22 * SCALE) return 'meadow';
   const w = biomeWeights(x, z);
   let best = 'forest', bv = -1;
   for (const k of ['forest', 'snow', 'swamp', 'desert', 'ash', 'jungle', 'crystal', 'badlands', 'meadow']) if (w[k] > bv) { bv = w[k]; best = k; }
-  return BIOMES[best];
+  return best;
 }

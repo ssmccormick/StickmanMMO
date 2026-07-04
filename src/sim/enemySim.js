@@ -10,8 +10,8 @@
 // so this layer only owns the ENEMIES — their positions, HP, deaths, and
 // loot rolls. That keeps player-feel responsive while making encounters shared.
 // ============================================================
-import { heightAt, TOWNS, AREAS, CAMPS, BOSSES } from './terrain.js';
-import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, specialsFor } from './enemyTypes.js';
+import { heightAt, TOWNS, AREAS, CAMPS, BOSSES, WORLD_SIZE, WATER_LEVEL, hash2, biomeKeyAt } from './terrain.js';
+import { TYPES, TYPE_BY_LEVEL, DRAGON_ROOST, deriveStats, specialsFor, typesForBiome } from './enemyTypes.js';
 
 const ACTIVE_R = 145;              // area-of-interest radius (≳ client's 130)
 const ACTIVE2 = ACTIVE_R * ACTIVE_R;
@@ -245,7 +245,7 @@ export class WorldSim {
     // Overworld zones (the named, non-safe areas) — packs + a couple of flyers.
     for (const a of AREAS) {
       if (a.safe) continue;
-      const radius = a.r * 0.95, count = a.count || 9, pool = TYPE_BY_LEVEL(a.level);
+      const radius = a.r * 0.95, count = a.count || 9, pool = typesForBiome(a.biome);
       for (let i = 0; i < count; i++) {
         const ang = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * radius;
         const home = { x: a.x + Math.cos(ang) * d, z: a.z + Math.sin(ang) * d };
@@ -262,12 +262,26 @@ export class WorldSim {
     }
     // Elite war-camp packs.
     for (const c of CAMPS) {
-      const pool = TYPE_BY_LEVEL(c.level + 2);
+      const pool = typesForBiome(biomeKeyAt(c.x, c.z));
       for (let i = 0; i < 4; i++) {
         const ang = (i / 4) * Math.PI * 2;
         const home = { x: c.x + Math.cos(ang) * 5, z: c.z + Math.sin(ang) * 5 };
         const typeId = pool[Math.floor(Math.random() * pool.length)];
         this._add(new SimEnemy(typeId, c.level + 2, home, { elite: true, campId: c.id }));
+      }
+    }
+    // Wild fill: scattered packs from the heartland out to the coast, themed to
+    // whatever biome each lands in (mirrors the client's solo world).
+    for (let i = 0; i < 80; i++) {
+      const ang = hash2(i, 71) * Math.PI * 2;
+      const rad = (0.14 + hash2(i, 73) * 0.70) * WORLD_SIZE;
+      const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
+      if (inSafeZone(x, z) || heightAt(x, z) < WATER_LEVEL + 0.5) continue;
+      const level = Math.max(1, Math.round(2 + (rad / WORLD_SIZE) * 44));
+      const pool = typesForBiome(biomeKeyAt(x, z));
+      for (let k = 0; k < 8; k++) {
+        const a2 = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * 36;
+        this._add(new SimEnemy(pool[Math.floor(Math.random() * pool.length)], level + Math.floor(Math.random() * 2), { x: x + Math.cos(a2) * d, z: z + Math.sin(a2) * d }));
       }
     }
     // Named world bosses (one per biome high area).
