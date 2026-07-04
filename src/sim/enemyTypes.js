@@ -179,12 +179,16 @@ export function bossThemeAt(x, z) { return BOSS_THEME[biomeKeyAt(x, z)] || BOSS_
 export function deriveStats(typeId, level, opts = {}) {
   const type = TYPES[typeId] || TYPES.grunt;
   const boss = !!opts.boss, elite = !!opts.elite;
+  // A Lieutenant is a "mini-boss": still a named boss (bar, telegraphs,
+  // persistence) but tuned lighter than an Archfiend, so it reads as the
+  // reach's warm-up encounter rather than a second raid boss.
+  const mini = boss && !!opts.miniboss;
   const lvlScale = 1 + (level - 1) * 0.32;
-  const em = boss ? 8 : elite ? 2.4 : 1;
+  const em = mini ? 4.5 : boss ? 8 : elite ? 2.4 : 1;
   return {
     maxHp: Math.round(type.hp * lvlScale * em),
-    dmg: type.dmg * (1 + (level - 1) * 0.22) * (boss ? 1.9 : elite ? 1.5 : 1),
-    xp: Math.round(type.xp * (1 + (level - 1) * 0.4) * (boss ? 7 : elite ? 2.5 : 1)),
-    displayScale: type.scale * (boss ? 2.3 : elite ? 1.35 : 1),
+    dmg: type.dmg * (1 + (level - 1) * 0.22) * (mini ? 1.6 : boss ? 1.9 : elite ? 1.5 : 1),
+    xp: Math.round(type.xp * (1 + (level - 1) * 0.4) * (mini ? 4.5 : boss ? 7 : elite ? 2.5 : 1)),
+    displayScale: type.scale * (mini ? 1.85 : boss ? 2.3 : elite ? 1.35 : 1),
   };
 }

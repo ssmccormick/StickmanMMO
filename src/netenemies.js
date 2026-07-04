@@ -27,7 +27,7 @@ export class NetEnemies {
       let e = this.map.get(s.id);
       if (!e) {
         const home = new THREE.Vector3(s.x, s.y, s.z);
-        e = new Enemy(this.scene, this.world, s.t, s.lv, home, { boss: !!s.b, elite: !!s.e, bossName: s.nm });
+        e = new Enemy(this.scene, this.world, s.t, s.lv, home, { boss: !!s.b, elite: !!s.e, miniboss: !!s.mb, bossName: s.nm });
         e._net = true;
         e._serverId = s.id;
         e._onNetHit = (sid, dmg) => this.network.sendEnemyHit(sid, dmg);

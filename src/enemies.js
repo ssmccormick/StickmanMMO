@@ -77,11 +77,12 @@ export class Enemy {
     this.home = home.clone();
     this.elite = !!opts.elite;
     this.boss = !!opts.boss;
+    this.miniboss = !!opts.miniboss;
     this.bossName = opts.bossName || null;
     this.campId = opts.campId || null;
     this.scene = scene;
 
-    const st = deriveStats(typeId, level, { boss: this.boss, elite: this.elite });
+    const st = deriveStats(typeId, level, { boss: this.boss, elite: this.elite, miniboss: this.miniboss });
     this.maxHp = st.maxHp;
     this.hp = this.maxHp;
     this.dmg = st.dmg;
@@ -787,7 +788,7 @@ export function spawnMinions(scene, world, boss, n) {
 export function spawnBosses(scene, world) {
   return BOSSES.map((sp) => {
     const home = new THREE.Vector3(sp.x, 0, sp.z);
-    return new Enemy(scene, world, sp.type, sp.level, home, { boss: true, bossName: sp.name });
+    return new Enemy(scene, world, sp.type, sp.level, home, { boss: true, miniboss: !!sp.lieutenant, bossName: sp.name });
   });
 }
 

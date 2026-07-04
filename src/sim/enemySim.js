@@ -29,7 +29,7 @@ class SimEnemy {
     this.typeId = typeId;
     this.type = TYPES[typeId] || TYPES.grunt;
     this.level = level;
-    this.boss = !!opts.boss; this.elite = !!opts.elite;
+    this.boss = !!opts.boss; this.elite = !!opts.elite; this.miniboss = !!opts.miniboss;
     this.bossName = opts.bossName || null;
     this.campId = opts.campId || null;
 
@@ -255,7 +255,7 @@ class SimEnemy {
       f: +this.facing.toFixed(2), hp: Math.round(this.hp), mhp: this.maxHp,
       st: this.alive ? this.state : 'dead', sc: +this.displayScale.toFixed(2),
     };
-    if (this.boss) { s.b = 1; s.nm = this.bossName; }
+    if (this.boss) { s.b = 1; s.nm = this.bossName; if (this.miniboss) s.mb = 1; }
     if (this.elite) s.e = 1;
     // Charge telegraph state (so clients can render the wind-up bar + danger zone).
     if (this.charge) {
@@ -321,7 +321,7 @@ export class WorldSim {
       }
     }
     // Named world bosses (one per biome high area).
-    for (const b of BOSSES) this._add(new SimEnemy(b.type, b.level, { x: b.x, z: b.z }, { boss: true, bossName: b.name }));
+    for (const b of BOSSES) this._add(new SimEnemy(b.type, b.level, { x: b.x, z: b.z }, { boss: true, miniboss: !!b.lieutenant, bossName: b.name }));
     // The end-boss dragon at its roost (always present in the shared world).
     this._add(new SimEnemy('dragon', 24, { x: DRAGON_ROOST.x, z: DRAGON_ROOST.z }, { boss: true, bossName: 'Vetharion, the Sky-Tyrant' }));
   }
