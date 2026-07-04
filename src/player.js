@@ -105,6 +105,8 @@ export class Player {
     this.attackTimer = 0;
     this.attackAnim = 0;
     this.comboStep = 0;      // alternates the swing on quick successive melee hits
+    this._lungeT = 0;        // brief forward lunge on the stab (combo step 2)
+    this._lungeDir = { x: 0, z: 1 };
     this.charging = false;   // winding up a charged basic attack (crawls to a stop)
     this.stealthUntil = 0;   // rogue Shadowmeld: stealthed while clock < this
     this.buffs = { dmg: 1, speed: 1, shield: 0, until: 0, shieldUntil: 0 };
@@ -461,6 +463,14 @@ export class Player {
   // Weapons rest in the hand at the hip and EXTEND OUTWARD when used: ranged
   // weapons thrust/level toward the target, and melee blades swing out from the
   // cross-body ready pose so the strike reaches forward instead of hugging the arm.
+  // Kick off a brief forward lunge (used by the stab combo step). `dir` is a
+  // world-space direction; only its horizontal component matters.
+  lunge(dir) {
+    const l = Math.hypot(dir.x, dir.z) || 1;
+    this._lungeDir = { x: dir.x / l, z: dir.z / l };
+    this._lungeT = 1;
+  }
+
   _poseHeldWeapon() {
     const w = this._heldWeapon;
     const kind = this._heldKind;
@@ -469,11 +479,16 @@ export class Player {
     const base = (WEAPON_HOLD[kind] || WEAPON_HOLD.default).rot;
     const attacking = this.attackAnim > 0;
     if (!isRangedWeaponKind(kind)) {
-      // Melee: straighten the blade out along the swing so it extends forward,
-      // then settle back to the resting hip pose.
+      // Melee: the ARM now carries the swing's arc (see animateStickman); the
+      // blade just follows the grip — a light straighten through a slash, and a
+      // full forward point on the stab (comboStep 2) so the tip leads the thrust.
       if (attacking) {
-        const tt = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 over the swing
-        w.rotation.set(base[0] - 0.5 * tt, base[1], base[2] * (1 - tt * 0.85));
+        const arc = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 over the swing
+        if ((this.comboStep | 0) === 2) {
+          w.rotation.set(base[0] - 1.15 * arc, base[1], base[2] * (1 - arc));
+        } else {
+          w.rotation.set(base[0] - 0.35 * arc, base[1], base[2]);
+        }
       } else {
         w.rotation.set(base[0], base[1], base[2]);
       }
@@ -554,6 +569,14 @@ export class Player {
       this.pos.x += this.vel.x * dt;
       this.pos.z += this.vel.z * dt;
       this.pos.y += this.vel.y * dt;
+
+      // A stab (combo step 2) carries the hero forward a short, decaying step.
+      if (this._lungeT > 0) {
+        const sp = 10 * this._lungeT;
+        this.pos.x += this._lungeDir.x * sp * dt;
+        this.pos.z += this._lungeDir.z * sp * dt;
+        this._lungeT = Math.max(0, this._lungeT - dt * 4.2);
+      }
 
       const res = this.world.resolveCircle(this.pos.x, this.pos.z, RADIUS);
       this.pos.x = res.x; this.pos.z = res.z;

@@ -201,6 +201,8 @@ export class Combat {
     } else {
       this._faceCam();
       const dir = this.cam.forward();
+      // The stab (combo step 2) drives the hero a short step forward.
+      if (p.comboStep === 2 && p.lunge) p.lunge(dir);
       const range = (prof.range || this.def.range) + t * 2.0;
       if (t < 0.15) {
         // A quick swing: hit the best-aimed foe (forgiving reach).

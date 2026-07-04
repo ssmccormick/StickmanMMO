@@ -349,28 +349,40 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     group.children[0].position.y = 1.0 + Math.abs(Math.sin(a.phase)) * 0.04 * speed01;
   }
 
-  // Attack swing overrides the right arm for a moment — and the swing STYLE
-  // alternates on quick successive hits (a 3-hit combo): overhead chop → cross
-  // slash → rising backhand. Charging holds a cocked wind-up pose.
+  // Attack swing overrides the right arm — and the STYLE alternates on quick
+  // successive hits (a 3-hit combo). Each swing travels a real ARC by driving
+  // the arm with `t` (0→1, start→end) instead of a symmetric sine, so the blade
+  // sweeps ACROSS the body rather than just poking out and snapping back:
+  //   0) an overhead diagonal slash, high-right down to low-left,
+  //   1) a flat horizontal cut sweeping across the front,
+  //   2) a forward stab/thrust (the body lunges with it, in player.js).
+  // `rotation.x` pitches the arm forward/back; `rotation.z` rolls it across the
+  // frontal plane (+ = up/across to the character's left, − = out to the right).
   if (attack > 0) {
-    const s = Math.sin((1 - attack) * Math.PI); // 0→1→0 over the swing
-    if (combo === 1) {          // cross slash (horizontal)
-      j.armR.rotation.x = -s * 1.3;
-      j.armR.rotation.z = 0.35 - s * 1.5;
-    } else if (combo === 2) {   // rising backhand
-      j.armR.rotation.x = -s * 2.0;
-      j.armR.rotation.z = -0.2 + s * 1.2;
-    } else {                    // overhead chop
-      j.armR.rotation.x = -s * 2.4;
-      j.armR.rotation.z = s * 0.6;
+    const t = 1 - attack;                    // 0 → 1 across the swing (directional)
+    const arc = Math.sin(t * Math.PI);       // 0→1→0 (for thrust in/out + body dips)
+    if (combo === 1) {          // horizontal cut across the front (left → right)
+      j.armR.rotation.x = -1.5 + arc * 0.2;
+      j.armR.rotation.z = 1.15 - t * 2.35;
+      j.torso.rotation.z = 0.28 - t * 0.56;  // hips/shoulders whip through the cut
+    } else if (combo === 2) {   // forward stab: cock, then drive the point ahead
+      j.armR.rotation.x = -0.45 - arc * 1.25;
+      j.armR.rotation.z = 0.05;
+      j.torso.rotation.x = arc * 0.24;       // lean into the thrust
+    } else {                    // overhead diagonal chop: high-right → low-left
+      j.armR.rotation.x = -2.35 + t * 2.5;
+      j.armR.rotation.z = -0.75 + t * 1.85;
+      j.torso.rotation.z = -0.22 + t * 0.44; // shoulder rolls down through the chop
     }
   } else if (charging) {
     // Wind-up: cock the weapon arm back and lean into the coming blow.
     j.armR.rotation.x = THREE.MathUtils.lerp(j.armR.rotation.x, -2.5, Math.min(1, dt * 9));
     j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, -0.55, Math.min(1, dt * 9));
     j.torso.rotation.x = 0.18;
+    j.torso.rotation.z = THREE.MathUtils.lerp(j.torso.rotation.z, 0, Math.min(1, dt * 8));
   } else {
     j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, 0, Math.min(1, dt * 10));
+    j.torso.rotation.z = THREE.MathUtils.lerp(j.torso.rotation.z, 0, Math.min(1, dt * 8));
   }
 }
 
