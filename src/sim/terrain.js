@@ -42,6 +42,19 @@ export function smoothNoise(x, z) {
 
 export function smoothstep(a, b, x) { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
 
+// A "terraced" quantize: like Math.round(v/s)*s (flat plateaus of height s), but
+// each tier stays flat only for its first `flatFrac`, then RAMPS smoothly up to
+// the next tier instead of jumping a full step. This keeps the terraced mesa /
+// plateau look while making every rise walkable — a hard step would leave the
+// player clipping into the slope and popping up at the top (the ground snaps to
+// heightAt, so a vertical discontinuity reads as a teleport, not a climb).
+export function terrace(v, s, flatFrac = 0.5) {
+  const q = v / s;
+  const f = Math.floor(q);
+  const k = smoothstep(flatFrac, 1, q - f); // flat until flatFrac, then ramp to the next tier
+  return (f + k) * s;
+}
+
 // Each biome fans out from the Nexus along its own heading — deliberately OFF
 // the 45° diagonals and unevenly spaced, at varied distances — so the world's
 // regions, towns, and areas scatter organically instead of in a neat X. Every
@@ -312,20 +325,20 @@ export function heightAt(x, z) {
   if (w.desert > 0.001) h += w.desert * (Math.sin(x * 0.05) * Math.cos(z * 0.045) * 6);        // rolling dunes
   if (w.swamp > 0.001)  h += w.swamp * (-7 + smoothNoise(x * 0.05, z * 0.05) * 2);              // sunken lowlands
   if (w.forest > 0.001) {
-    // Forest plateaus: quantize into broad steps.
-    const plat = Math.round((smoothNoise(x * 0.02 + 60, z * 0.02 + 60) * 22) / 6) * 6;
+    // Forest plateaus: broad terraced steps with walkable ramps between them.
+    const plat = terrace(smoothNoise(x * 0.02 + 60, z * 0.02 + 60) * 22, 6);
     h += w.forest * (plat - 6);
   }
   if (w.ash > 0.001)     h += w.ash * (smoothNoise(x * 0.03 + 80, z * 0.03 + 80) * 30 - 2);        // jagged volcanic ridges
   if (w.jungle > 0.001)  h += w.jungle * (smoothNoise(x * 0.025 + 110, z * 0.025 + 110) * 12 + 2);  // lush rolling hills
   if (w.crystal > 0.001) {
-    // Crystal highlands: tall, stepped plateaus.
-    const step = Math.round((smoothNoise(x * 0.018 + 140, z * 0.018 + 140) * 34) / 8) * 8;
+    // Crystal highlands: tall terraced plateaus with walkable ramps.
+    const step = terrace(smoothNoise(x * 0.018 + 140, z * 0.018 + 140) * 34, 8);
     h += w.crystal * (step + 4);
   }
   if (w.badlands > 0.001) {
-    // Badlands mesas: flat-topped steps separated by canyons.
-    const mesa = Math.round((smoothNoise(x * 0.022 + 170, z * 0.022 + 170) * 28) / 10) * 10;
+    // Badlands mesas: flat-topped terraces with walkable ramps up their sides.
+    const mesa = terrace(smoothNoise(x * 0.022 + 170, z * 0.022 + 170) * 28, 10);
     h += w.badlands * (mesa - 2);
   }
 
