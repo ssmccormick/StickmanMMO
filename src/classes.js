@@ -250,6 +250,69 @@ export const CLASSES = {
   },
 };
 
+// ---- Capstone active abilities ----
+// One more high-level active per class (learned around level 15), appended to
+// each class's pool so the deeper kits fill the expanded 8-slot hotbar. They
+// reuse the existing ability KINDS so combat.js resolves them with no new code.
+const CAPSTONES = {
+  fighter:    { id: 'colossus', name: 'Colossus Smash', kind: 'groundaoe', glyph: '🗿', cost: 28, costType: 'sp', cooldown: 12, reqLevel: 15, range: 7, aoe: 4.5, mult: 3.6, delay: 0.6, color: 0xd8c0a0, desc: 'Crater the earth ahead with a titanic overhead blow.' },
+  barbarian:  { id: 'rampage', name: 'Rampage', kind: 'buff', glyph: '💢', cost: 34, costType: 'sp', cooldown: 26, reqLevel: 15, buff: { dmg: 2.4, speed: 1.5, dur: 8 }, selfHeal: 0.15, color: 0xff3030, desc: 'Total berserk: +140% dmg, +50% speed, and it mends you as you kill.' },
+  rogue:      { id: 'deathblossom', name: 'Death Blossom', kind: 'melee', glyph: '🌸', cost: 26, costType: 'sp', cooldown: 10, reqLevel: 15, arc: 6.3, range: 3.4, mult: 2.6, crit: 0.3, color: 0x7ad88f, desc: 'Explode into a spinning storm of blades, shredding everything around you.' },
+  wizard:     { id: 'pyroclasm', name: 'Pyroclasm', kind: 'groundaoe', glyph: '🌋', cost: 40, costType: 'mp', cooldown: 14, reqLevel: 15, range: 13, aoe: 6.5, mult: 4.4, delay: 1.0, color: 0xff5a2a, castTime: 1.4, desc: 'Rain molten ruin over a wide distant zone.' },
+  cleric:     { id: 'divinestorm', name: 'Divine Storm', kind: 'groundaoe', glyph: '⛪', cost: 36, costType: 'mp', cooldown: 12, reqLevel: 15, range: 11, aoe: 5.5, mult: 3.8, delay: 0.7, holy: true, selfHeal: 0.2, color: 0xfff2c0, castTime: 0.8, desc: 'A storm of holy light scours a point and heals you.' },
+  ranger:     { id: 'piercingvolley', name: 'Piercing Volley', kind: 'projectile', glyph: '🎯', cost: 30, costType: 'sp', cooldown: 11, reqLevel: 15, count: 7, spread: 0.7, speed: 40, mult: 1.7, pierce: true, color: 0xffe27a, shape: 'arrow', desc: 'A wall of seven piercing arrows that skewer everything in their path.' },
+  paladin:    { id: 'divinewrath', name: 'Divine Wrath', kind: 'groundaoe', glyph: '☀️', cost: 36, costType: 'mp', cooldown: 13, reqLevel: 15, range: 11, aoe: 5, mult: 3.9, delay: 0.7, holy: true, color: 0xffd24a, castTime: 0.8, desc: 'Call down a pillar of searing judgement.' },
+  warlock:    { id: 'chaosbolt', name: 'Chaos Bolt', kind: 'projectile', glyph: '☄️', cost: 32, costType: 'mp', cooldown: 8, reqLevel: 15, speed: 20, mult: 4.6, aoe: 3, color: 0x8a2abf, shape: 'orb', castTime: 0.9, desc: 'A searing bolt of raw chaos that erupts on impact.' },
+  monk:       { id: 'fistsoffury', name: 'Fists of Fury', kind: 'melee', glyph: '🥋', cost: 26, costType: 'sp', cooldown: 9, reqLevel: 15, arc: 1.2, range: 3.4, mult: 5.0, color: 0xffd24a, desc: 'An unrelenting torrent of blows in a focused cone ahead.' },
+  druid:      { id: 'wildwrath', name: 'Wrath of the Wild', kind: 'groundaoe', glyph: '🌲', cost: 36, costType: 'mp', cooldown: 13, reqLevel: 15, range: 12, aoe: 6, mult: 3.6, delay: 0.8, color: 0x6fae54, castTime: 1.0, desc: 'The wild itself rises up to crush a point.' },
+  gunslinger: { id: 'bulletstorm', name: 'Bullet Storm', kind: 'projectile', glyph: '💫', cost: 30, costType: 'sp', cooldown: 10, reqLevel: 15, count: 9, spread: 1.1, speed: 50, mult: 1.2, color: 0xffd27a, shape: 'bullet', desc: 'Empty every gun you own in a roaring storm of lead.' },
+  saiyan:     { id: 'finalflash', name: 'Final Flash', kind: 'beam', glyph: '🌟', cost: 46, costType: 'mp', cooldown: 12, reqLevel: 15, range: 28, width: 3.2, mult: 7.0, stunOnHit: 0.6, color: 0xffe24a, castTime: 1.4, channel: 3, desc: 'Level your palms and unleash a blinding golden beam that annihilates a line — sustained, longer at higher ranks.' },
+};
+for (const id in CAPSTONES) if (CLASSES[id]) CLASSES[id].abilities.push(CAPSTONES[id]);
+
+// ---- Passive abilities ----
+// Always-on class perks, granted automatically the moment you reach their level
+// (they do NOT take a hotbar slot). Each contributes to an aggregate the player
+// reads in its combat/regen hooks. Fields: crit (+chance), dmg (+fraction),
+// hpRegen/spRegen/mpRegen (+per-second), speed (+fraction), lifesteal
+// (+fraction of damage healed), cdr (+cooldown reduction fraction).
+export const PASSIVES = {
+  fighter:    [ { id: 'toughness',   name: 'Toughness',      glyph: '🛡️', reqLevel: 3,  hpRegen: 3, desc: 'Battle-hardened: steadily regenerate health.' },
+                { id: 'weaponmaster', name: 'Weapon Master',  glyph: '⚔️', reqLevel: 10, dmg: 0.12, desc: 'Mastery of every blade: +12% damage.' } ],
+  barbarian:  [ { id: 'thickhide',   name: 'Thick Hide',     glyph: '🐗', reqLevel: 3,  hpRegen: 4, desc: 'Leathery hide knits wounds shut over time.' },
+                { id: 'bloodfrenzy', name: 'Blood Frenzy',   glyph: '🩸', reqLevel: 10, dmg: 0.10, lifesteal: 0.06, desc: '+10% damage and your strikes drink a little life.' } ],
+  rogue:      [ { id: 'precision',   name: 'Deadly Precision', glyph: '🎯', reqLevel: 3, crit: 0.10, desc: 'A killer\'s eye: +10% critical chance.' },
+                { id: 'fleetfoot',   name: 'Fleet Footed',   glyph: '👟', reqLevel: 10, speed: 0.12, desc: 'Light on your feet: +12% movement speed.' } ],
+  wizard:     [ { id: 'arcanemind',  name: 'Arcane Mind',    glyph: '🧠', reqLevel: 3,  mpRegen: 4, desc: 'A disciplined mind restores mana faster.' },
+                { id: 'spellpower',  name: 'Spell Power',    glyph: '🔮', reqLevel: 10, dmg: 0.15, desc: 'Raw arcane might: +15% damage.' } ],
+  cleric:     [ { id: 'divinegrace', name: 'Divine Grace',   glyph: '🕊️', reqLevel: 3,  hpRegen: 4, desc: 'The light mends you, slowly and always.' },
+                { id: 'blessedwarrior', name: 'Blessed Warrior', glyph: '✨', reqLevel: 10, dmg: 0.10, desc: 'Blessed strikes: +10% damage.' } ],
+  ranger:     [ { id: 'keeneye',     name: 'Keen Eye',       glyph: '👁️', reqLevel: 3,  crit: 0.10, desc: 'Unerring aim: +10% critical chance.' },
+                { id: 'swiftstride', name: 'Swift Stride',   glyph: '🍃', reqLevel: 10, speed: 0.12, desc: 'Woods-runner\'s pace: +12% movement speed.' } ],
+  paladin:    [ { id: 'vigor',       name: 'Righteous Vigor', glyph: '💛', reqLevel: 3,  hpRegen: 4, desc: 'Holy vigor restores your health over time.' },
+                { id: 'zeal',        name: 'Zeal',           glyph: '⚡', reqLevel: 10, dmg: 0.10, cdr: 0.08, desc: '+10% damage and abilities recharge 8% faster.' } ],
+  warlock:    [ { id: 'soulsiphon', name: 'Soul Siphon',    glyph: '💜', reqLevel: 3,  lifesteal: 0.08, desc: 'Your magic steals life with every hit.' },
+                { id: 'darkpact',    name: 'Dark Pact',      glyph: '😈', reqLevel: 10, dmg: 0.13, desc: 'A pact with darkness: +13% damage.' } ],
+  monk:       [ { id: 'innerpeace',  name: 'Inner Peace',    glyph: '☯️', reqLevel: 3,  spRegen: 6, desc: 'A calm center restores stamina faster.' },
+                { id: 'combomaster', name: 'Combo Master',   glyph: '🥋', reqLevel: 10, crit: 0.08, speed: 0.08, desc: '+8% crit and +8% movement speed.' } ],
+  druid:      [ { id: 'naturalregen', name: 'Natural Regeneration', glyph: '🌱', reqLevel: 3, hpRegen: 5, desc: 'Nature\'s renewal steadily heals you.' },
+                { id: 'wildgrowth',  name: 'Wild Growth',    glyph: '🌿', reqLevel: 10, dmg: 0.12, desc: 'The wild empowers you: +12% damage.' } ],
+  gunslinger: [ { id: 'grit',        name: "Gunslinger's Grit", glyph: '🤠', reqLevel: 3, spRegen: 6, desc: 'Frontier grit keeps your stamina topped up.' },
+                { id: 'quickdraw',   name: 'Quick Draw',     glyph: '🔫', reqLevel: 10, crit: 0.08, cdr: 0.10, desc: '+8% crit and abilities recharge 10% faster.' } ],
+  saiyan:     [ { id: 'kiflow',      name: 'Ki Flow',        glyph: '🌀', reqLevel: 3,  mpRegen: 5, desc: 'Ki courses freely: mana restores faster.' },
+                { id: 'warriorpride', name: 'Warrior Pride', glyph: '⚡', reqLevel: 10, dmg: 0.14, desc: 'A Saiyan\'s pride: +14% damage.' } ],
+};
+
+// Every passive the class has unlocked by `level`, and their summed effect.
+export function passivesFor(classId, level) {
+  return (PASSIVES[classId] || []).filter((p) => level >= p.reqLevel);
+}
+export function passiveAggregate(classId, level) {
+  const agg = { crit: 0, dmg: 0, hpRegen: 0, spRegen: 0, mpRegen: 0, speed: 0, lifesteal: 0, cdr: 0 };
+  for (const p of passivesFor(classId, level)) for (const k in agg) if (p[k]) agg[k] += p[k];
+  return agg;
+}
+
 export const CLASS_ORDER = ['fighter', 'barbarian', 'rogue', 'wizard', 'cleric', 'ranger', 'paladin', 'warlock', 'monk', 'druid', 'gunslinger', 'saiyan'];
 
 // XP needed to advance FROM the given level to the next.

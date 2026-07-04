@@ -3,7 +3,7 @@
 // with cooldowns, minimap, floating combat text, combat log,
 // interaction prompts, target frame, death screen, and chat.
 // ============================================================
-import { CLASSES, CLASS_ORDER } from './classes.js';
+import { CLASSES, CLASS_ORDER, passivesFor } from './classes.js';
 import { Saves } from './save.js';
 import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import { WEAPON_SKINS } from './weapons.js';
@@ -467,6 +467,16 @@ export class UI {
       this.el.hotbar.appendChild(s);
       this.slots.push({ el: s, cd: s.querySelector('.cd') });
     });
+    // Always-on class passives — shown as non-interactive chips so the player
+    // can see the perks they've unlocked (they don't take a hotbar slot).
+    const passives = passivesFor(player.classId, player.stats.level);
+    for (const pv of passives) {
+      const c = document.createElement('div');
+      c.className = 'slot ready passive-slot';
+      c.title = `${pv.name} (passive) — ${pv.desc}`;
+      c.innerHTML = `<span class="key">◆</span>${pv.glyph}`;
+      this.el.hotbar.appendChild(c);
+    }
   }
 
   flashSlot(i) {

@@ -58,7 +58,7 @@ export class Combat {
           const chg = this._charge || 0; this._charge = 0;
           this.autoAttack(chg);
         }
-        const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'];
+        const keys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8'];
         for (let i = 0; i < keys.length; i++) if (input.just(keys[i])) this.useAbility(i);
       } else if (this.charging) { this.charging = false; p.charging = false; this._charge = 0; }
     } else if (this.charging) { this.charging = false; p.charging = false; this._charge = 0; }
@@ -268,7 +268,7 @@ export class Combat {
 
     // Resources & cooldown commit up front (a cast is committed, not refunded).
     p.stats[pool] -= ab.cost;
-    p.cooldowns[i] = ab.cooldown;
+    p.cooldowns[i] = ab.cooldown * (p.cdrMult || 1);
     p.attackAnim = 1;
     this._faceCam();
     if (this.audio) this.audio.play('cast');

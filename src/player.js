@@ -12,6 +12,7 @@ import { applyArmorVisual } from './gear3d.js';
 import {
   CLASSES, makeStats, applyAutoLevel, applyAttributeChoice,
   attackPower, getAbility, effectiveAbility, startingAbilityId, MAX_RANK,
+  passiveAggregate, passivesFor,
 } from './classes.js';
 import { heightAt, WATER_LEVEL, WORLD_SIZE } from './world.js';
 import { sumStats, EQUIP_SLOTS, RARITY, SETS } from './items.js';
@@ -50,7 +51,7 @@ const WALK_SPEED = 7.0;
 const SPRINT_MULT = 1.7;
 const CLIMB_SPEED = 3.2;
 const RADIUS = 0.5;
-const MAX_SLOTS = 6; // hotbar ability slots (keys 1..6)
+const MAX_SLOTS = 8; // hotbar ability slots (keys 1..8)
 
 export class Player {
   constructor(scene, world, classId, name, appearance) {
@@ -126,6 +127,7 @@ export class Player {
     this.achievements = {};    // achievement id -> tiers claimed
     this.achBonus = {};        // permanent stat bonuses earned (summed into gear bonus)
     this.passives = new Set(); // unlocked behaviour flags (windwalker, amphibious…)
+    this._passLevel = -1;      // cache guard for the class-passive aggregate (see get pass)
     this.discoveredAreas = new Set(); // named areas seen (for the map + Cartographer)
     this.explored = new Set(); // explored map cells (z*MAP_GRID + x)
     this.mountSkin = 'horse';
@@ -316,10 +318,18 @@ export class Player {
   get effStr() { return Math.round((this.stats.str + (this.bonus.str || 0) + this._t('str')) * this.ssjMult); }
   get effDex() { return Math.round((this.stats.dex + (this.bonus.dex || 0) + this._t('dex')) * this.ssjMult); }
   get effInt() { return Math.round((this.stats.int + (this.bonus.int || 0) + this._t('int')) * this.ssjMult); }
-  get gearCrit() { return this.bonus.crit || 0; }
+  // Aggregate of the always-on class passives unlocked at the current level
+  // (recomputed only when the level changes). See classes.js PASSIVES.
+  get pass() {
+    if (this._passLevel !== this.stats.level) { this._pass = passiveAggregate(this.classId, this.stats.level); this._passLevel = this.stats.level; }
+    return this._pass;
+  }
+  get gearCrit() { return (this.bonus.crit || 0) + this.pass.crit; }
   get gearArmor() { return this.bonus.armor || 0; }
-  get gearSpeed() { return (this.bonus.speed || 0) + (this._tm('speedMult') - 1); }
-  get gearLifesteal() { return this.bonus.lifesteal || 0; }
+  get gearSpeed() { return (this.bonus.speed || 0) + (this._tm('speedMult') - 1) + this.pass.speed; }
+  get gearLifesteal() { return (this.bonus.lifesteal || 0) + this.pass.lifesteal; }
+  // Cooldown multiplier from passives (floored so it can never trivialize CDs).
+  get cdrMult() { return Math.max(0.4, 1 - this.pass.cdr); }
   // Fishing power from gear + set bonuses: better fish tiers & loot when fishing.
   get fishingStat() { return this.bonus.fishing || 0; }
 
@@ -328,6 +338,7 @@ export class Player {
     let p = attackPower(this.classId, effStats) + (this.bonus.damage || 0);
     if (this.buffs.until > this._clock) p *= this.buffs.dmg;
     p *= this._tm('dmgMult'); // potion damage buffs
+    p *= (1 + this.pass.dmg); // always-on class passive damage
     // Berserker (Ogreslayer reward): hits harder while badly wounded.
     if (this.passives.has('berserker') && this.stats.hp < this.effMaxHp * 0.35) p *= 1.25;
     return p;
@@ -855,8 +866,12 @@ export class Player {
     if (this.timed.length) this.timed = this.timed.filter((b) => b.until > this._clock);
     // Air refills on land.
     if (this.state !== 'swim') this.air = this.maxAir;
-    if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + 16 * dt);
-    s.mp = Math.min(this.effMaxMp, s.mp + (1.5 + this.effInt * 0.05) * dt);
+    const pass = this.pass; // always-on class passives (regen bonuses)
+    if (!sprinting && this.state !== 'climb') s.sp = Math.min(this.effMaxSp, s.sp + (16 + pass.spRegen) * dt);
+    else if (pass.spRegen) s.sp = Math.min(this.effMaxSp, s.sp + pass.spRegen * dt);
+    s.mp = Math.min(this.effMaxMp, s.mp + (1.5 + this.effInt * 0.05 + pass.mpRegen) * dt);
+    // Passive HP regen ticks anywhere; the standing-still bonus stacks on top.
+    if (pass.hpRegen) s.hp = Math.min(this.effMaxHp, s.hp + pass.hpRegen * dt);
     if (this.state === 'ground' && this._speed01 < 0.1) s.hp = Math.min(this.effMaxHp, s.hp + 2.0 * dt);
     s.sp = Math.max(0, s.sp);
     for (let i = 0; i < this.cooldowns.length; i++) this.cooldowns[i] = Math.max(0, this.cooldowns[i] - dt);
