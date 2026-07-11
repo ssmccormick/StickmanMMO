@@ -1625,20 +1625,45 @@ export class World {
   // Rune-sequence puzzle chests: a sealed chest ringed by rune stones that pulse
   // a sequence; touch the runes in that order to break the seal. Scattered in the
   // open world so there's always something to solve and loot out there.
+  // Is a point on/against a mountain? (so puzzle props never clip into cliffs)
+  _onMountain(x, z, margin = 6) {
+    for (const m of MOUNTAINS) if (Math.hypot(x - m.x, z - m.z) < m.r + margin) return true;
+    return false;
+  }
+  // Is the ground flat enough here that a chest + its ring of props won't clip
+  // into a slope? Samples a ring around the point and rejects steep spots.
+  _flatEnough(x, z, r = 6, tol = 3.0) {
+    const c = heightAt(x, z); let mn = c, mx = c;
+    for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; const h = heightAt(x + Math.cos(a) * r, z + Math.sin(a) * r); mn = Math.min(mn, h); mx = Math.max(mx, h); }
+    return (mx - mn) < tol;
+  }
+  _shapeGeo(shape, s) {
+    return shape === 'tetra' ? new THREE.TetrahedronGeometry(s)
+      : shape === 'octa' ? new THREE.OctahedronGeometry(s)
+      : new THREE.BoxGeometry(s * 1.4, s * 1.4, s * 1.4);
+  }
+
+  // Sealed puzzle chests scattered in the open world. Three flavours, cycled so
+  // all appear: a RUNE-sequence seal, a SHAPE-KEY seal (find the matching key on
+  // a pedestal nearby and slot it), and a KEY-CARRIER seal (a thief fled with the
+  // key — main.js spawns it and hunting it down solves the chest). Every site is
+  // vetted to sit on flat ground clear of mountains so its beacons stay visible.
   _puzzles() {
     const chestMat = new THREE.MeshLambertMaterial({ color: 0xcaa64a });
     const lidMat = new THREE.MeshLambertMaterial({ color: 0x9a7a2a });
     const runeColors = [0x6fc8ff, 0xff8a5a, 0x9be36a, 0xc78bff];
+    const SHAPES = ['tetra', 'cube', 'octa'];
     let placed = 0;
-    for (let i = 0; i < 260 && placed < 16; i++) {
+    for (let i = 0; i < 480 && placed < 18; i++) {
       const ang = hash2(i, 811) * Math.PI * 2;
       const rad = (0.18 + hash2(i, 813) * 0.6) * WORLD_SIZE;
       const x = Math.cos(ang) * rad, z = Math.sin(ang) * rad;
       const y = heightAt(x, z);
       if (y < WATER_LEVEL + 1) continue;
       if (this.inSafeZone(x, z) || roadDistance(x, z) < 8) continue;
+      if (this._onMountain(x, z, 12) || !this._flatEnough(x, z, 6)) continue; // keep off cliffs/steep ground
       const level = Math.max(4, Math.round((rad / WORLD_SIZE) * 44 + 4));
-      // Sealed chest with a lock ring.
+      // Common sealed chest with a lock ring.
       const chest = new THREE.Group();
       const base = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.0, 1.3), chestMat); base.position.y = 0.5;
       const lid = new THREE.Group();
@@ -1650,27 +1675,51 @@ export class World {
       chest.position.set(x, y, z);
       chest.traverse((o) => { if (o.isMesh) o.castShadow = true; });
       this.group.add(chest);
-      // Three rune stones around it.
-      const stones = [];
-      const nStones = 3;
-      for (let k = 0; k < nStones; k++) {
-        const a = (k / nStones) * Math.PI * 2 + 0.5;
-        const sx = x + Math.cos(a) * 5, sz = z + Math.sin(a) * 5, sy = heightAt(sx, sz);
-        const sg = new THREE.Group();
-        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.9, 6), new THREE.MeshLambertMaterial({ color: 0x5a5a52 }));
-        pil.position.y = 0.95;
-        const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), new THREE.MeshBasicMaterial({ color: runeColors[k] }));
-        orb.position.y = 2.1;
-        sg.add(pil, orb); sg.position.set(sx, sy, sz);
-        sg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-        this.group.add(sg);
-        this._addBox(pil, false);
-        stones.push({ orb, pos: new THREE.Vector3(sx, sy, sz) });
+
+      const type = ['rune', 'shapekey', 'keycarrier'][i % 3];
+      const pz = { type, pos: new THREE.Vector3(x, y, z), level, chest, lid, glow, ring, solved: false, opened: false };
+
+      if (type === 'rune') {
+        const stones = [], nStones = 3;
+        for (let k = 0; k < nStones; k++) {
+          const a = (k / nStones) * Math.PI * 2 + 0.5;
+          const sx = x + Math.cos(a) * 5, sz = z + Math.sin(a) * 5, sy = heightAt(sx, sz);
+          const sg = new THREE.Group();
+          const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.9, 6), new THREE.MeshLambertMaterial({ color: 0x5a5a52 })); pil.position.y = 0.95;
+          const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), new THREE.MeshBasicMaterial({ color: runeColors[k] })); orb.position.y = 2.1;
+          sg.add(pil, orb); sg.position.set(sx, sy, sz);
+          sg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+          this.group.add(sg); this._addBox(pil, false);
+          stones.push({ orb, pos: new THREE.Vector3(sx, sy, sz) });
+        }
+        const seq = [0, 1, 2];
+        for (let s = seq.length - 1; s > 0; s--) { const j = Math.floor(hash2(i, 820 + s) * (s + 1)); const tmp = seq[s]; seq[s] = seq[j]; seq[j] = tmp; }
+        pz.stones = stones; pz.seq = seq; pz.progress = 0;
+      } else if (type === 'shapekey') {
+        const shape = SHAPES[Math.floor(hash2(i, 830) * SHAPES.length)];
+        pz.shape = shape;
+        // A dim keyhole on the chest showing the shape you must find.
+        const slot = new THREE.Mesh(this._shapeGeo(shape, 0.24), new THREE.MeshBasicMaterial({ color: 0x2a3a4a, wireframe: true, transparent: true, opacity: 0.7 }));
+        slot.position.set(0, 1.45, 0); chest.add(slot); pz.slotMesh = slot;
+        // The matching key on a pedestal, placed off in the surrounding area.
+        const ka = hash2(i, 840) * Math.PI * 2; let kd = 16 + hash2(i, 841) * 22;
+        let kx = x + Math.cos(ka) * kd, kz = z + Math.sin(ka) * kd;
+        if (this._onMountain(kx, kz, 8) || heightAt(kx, kz) < WATER_LEVEL + 1) { kd = 12; kx = x + Math.cos(ka) * kd; kz = z + Math.sin(ka) * kd; }
+        const ky = heightAt(kx, kz);
+        const kg = new THREE.Group();
+        const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.1, 6), new THREE.MeshLambertMaterial({ color: 0x5a5a52 })); ped.position.y = 0.55;
+        const keyShape = new THREE.Mesh(this._shapeGeo(shape, 0.32), new THREE.MeshBasicMaterial({ color: 0xffe27a })); keyShape.position.y = 1.55;
+        const kglow = new THREE.PointLight(0xffe27a, 1.8, 16); kglow.position.y = 1.55;
+        kg.add(ped, keyShape, kglow); kg.position.set(kx, ky, kz);
+        kg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        this.group.add(kg); this._addBox(ped, false);
+        pz.key = { group: kg, shape: keyShape, glow: kglow, pos: new THREE.Vector3(kx, ky, kz), collected: false };
+        pz.hasKey = false;
+      } else { // keycarrier — main.js reads pz.thief and spawns the fleeing thief
+        const ta = hash2(i, 850) * Math.PI * 2;
+        pz.thief = { pos: new THREE.Vector3(x + Math.cos(ta) * 6, y, z + Math.sin(ta) * 6), level, spawned: false };
       }
-      // A deterministic activation order (a shuffled permutation of the stones).
-      const seq = [0, 1, 2];
-      for (let s = seq.length - 1; s > 0; s--) { const j = Math.floor(hash2(i, 820 + s) * (s + 1)); const tmp = seq[s]; seq[s] = seq[j]; seq[j] = tmp; }
-      this.puzzles.push({ pos: new THREE.Vector3(x, y, z), level, chest, lid, glow, ring, stones, seq, progress: 0, solved: false, opened: false });
+      this.puzzles.push(pz);
       placed++;
     }
   }
@@ -1693,10 +1742,23 @@ export class World {
   }
   nearestPuzzleRune(pos, maxDist = 2.6) {
     for (const p of this.puzzles) {
-      if (p.solved) continue;
+      if (p.solved || p.type !== 'rune' || !p.stones) continue;
       for (let k = 0; k < p.stones.length; k++) if (p.stones[k].pos.distanceTo(pos) < maxDist) return { puzzle: p, index: k };
     }
     return null;
+  }
+  // A shape-key waiting on its pedestal (for shapekey puzzles) within reach.
+  nearestPuzzleKey(pos, maxDist = 3.0) {
+    for (const p of this.puzzles) {
+      if (p.type !== 'shapekey' || p.solved || p.hasKey || !p.key || p.key.collected) continue;
+      if (p.key.pos.distanceTo(pos) < maxDist) return { puzzle: p };
+    }
+    return null;
+  }
+  collectPuzzleKey(puzzle) {
+    if (!puzzle.key || puzzle.key.collected) return;
+    puzzle.key.collected = true; puzzle.hasKey = true;
+    if (puzzle.key.group) puzzle.key.group.visible = false;
   }
 
   // Fireflies (glow at dusk/night near forests & swamp) plus small wandering
@@ -1904,17 +1966,21 @@ export class World {
         continue;
       }
       this._setRing(p.ring, p.solved, t);
-      if (p.solved) {
-        p.glow.intensity = 1.6 + Math.sin(t * 5) * 0.5;
-        for (const s of p.stones) s.orb.scale.setScalar(1.35);
-      } else {
-        p.glow.intensity = 0.15;
-        const done = p.seq.slice(0, p.progress);
-        const hint = p.seq[Math.floor(t / 0.7) % p.seq.length]; // pulse through the required order
-        for (let k = 0; k < p.stones.length; k++) {
-          const isDone = done.includes(k);
-          p.stones[k].orb.scale.setScalar(isDone ? 1.3 : (k === hint ? 1.25 : 0.85));
+      p.glow.intensity = p.solved ? 1.6 + Math.sin(t * 5) * 0.5 : 0.15;
+      if (p.type === 'rune') {
+        if (p.solved) { for (const s of p.stones) s.orb.scale.setScalar(1.35); }
+        else {
+          const done = p.seq.slice(0, p.progress);
+          const hint = p.seq[Math.floor(t / 0.7) % p.seq.length]; // pulse through the required order
+          for (let k = 0; k < p.stones.length; k++) {
+            const isDone = done.includes(k);
+            p.stones[k].orb.scale.setScalar(isDone ? 1.3 : (k === hint ? 1.25 : 0.85));
+          }
         }
+      } else if (p.type === 'shapekey') {
+        // Spin the pedestal key + the chest keyhole so both read as interactive.
+        if (p.key && p.key.group.visible) { p.key.shape.rotation.y = t * 1.6; p.key.shape.position.y = 1.55 + Math.sin(t * 2) * 0.1; }
+        if (p.slotMesh) { p.slotMesh.rotation.y = -t * 1.2; p.slotMesh.visible = !p.solved; }
       }
     }
 

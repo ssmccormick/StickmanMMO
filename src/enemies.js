@@ -139,7 +139,7 @@ export class Enemy {
     this._hitFlash = 0;
     // Skittish hunt mobs (Loot Goblins, key-thieves) bolt away and never fight;
     // catch them for a reward. onDeath lets callers hook a kill (e.g. a puzzle key).
-    this.skittish = !!opts.skittish || typeId === 'lootgoblin';
+    this.skittish = !!opts.skittish || typeId === 'lootgoblin' || typeId === 'keythief';
     this.onDeath = opts.onDeath || null;
     if (typeId === 'lootgoblin') {
       // A fat loot sack slung on its back so it reads as a treasure thief.
@@ -148,6 +148,14 @@ export class Enemy {
       const tie = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
       tie.position.set(0, 1.5, -0.32); sack.add(tie);
       this.mesh.add(sack);
+    } else if (typeId === 'keythief') {
+      // A glowing key held overhead so you can see who has what you need.
+      const key = new THREE.Group();
+      const bow = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.04, 6, 10), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.34, 5), new THREE.MeshBasicMaterial({ color: 0xffe27a })); shaft.position.y = -0.24;
+      const bit = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.03), new THREE.MeshBasicMaterial({ color: 0xffe27a })); bit.position.set(0.06, -0.38, 0);
+      key.add(bow, shaft, bit); key.position.set(0, 1.9, 0);
+      this.mesh.add(key); this._keyMesh = key;
     }
 
     // Telegraphed specials: a menu of charged attacks for this type (melee only;
@@ -927,6 +935,24 @@ export function spawnLootGoblins(scene, world, count = 50) {
     if (y < WATER_LEVEL + 1) continue;
     const level = Math.max(3, Math.round((Math.hypot(x, z) / WORLD_SIZE) * 42 + 3));
     const e = new Enemy(scene, world, 'lootgoblin', level, new THREE.Vector3(x, 0, z), {});
+    e.persistent = true;
+    out.push(e);
+  }
+  return out;
+}
+
+// Key Thieves for the keycarrier puzzle chests: one fleeing thief per such
+// chest; slaying it solves the chest (via onDeath). `onSolve(pz)` lets the
+// caller announce it. Persistent so the hunt survives a multiplayer takeover.
+export function spawnKeyThieves(scene, world, onSolve) {
+  const out = [];
+  for (const pz of (world.puzzles || [])) {
+    if (pz.type !== 'keycarrier' || !pz.thief || pz.thief.spawned) continue;
+    pz.thief.spawned = true;
+    const home = pz.thief.pos.clone(); home.y = 0;
+    const e = new Enemy(scene, world, 'keythief', pz.thief.level, home, {
+      onDeath: () => { pz.solved = true; if (onSolve) onSolve(pz); },
+    });
     e.persistent = true;
     out.push(e);
   }

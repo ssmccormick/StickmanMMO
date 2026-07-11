@@ -55,6 +55,9 @@ export const TYPES = {
   // Loot Goblin: a fat-sacked thief that BOLTS from you (never fights). Catch it
   // — cut off its weaving run — and kill it for a jackpot of gold and gear.
   lootgoblin:{ name: 'Loot Goblin',   color: 0x3f9a4a, accent: 0xffd24a, scale: 0.9, hp: 40,  dmg: 0, speed: 9.5, range: 2.0, xp: 90, aggro: 30 },
+  // Key Thief: a skittish sprite that stole a chest's key and darts away with it.
+  // Chase it down (it weaves) and kill it to claim the key and unseal the chest.
+  keythief:  { name: 'Key Thief',      color: 0x7a5aa8, accent: 0xffe27a, scale: 0.8, hp: 50,  dmg: 0, speed: 8.6, range: 2.0, xp: 70, aggro: 34 },
 };
 
 // Which creatures inhabit each biome (a melee bruiser + a ranged caster + a

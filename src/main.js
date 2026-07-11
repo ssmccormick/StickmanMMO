@@ -8,7 +8,7 @@ import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnFishPeople, spawnMinions, spawnDungeons, spawnFlyers, spawnLootGoblins, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnFishPeople, spawnMinions, spawnDungeons, spawnFlyers, spawnLootGoblins, spawnKeyThieves, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
 import { NetEnemies } from './netenemies.js';
 import { UI } from './ui.js';
@@ -145,6 +145,11 @@ function beginGame(classId, name, server, save, appearance) {
   enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
   enemies.push(...spawnFlyers(scene, world));    // Sky Wraiths patrolling the air
   enemies.push(...spawnLootGoblins(scene, world)); // 50 fleeing treasure thieves to hunt
+  enemies.push(...spawnKeyThieves(scene, world, () => { // thieves that hold puzzle-chest keys
+    ui.log('The Key Thief falls — the chest\'s seal unwinds!', 'xp');
+    if (player) ui.floater('Key claimed!', 'xp', player.pos);
+    audio.play('level');
+  }));
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
   // Keep panels live as loot is picked up; refresh quest markers on kills.
@@ -659,6 +664,15 @@ function animate() {
         else if (r === 'reset') { ui.log('Wrong rune — the seal flares and resets. Watch the pulsing order.', 'sys'); audio.play('hurt'); }
         else { audio.play('cast'); }
       }
+    } else if (player.alive && world.nearestPuzzleKey(player.pos)) {
+      // A shape-key sitting on its pedestal — pick it up, then slot it at the chest.
+      const { puzzle } = world.nearestPuzzleKey(player.pos);
+      ui.showPrompt('Press <b>E</b> to take the shard-key');
+      if (input.just('KeyE')) {
+        world.collectPuzzleKey(puzzle);
+        ui.log('You lift the shard-key — carry it back to the sealed chest.', 'xp');
+        audio.play('cast');
+      }
     } else if (player.alive && world.nearestPuzzleChest(player.pos)) {
       const pz = world.nearestPuzzleChest(player.pos);
       if (pz.solved) {
@@ -667,8 +681,17 @@ function animate() {
           pz.opened = true;
           combat.openChest({ level: pz.level + 2, pos: pz.pos });
           Quests.onChestOpened(player);
-          ui.log('You claim the runewarded chest!', 'xp');
+          ui.log('You claim the warded chest!', 'xp');
         }
+      } else if (pz.type === 'shapekey') {
+        if (pz.hasKey) {
+          ui.showPrompt('Press <b>E</b> to slot the shard-key');
+          if (input.just('KeyE')) { pz.solved = true; ui.log('The shard-key fits — the seal breaks!', 'xp'); ui.floater('Seal broken!', 'xp', player.pos); audio.play('level'); }
+        } else {
+          ui.showPrompt('A shaped keyhole binds this chest — find the matching shard-key nearby');
+        }
+      } else if (pz.type === 'keycarrier') {
+        ui.showPrompt('A thief fled with this chest\'s key — hunt down the <b>Key Thief</b> and slay it');
       } else {
         ui.showPrompt('A rune seal binds this chest — touch the runes in the pulsing order');
       }
