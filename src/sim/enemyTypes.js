@@ -50,6 +50,11 @@ export const TYPES = {
   // Badlands / Scarlands
   bonewalker:{ name: 'Bonewalker',    color: 0xcabf9a, accent: 0x8a7a5a, scale: 1.05, hp: 78, dmg: 17, speed: 3.4, range: 2.4, xp: 50, aggro: 20 },
   scrapshot: { name: 'Scrap Gunner',  color: 0xb0663a, accent: 0xffe27a, scale: 1.0, hp: 64,  dmg: 16, speed: 3.2, range: 2.0, xp: 52, aggro: 26, ranged: true, shootRange: 18, projSpeed: 22, projColor: 0xffd27a },
+
+  // ---- Special hunt mobs ----
+  // Loot Goblin: a fat-sacked thief that BOLTS from you (never fights). Catch it
+  // — cut off its weaving run — and kill it for a jackpot of gold and gear.
+  lootgoblin:{ name: 'Loot Goblin',   color: 0x3f9a4a, accent: 0xffd24a, scale: 0.9, hp: 40,  dmg: 0, speed: 9.5, range: 2.0, xp: 90, aggro: 30 },
 };
 
 // Which creatures inhabit each biome (a melee bruiser + a ranged caster + a

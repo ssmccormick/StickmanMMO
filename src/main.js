@@ -8,7 +8,7 @@ import { FollowCamera } from './camera.js';
 import { Input } from './input.js';
 import { TouchControls } from './touch.js';
 import { Player } from './player.js';
-import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnFishPeople, spawnMinions, spawnDungeons, spawnFlyers, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
+import { spawnEnemies, spawnCamps, spawnBosses, spawnBossSites, spawnExtras, spawnFishPeople, spawnMinions, spawnDungeons, spawnFlyers, spawnLootGoblins, spawnDragon, DRAGON_ROOST, updateEnemyShots, clearEnemyShots } from './enemies.js';
 import { Combat } from './combat.js';
 import { NetEnemies } from './netenemies.js';
 import { UI } from './ui.js';
@@ -144,6 +144,7 @@ function beginGame(classId, name, server, save, appearance) {
   enemies.push(...spawnFishPeople(scene, world)); // Fish People war-parties along the coast
   enemies.push(...spawnDungeons(scene, world)); // dungeon packs + wardens
   enemies.push(...spawnFlyers(scene, world));    // Sky Wraiths patrolling the air
+  enemies.push(...spawnLootGoblins(scene, world)); // 50 fleeing treasure thieves to hunt
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
   // Keep panels live as loot is picked up; refresh quest markers on kills.
@@ -235,10 +236,12 @@ ui.setupStart({
 // over the world's enemies, so instead we clear the camp once it's been engaged
 // (server-driven mobs were nearby) and none remain alive within its bounds.
 function campIsCleared(camp) {
+  if (camp._clearedLatch) return true;
   if (!netMode) return world.campCleared(camp);
   const near = enemies.some((e) => e.alive && e.pos.distanceTo(camp.pos) < 15);
   if (near) camp._engaged = true;
-  return !!camp._engaged && !near;
+  if (camp._engaged && !near) { camp._clearedLatch = true; return true; }
+  return false;
 }
 
 // A castle vault unlocks once the castle is cleared: it must have been engaged
@@ -246,9 +249,11 @@ function campIsCleared(camp) {
 // solo (the garrison is always present) and multiplayer (server mobs nearby).
 // Also stamps `_cleared` so world.update can shimmer the chest when ready.
 function castleIsCleared(chest) {
+  if (chest._clearedLatch) { chest._cleared = true; return true; }
   const near = enemies.some((e) => e.alive && e.pos.distanceTo(chest.pos) < chest.radius);
   if (near) chest._engaged = true;
   chest._cleared = !!chest._engaged && !near;
+  if (chest._cleared) chest._clearedLatch = true; // don't re-lock when the garrison respawns
   return chest._cleared;
 }
 

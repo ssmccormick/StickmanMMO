@@ -1439,7 +1439,12 @@ export class World {
     for (const d of this.dungeons) if (d.chestPos.distanceTo(pos) < maxDist) return d;
     return null;
   }
-  dungeonCleared(d) { return d.members.length > 0 && d.members.every((m) => !m.alive); }
+  dungeonCleared(d) {
+    if (d._clearedLatch) return true;
+    const done = d.members.length > 0 && d.members.every((m) => !m.alive);
+    if (done) d._clearedLatch = true;
+    return done;
+  }
 
   nearestCaveEntrance(pos, maxDist = 4) {
     for (const c of this.caves) if (c.entrance.distanceTo(pos) < maxDist) return c;
@@ -1756,7 +1761,12 @@ export class World {
     }
   }
 
-  campCleared(camp) { return camp.members.length > 0 && camp.members.every((m) => !m.alive); }
+  campCleared(camp) {
+    if (camp._clearedLatch) return true;
+    const done = camp.members.length > 0 && camp.members.every((m) => !m.alive);
+    if (done) camp._clearedLatch = true; // stays cleared even if members later respawn
+    return done;
+  }
   nearestCamp(pos, maxDist = 4.5) {
     for (const c of this.camps) { if (c.pos.distanceTo(pos) < maxDist) return c; }
     return null;

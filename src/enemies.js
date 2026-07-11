@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { animateStickman } from './stickman.js';
 import { createCreature } from './creatures.js';
-import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS, biomeKeyAt } from './world.js';
+import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS, biomeKeyAt, WORLD_SIZE, WATER_LEVEL, MOUNTAINS } from './world.js';
 // Enemy archetypes + level-scaling live in a Three-free shared module so the
 // authoritative server simulates identical enemies. Re-export DRAGON_ROOST so
 // existing importers (main.js) keep working.
@@ -137,6 +137,18 @@ export class Enemy {
     this.fear = 0;
     this._speed01 = 0;
     this._hitFlash = 0;
+    // Skittish hunt mobs (Loot Goblins, key-thieves) bolt away and never fight;
+    // catch them for a reward. onDeath lets callers hook a kill (e.g. a puzzle key).
+    this.skittish = !!opts.skittish || typeId === 'lootgoblin';
+    this.onDeath = opts.onDeath || null;
+    if (typeId === 'lootgoblin') {
+      // A fat loot sack slung on its back so it reads as a treasure thief.
+      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), new THREE.MeshLambertMaterial({ color: 0xb98a2e }));
+      sack.scale.set(0.9, 1.05, 0.9); sack.position.set(0, 1.15, -0.32); sack.castShadow = true;
+      const tie = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
+      tie.position.set(0, 1.5, -0.32); sack.add(tie);
+      this.mesh.add(sack);
+    }
 
     // Telegraphed specials: a menu of charged attacks for this type (melee only;
     // ranged mobs keep firing). `charge` holds an in-progress wind-up/execution.
@@ -210,6 +222,35 @@ export class Enemy {
     const dist = !toPlayer ? Infinity : (this.flying ? Math.hypot(toPlayer.x, toPlayer.z) : toPlayer.length());
 
     if (this.boss) this._bossShockwave(dt, player, dist);
+
+    // ---- Skittish: loot goblins & key-thieves bolt away and never fight ----
+    if (this.skittish) {
+      if (toPlayer && dist < this.type.aggro) {
+        // Flee, but WEAVE so it's a chase you win by cutting the angle, not a
+        // straight-line race you can never close.
+        const away = _scratch.copy(toPlayer).setY(0).normalize().multiplyScalar(-1);
+        const wob = Math.sin(t * 4.5 + this.id) * 0.7;
+        const fx = away.x * Math.cos(wob) - away.z * Math.sin(wob);
+        const fz = away.x * Math.sin(wob) + away.z * Math.cos(wob);
+        this.pos.x += fx * this.type.speed * speedMult * dt;
+        this.pos.z += fz * this.type.speed * speedMult * dt;
+        this.facing = Math.atan2(fx, fz);
+        this._speed01 = 1;
+        this.state = 'chase';
+      } else {
+        // Idle skulk when you're not near.
+        const d = _scratch.subVectors(this.wanderTarget, this.pos).setY(0);
+        if (d.length() < 1) this.wanderTarget = this._randomNear(this.home, 8);
+        else { d.normalize(); this.pos.x += d.x * this.type.speed * 0.2 * dt; this.pos.z += d.z * this.type.speed * 0.2 * dt; this.facing = Math.atan2(d.x, d.z); }
+        this._speed01 = 0.2; this.state = 'idle';
+      }
+      const res = this.world.resolveCircle(this.pos.x, this.pos.z, 0.5);
+      this.pos.x = res.x; this.pos.z = res.z;
+      this.pos.y = heightAt(this.pos.x, this.pos.z);
+      this._repelFromTowns();
+      this._finish(dt);
+      return;
+    }
 
     // ---- Feared: flee from the player, ignoring all other behavior ----
     if (this.fear > 0) {
@@ -690,8 +731,13 @@ export class Enemy {
 
   _die() {
     this.alive = false;
-    this.respawnTimer = 54 + Math.random() * 30; // tripled respawn
+    // Structure/encounter enemies (camp, castle, dungeon, tower guards) respawn
+    // only after a long delay, so a drawn-out fight can't have an early kill
+    // respawn before the last one falls — which left "cleared" camps re-locking.
+    // Loot goblins & key-thieves are one-off hunts and take a long time to return.
+    this.respawnTimer = (this.persistent || this.skittish) ? 600 : 54 + Math.random() * 30;
     this.nameplate.visible = false;
+    if (this.onDeath) { try { this.onDeath(this); } catch (e) { /* ignore */ } }
     this._cancelCharge();
   }
   _respawn() {
@@ -859,6 +905,34 @@ export function spawnDungeons(scene, world) {
 }
 
 // Populate each elite war-camp with a pack of elites guarding its chest.
+// True if a point sits on/against a mountain (so we don't drop things on cliffs).
+function onMountain(x, z, margin = 6) {
+  for (const m of MOUNTAINS) if (Math.hypot(x - m.x, z - m.z) < m.r + margin) return true;
+  return false;
+}
+
+// Loot Goblins — a scattered "hunt": fast, fleeing treasure thieves worth a
+// jackpot. Persistent so they survive a multiplayer server takeover (they're a
+// client-side hunt, not part of the shared ambient sim).
+export function spawnLootGoblins(scene, world, count = 50) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    let x = 0, z = 0, y = -99, tries = 0;
+    while (tries++ < 12) {
+      const ang = Math.random() * Math.PI * 2;
+      const rad = (0.12 + Math.random() * 0.74) * WORLD_SIZE;
+      x = Math.cos(ang) * rad; z = Math.sin(ang) * rad; y = heightAt(x, z);
+      if (y >= WATER_LEVEL + 1 && !onMountain(x, z) && !(world.inSafeZone && world.inSafeZone(x, z))) break;
+    }
+    if (y < WATER_LEVEL + 1) continue;
+    const level = Math.max(3, Math.round((Math.hypot(x, z) / WORLD_SIZE) * 42 + 3));
+    const e = new Enemy(scene, world, 'lootgoblin', level, new THREE.Vector3(x, 0, z), {});
+    e.persistent = true;
+    out.push(e);
+  }
+  return out;
+}
+
 export function spawnCamps(scene, world) {
   const enemies = [];
   for (const camp of world.camps) {

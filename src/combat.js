@@ -681,6 +681,24 @@ export class Combat {
 
   // ---- Loot drops ----
   _dropLoot(enemy) {
+    if (enemy.typeId === 'lootgoblin') {
+      // Jackpot: a shower of gold and several high-rarity pieces (+ a chance at
+      // a named unique). This is the whole point of running one down.
+      const lvl = enemy.level;
+      const jackpot = 250 + lvl * 35 + Math.floor(Math.random() * 200);
+      this.player.gold += jackpot;
+      this.ui.floater(`+${jackpot}g  JACKPOT!`, 'gold', enemy.pos);
+      const drops = 3 + Math.floor(Math.random() * 3); // 3-5 pieces
+      for (let i = 0; i < drops; i++) {
+        let item = generateItem({ level: lvl, rarityBoost: 2.0 });
+        if (item.rarity === 'legendary' && Math.random() < 0.6) item = makeUnique(item.ilvl);
+        const off = new THREE.Vector3((Math.random() - 0.5) * 3.5, 0, (Math.random() - 0.5) * 3.5);
+        this._spawnDrop(item, enemy.pos.clone().add(off));
+      }
+      this.ui.log('💰 The Loot Goblin bursts, showering treasure!', 'xp');
+      if (this.audio) this.audio.play('level');
+      return;
+    }
     if (enemy.boss) {
       // Bosses drop their signature unique plus a couple of high-rarity pieces.
       this._spawnDrop(bossDrop(enemy.bossName, enemy.level), enemy.pos);
