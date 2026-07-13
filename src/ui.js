@@ -4,6 +4,7 @@
 // interaction prompts, target frame, death screen, and chat.
 // ============================================================
 import { CLASSES, CLASS_ORDER, passiveById, PASSIVES } from './classes.js';
+import { SKILLS, SKILL_MAX, skillXpForLevel } from './skills.js';
 import { Saves } from './save.js';
 import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import { WEAPON_SKINS } from './weapons.js';
@@ -1186,6 +1187,33 @@ export class UI {
               <div><div class="sk-name">${pv.name}</div>
               <div class="sk-meta">${meta}</div></div></div>
             <div class="sk-desc">${pv.desc}</div>
+          </div>`;
+      }
+    }
+    // Proficiency skills (RuneScape-style): trained by doing, with milestone perks.
+    if (player.skills) {
+      html += `<div class="sk-section">Proficiencies — trained by doing</div>`;
+      for (const def of SKILLS) {
+        const s = player.skills[def.id] || { level: 1, xp: 0 };
+        const maxed = s.level >= SKILL_MAX;
+        const need = maxed ? 0 : skillXpForLevel(s.level);
+        const pct = maxed ? 100 : Math.min(100, Math.round((s.xp / need) * 100));
+        const b = player.skillBonus ? player.skillBonus(def.id) : { dmg: 0, crit: 0, speed: 0, fishing: 0, costMul: 0, stamina: 0 };
+        const bits = [];
+        if (b.dmg) bits.push(`+${Math.round(b.dmg * 100)}% dmg`);
+        if (b.crit) bits.push(`+${Math.round(b.crit * 100)}% crit`);
+        if (b.speed) bits.push(`+${Math.round(b.speed * 100)}% speed`);
+        if (b.fishing) bits.push(`+${Math.round(b.fishing)} fishing`);
+        if (b.costMul) bits.push(`-${Math.round(b.costMul * 100)}% cost`);
+        if (b.stamina) bits.push(`-${Math.round(b.stamina * 100)}% sprint`);
+        const perks = def.perks.map((p) => `<span class="sk-perk ${s.level >= p.lvl ? 'on' : ''}" title="Lv ${p.lvl}: ${p.desc}">${s.level >= p.lvl ? '◆' : '◇'} ${p.name}</span>`).join('');
+        html += `
+          <div class="sk-card prof-card">
+            <div class="sk-head"><span class="sk-glyph">${def.glyph}</span>
+              <div><div class="sk-name">${def.name} <span class="sk-lvl">Lv ${s.level}${maxed ? ' (max)' : ''}</span></div>
+              <div class="sk-meta">${bits.join(' · ') || 'No bonus yet — train it to grow'}</div></div></div>
+            <div class="prof-xp"><div class="prof-xp-fill" style="width:${pct}%"></div></div>
+            <div class="sk-perks">${perks}</div>
           </div>`;
       }
     }

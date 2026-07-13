@@ -7,6 +7,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { CLASSES } from './classes.js';
+import { skillForWeaponKind } from './skills.js';
 import { createStickman } from './stickman.js';
 import { rollDrop, goldDrop, generateItem, makeUnique, bossDrop, RARITY } from './items.js';
 import { heightAt } from './world.js';
@@ -37,6 +38,7 @@ export class Combat {
   update(dt, input) {
     const p = this.player;
     if (this.target && !this.target.alive) this.target = null;
+    this._atkBonus = null; // per-action proficiency-skill bonus (set by attacks below)
 
     // Resolve any in-progress spell cast first (it may fire this frame), then
     // advance a sustained channel (e.g. the Kamehameha beam) if one is running.
@@ -182,6 +184,8 @@ export class Combat {
     const prof = p.attackProfile ? p.attackProfile() : { ranged: this.def.ranged, range: this.def.range, speed: 24, shape: 'orb', projColor: this.def.projColor };
     const t = Math.min(3, charge) / 3;             // 0 = tap, 1 = full 3s charge
     const mult = 1 + t * 2.4;                        // up to ~3.4x on a full charge
+    // Train the wielded weapon's proficiency (poles→Spellcasting, fists→Martial).
+    this._setAtkSkill(prof.ranged && this.def.primary === 'int' ? 'spellcasting' : skillForWeaponKind(p._heldKind), 3);
     p.attackTimer = this.def.attackSpeed * (1 + t * 0.5);
     p.attackAnim = 1;
     // Combo counter: alternate the swing on quick successive melee hits.
@@ -266,7 +270,11 @@ export class Combat {
     if (p.cooldowns[i] > 0) { this.ui.log(`${ab.name} on cooldown`, 'sys'); return; }
     const pool = ab.costType === 'sp' ? 'sp' : 'mp';
     if (pool === 'sp' && p._exhausted) { this.ui.log('Too exhausted — catch your breath first!', 'sys'); return; }
-    if (p.stats[pool] < ab.cost) { this.ui.log(`Not enough ${pool.toUpperCase()}`, 'sys'); return; }
+    // Spellcasting proficiency shaves mana cost; a mana ability trains it, an SP
+    // ability trains the wielded weapon's family.
+    const atkSkill = pool === 'mp' ? 'spellcasting' : skillForWeaponKind(p._heldKind);
+    const cost = pool === 'mp' ? Math.max(1, Math.round(ab.cost * (1 - p.skillBonus('spellcasting').costMul))) : ab.cost;
+    if (p.stats[pool] < cost) { this.ui.log(`Not enough ${pool.toUpperCase()}`, 'sys'); return; }
     // Ascending costs a FULL Ki gauge, not MP/SP — block it (without burning the
     // cooldown) until the gauge is full and there's a higher form to reach.
     if (ab.kind === 'transform' && !p.canAscend()) {
@@ -275,8 +283,9 @@ export class Combat {
     }
 
     // Resources & cooldown commit up front (a cast is committed, not refunded).
-    p.stats[pool] -= ab.cost;
+    p.stats[pool] -= cost;
     p.cooldowns[i] = ab.cooldown * (p.cdrMult || 1);
+    p.gainSkillXp(atkSkill, 6); // train the ability's proficiency (bonus set at fire time)
     p.attackAnim = 1;
     this._faceCam();
     if (this.audio) this.audio.play('cast');
@@ -298,6 +307,10 @@ export class Combat {
   // Dispatch an ability's effect by kind (shared by instant casts and the
   // completion of a charged cast).
   _fireAbility(ab) {
+    // Apply the proficiency-skill bonus for this ability at the moment it fires
+    // (covers instant casts and delayed cast-time spells alike).
+    const p = this.player;
+    if (p.skillBonus) this._atkBonus = p.skillBonus(ab.costType === 'mp' ? 'spellcasting' : skillForWeaponKind(p._heldKind));
     this._emitAction(this._fxForKind(ab.kind), ab.color || 0xffffff); // show it to other players
     // Sustained abilities (channels) keep firing for a while after the cast —
     // the beam pours out continuously rather than as one burst.
@@ -628,6 +641,15 @@ export class Combat {
     return best;
   }
 
+  // Route this attack to a proficiency skill: award training XP and stash its
+  // damage/crit bonus for _strike to apply.
+  _setAtkSkill(skillId, xp) {
+    const p = this.player;
+    if (!p.skillBonus) return;
+    this._atkBonus = p.skillBonus(skillId);
+    p.gainSkillXp(skillId, xp);
+  }
+
   // ---- Damage application ----
   _strike(enemy, amount, { crit = 0, silent = false }) {
     // Attacking breaks stealth (the ambush) — but the damage buff lingers.
@@ -635,6 +657,8 @@ export class Combat {
     if (pl.stealthUntil && pl.clock < pl.stealthUntil) { pl.stealthUntil = 0; if (pl.setStealth) pl.setStealth(false); }
     // Giantslayer (Boss Slayer reward): extra punishment against bosses.
     if (enemy.boss && this.player.passives && this.player.passives.has('giantslayer')) amount *= 1.25;
+    // Proficiency-skill damage/crit for this attack's weapon or spell family.
+    if (this._atkBonus) { amount *= 1 + this._atkBonus.dmg; crit += this._atkBonus.crit; }
     const isCrit = Math.random() < (0.05 + crit + this.player.gearCrit);
     let dmg = amount * (0.9 + Math.random() * 0.2);
     if (isCrit) dmg *= 1.8;

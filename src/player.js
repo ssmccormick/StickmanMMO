@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { createStickman, animateStickman, applyAppearance } from './stickman.js';
 import { defaultAppearance, normalizeAppearance } from './appearance.js';
+import { SKILLS, SKILL_MAX, skillXpForLevel, skillBonus as skillBonusFor } from './skills.js';
 import { buildWeaponMesh, isRangedWeaponKind, WEAPON_PROFILE, WEAPON_HOLD } from './weapons.js';
 import { applyArmorVisual } from './gear3d.js';
 import {
@@ -130,6 +131,11 @@ export class Player {
     this.achievements = {};    // achievement id -> tiers claimed
     this.achBonus = {};        // permanent stat bonuses earned (summed into gear bonus)
     this.passives = new Set(); // unlocked behaviour flags (windwalker, amphibious…)
+    // RuneScape-style proficiency skills — trained by activity (see skills.js).
+    this.skills = {};
+    for (const s of SKILLS) this.skills[s.id] = { level: 1, xp: 0 };
+    this.onSkillUp = null;     // (skillId, level) callback for level-up feedback
+    this._skillBonusCache = {}; // memo of skillBonus per id, cleared on level-up
     this.learnedPassives = []; // class passives CHOSEN at level-up (ids; see classes PASSIVES)
     this._passDirty = true;    // recompute the passive aggregate on next read
     this.discoveredAreas = new Set(); // named areas seen (for the map + Cartographer)
@@ -334,8 +340,27 @@ export class Player {
   get gearLifesteal() { return (this.bonus.lifesteal || 0) + this.pass.lifesteal; }
   // Cooldown multiplier from passives (floored so it can never trivialize CDs).
   get cdrMult() { return Math.max(0.4, 1 - this.pass.cdr); }
-  // Fishing power from gear + set bonuses: better fish tiers & loot when fishing.
-  get fishingStat() { return this.bonus.fishing || 0; }
+
+  // ---- Proficiency skills ----
+  skillLevel(id) { const s = this.skills[id]; return s ? s.level : 1; }
+  // Cached aggregate bonus for a skill (dmg/crit/speed/fishing/costMul/stamina).
+  skillBonus(id) {
+    if (!this._skillBonusCache[id]) this._skillBonusCache[id] = skillBonusFor(id, this.skillLevel(id));
+    return this._skillBonusCache[id];
+  }
+  // Train a skill by `amt` XP; rolls level-ups on the steep skill curve.
+  gainSkillXp(id, amt) {
+    const s = this.skills[id];
+    if (!s || s.level >= SKILL_MAX || !(amt > 0)) return;
+    s.xp += amt;
+    let leveled = false;
+    while (s.level < SKILL_MAX && s.xp >= skillXpForLevel(s.level)) {
+      s.xp -= skillXpForLevel(s.level); s.level++; leveled = true;
+    }
+    if (leveled) { this._skillBonusCache[id] = null; if (this.onSkillUp) this.onSkillUp(id, s.level); }
+  }
+  // Fishing power from gear + set bonuses + the Fishing skill.
+  get fishingStat() { return (this.bonus.fishing || 0) + this.skillBonus('fishing').fishing; }
 
   get apower() {
     const effStats = { ...this.stats, str: this.effStr, dex: this.effDex, int: this.effInt };
@@ -557,10 +582,10 @@ export class Player {
     } else if (inWater) {
       this._updateSwim(dt, input, move, moving);
     } else {
-      let speed = WALK_SPEED * (1 + this.gearSpeed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
+      let speed = WALK_SPEED * (1 + this.gearSpeed + this.skillBonus('athletics').speed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
-      if (this.mounted) speed *= 1.75 * (this.passives.has('trailblazer') ? 1.25 : 1); // steady canter
-      if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1); }
+      if (this.mounted) speed *= 1.75 * (1 + this.skillBonus('riding').speed) * (this.passives.has('trailblazer') ? 1.25 : 1); // steady canter
+      if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1) * (1 - this.skillBonus('athletics').stamina); }
       if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
       if (this.charging) speed *= 0.18; // winding up a charged attack — a near standstill
 
@@ -612,7 +637,8 @@ export class Player {
     const c = this.counters;
     if (this.state === 'climb') c.climb = (c.climb || 0) + dxz + dy;
     else if (this.state === 'swim') c.swim = (c.swim || 0) + dxz + dy * 0.5;
-    else if (this.mounted) c.ride = (c.ride || 0) + dxz;
+    else if (this.mounted) { c.ride = (c.ride || 0) + dxz; this.gainSkillXp('riding', dxz * 0.35); }
+    else if (this.state === 'ground') { c.walk = (c.walk || 0) + dxz; this.gainSkillXp('athletics', dxz * 0.16); }
     else c.walk = (c.walk || 0) + dxz;
   }
 
@@ -1003,6 +1029,7 @@ export class Player {
       str: s.str, dex: s.dex, int: s.int,
       learned: this.learned.map((l) => ({ id: l.id, rank: l.rank })),
       learnedPassives: [...this.learnedPassives],
+      skills: this.skills,
       respawn: { x: this.respawn.x, y: this.respawn.y, z: this.respawn.z },
       gear: this.gear,             // plain item objects, JSON-serializable
       inventory: this.inventory,
@@ -1033,6 +1060,10 @@ export class Player {
       this.cooldowns = this.learned.map(() => 0);
     }
     if (Array.isArray(save.learnedPassives)) { this.learnedPassives = save.learnedPassives.slice(); this._passDirty = true; }
+    if (save.skills && typeof save.skills === 'object') {
+      for (const s of SKILLS) { const v = save.skills[s.id]; if (v) this.skills[s.id] = { level: Math.min(SKILL_MAX, v.level || 1), xp: v.xp || 0 }; }
+      this._skillBonusCache = {};
+    }
     if (save.respawn) {
       this.respawn = new THREE.Vector3(save.respawn.x, save.respawn.y, save.respawn.z);
       this.pos.copy(this.respawn);

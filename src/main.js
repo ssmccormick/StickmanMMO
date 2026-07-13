@@ -16,6 +16,7 @@ import { Audio } from './audio.js';
 import { Network } from './network.js';
 import { Saves } from './save.js';
 import { starterKit, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
+import { SKILL_BY_ID as SKILLS_BY_ID } from './skills.js';
 import * as Quests from './quests.js';
 import * as Achievements from './achievements.js';
 import { evaluateUnlocks } from './appearance.js';
@@ -116,6 +117,11 @@ function beginGame(classId, name, server, save, appearance) {
 
   player = new Player(scene, world, classId, name, appearance);
   player.world = world;
+  // Proficiency skill level-ups: a small toast + floater.
+  player.onSkillUp = (id, level) => {
+    const def = SKILLS_BY_ID[id];
+    if (def) { ui.log(`${def.glyph} ${def.name} skill is now level ${level}!`, 'xp'); ui.floater(`${def.glyph} ${def.name} Lv ${level}`, 'xp', player.pos); audio.play('level'); }
+  };
 
   if (save) {
     // Continue an existing character.
@@ -309,6 +315,7 @@ function updateFishing(t) {
       const loot = rollFishingCatch(lvl, player.fishingStat);
       if (player.addItem(loot)) {
         player.counters.fish = (player.counters.fish || 0) + 1; // Master Angler progress
+        player.gainSkillXp('fishing', 28 + lvl * 1.5); // train the Fishing skill
         Quests.onFish(player); // advance fishing quests
         const rar = RARITY[loot.rarity];
         if (loot.type === 'consumable') {

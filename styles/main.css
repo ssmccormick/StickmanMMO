@@ -456,6 +456,12 @@ html, body {
 .sk-card { background: rgba(255,255,255,0.04); border: 1px solid var(--panel-edge); border-radius: 10px; padding: 11px 13px; }
 .sk-card.locked { opacity: 0.5; }
 .sk-section { grid-column: 1 / -1; margin: 10px 2px 2px; font-weight: bold; font-size: 13px; letter-spacing: 0.04em; color: var(--gold); text-transform: uppercase; opacity: 0.85; }
+.sk-lvl { font-size: 12px; color: var(--gold); font-weight: bold; }
+.prof-xp { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 6px 0; }
+.prof-xp-fill { height: 100%; background: linear-gradient(90deg, #6fa4ef, #9be0ff); }
+.sk-perks { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; }
+.sk-perk { font-size: 10px; opacity: 0.45; }
+.sk-perk.on { opacity: 1; color: #8fe0a0; }
 .sk-head { display: flex; align-items: center; gap: 11px; }
 .sk-glyph { font-size: 26px; }
 .sk-name { font-weight: bold; font-size: 15px; }
