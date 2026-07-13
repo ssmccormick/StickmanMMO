@@ -371,9 +371,11 @@ export function bossDrop(bossName, level) {
 
 // Roll a drop for a slain enemy. Tougher types drop more & better.
 export function rollDrop(enemyLevel, enemyTypeId) {
-  const chance = { slime: 0.22, grunt: 0.3, wolf: 0.28, knight: 0.42, brute: 0.55 }[enemyTypeId] ?? 0.3;
+  // Drops are meant to be a treat, not a firehose — roughly half the old rate,
+  // and skewed lower in rarity so legendaries are a genuine event.
+  const chance = { slime: 0.10, grunt: 0.14, wolf: 0.13, knight: 0.20, brute: 0.28 }[enemyTypeId] ?? 0.13;
   if (Math.random() > chance) return null;
-  const boost = { knight: 0.5, brute: 1.0 }[enemyTypeId] || 0.15;
+  const boost = { knight: 0.22, brute: 0.45 }[enemyTypeId] || 0.08;
   const item = generateItem({ level: enemyLevel + (Math.random() < 0.3 ? 1 : 0), rarityBoost: boost });
   // A legendary has a good chance to be a named unique instead.
   if (item.rarity === 'legendary' && Math.random() < 0.6) return makeUnique(item.ilvl);
@@ -385,13 +387,14 @@ export function itemValue(item) {
   if (item.type === 'consumable') return item.value || 20;
   return Math.max(1, Math.round(item.ilvl * RARITY[item.rarity].mult * 9));
 }
-export function buyPrice(item) { return item.type === 'consumable' ? itemValue(item) : itemValue(item) * 2; }
-export function sellPrice(item) { return Math.max(1, Math.floor(itemValue(item) * 0.35)); }
+export function buyPrice(item) { return item.type === 'consumable' ? itemValue(item) : Math.round(itemValue(item) * 3); }
+export function sellPrice(item) { return Math.max(1, Math.floor(itemValue(item) * 0.2)); }
 
-// Gold dropped by a slain enemy.
+// Gold dropped by a slain enemy (roughly half the old rate — gold should be
+// earned, not showered).
 export function goldDrop(enemyLevel, enemyTypeId) {
   const mult = { slime: 0.7, grunt: 1, wolf: 0.9, knight: 1.6, brute: 2.4 }[enemyTypeId] ?? 1;
-  return Math.max(1, Math.round((3 + enemyLevel * 2.2) * mult * rnd(0.7, 1.3)));
+  return Math.max(1, Math.round((2 + enemyLevel * 1.05) * mult * rnd(0.7, 1.3)));
 }
 
 // Total stat contribution of a set of equipped items.

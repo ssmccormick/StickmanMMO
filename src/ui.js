@@ -1309,13 +1309,18 @@ export class UI {
   // Stock list filtered by merchant type.
   _genStock(type, lvl) {
     const stock = [];
-    const gear = (slot, n, boost = 0.45) => { for (let i = 0; i < n; i++) stock.push(generateItem({ slot, level: Math.max(1, lvl + (i % 3) - 1), rarityBoost: boost })); };
+    // Merchants stock modest, mostly common/uncommon gear — the good stuff is
+    // earned in the world, not bought off a shelf. Legendaries never appear.
+    const gear = (slot, n, boost = 0.12) => { for (let i = 0; i < n; i++) {
+      let it; do { it = generateItem({ slot, level: Math.max(1, lvl + (i % 3) - 1), rarityBoost: boost }); } while (it.rarity === 'legendary');
+      stock.push(it);
+    } };
     if (type === 'alchemist') {
       for (const id of ['hp_minor', 'hp_major', 'buff_swift', 'buff_power', 'buff_might', 'hp_minor', 'hp_major']) stock.push(makeConsumable(id));
     } else if (type === 'weapon') {
-      gear('weapon', 8, 0.55);
+      gear('weapon', 8, 0.15);
     } else if (type === 'armor') {
-      for (const s of ['head', 'chest', 'hands', 'feet']) gear(s, 2, 0.55);
+      for (const s of ['head', 'chest', 'hands', 'feet']) gear(s, 2, 0.15);
     } else if (type === 'general') {
       gear('ring', 3); gear('amulet', 3);
       for (const id of ['hp_minor', 'hp_major']) stock.push(makeConsumable(id));

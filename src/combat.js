@@ -662,7 +662,7 @@ export class Combat {
     if (this.audio) this.audio.play('kill');
     // Gold drop (elites and especially bosses pay out far more; Midas adds 50%).
     const midas = this.player.passives && this.player.passives.has('midas') ? 1.5 : 1;
-    const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 12 : enemy.elite ? 4 : 1) * midas);
+    const gold = Math.round(goldDrop(enemy.level, enemy.typeId) * (enemy.boss ? 6 : enemy.elite ? 2.5 : 1) * midas);
     this.player.gold += gold;
     this.ui.floater(`+${gold}g`, 'gold', enemy.pos);
     // Quest progress for kills (and boss-slaying).

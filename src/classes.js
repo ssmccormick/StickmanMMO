@@ -320,9 +320,11 @@ export function passiveAggregateIds(classId, ids) {
 
 export const CLASS_ORDER = ['fighter', 'barbarian', 'rogue', 'wizard', 'cleric', 'ranger', 'paladin', 'warlock', 'monk', 'druid', 'gunslinger', 'saiyan'];
 
-// XP needed to advance FROM the given level to the next.
+// XP needed to advance FROM the given level to the next. Deliberately steeper
+// than a flat curve so character levels come roughly half as fast — progression
+// should be a long climb, not a sprint.
 export function xpForLevel(level) {
-  return Math.floor(80 * Math.pow(level, 1.45) + 40);
+  return Math.floor(100 * Math.pow(level, 1.6) + 50);
 }
 
 // Look up an ability def by id within a class.

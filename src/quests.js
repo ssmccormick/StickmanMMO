@@ -321,7 +321,8 @@ export function accept(player, id) { player.questLog[id] = { accepted: true, pro
 export function turnIn(player, id) {
   const r = QUESTS[id].reward;
   const out = { gold: 0, xp: 0, levels: 0, items: [] };
-  if (r.gold) { player.gold += r.gold; out.gold = r.gold; }
+  // Quest gold is dialled back (×0.5) as part of a tighter economy.
+  if (r.gold) { const g = Math.round(r.gold * 0.5); player.gold += g; out.gold = g; }
   if (r.item) { const it = generateItem({ level: r.item.level || player.stats.level, rarityBoost: r.item.rarityBoost || 0.5 }); if (player.addItem(it)) out.items.push(it); }
   if (r.potion) { for (let i = 0; i < (r.potionCount || 1); i++) { const c = makeConsumable(r.potion); if (player.addItem(c)) out.items.push(c); } }
   if (r.xp) { out.xp = r.xp; out.levels = player.gainXp(r.xp); }
