@@ -5,7 +5,7 @@
 // world collision (AABB boxes + ground height query).
 // ============================================================
 import * as THREE from 'three';
-import { litMat, glowSprite } from './gfx.js';
+import { litMat, glowSprite, windify } from './gfx.js';
 import { createStickman } from './stickman.js';
 import { buildWeaponMesh } from './weapons.js';
 import { GIVERS } from './quests.js';
@@ -281,16 +281,20 @@ export class World {
     mesh.userData.noCull = true; // one big ground mesh — always drawn (fog hides the far parts)
     this.group.add(mesh);
 
-    // Water plane (lakes/seas sit in the low biome areas).
+    // Water plane (lakes/seas sit in the low biome areas). Segmented + a smooth
+    // (non-toon) lit material with a slight emissive sheen; world.update ripples
+    // it so the surface shimmers instead of sitting dead flat.
+    const wgeo = new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2, 80, 80);
     const water = new THREE.Mesh(
-      new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2),
-      litMat({ color: 0x3b6ea5, transparent: true, opacity: 0.78 })
+      wgeo,
+      new THREE.MeshLambertMaterial({ color: 0x3f74ab, transparent: true, opacity: 0.82, emissive: 0x0d2338 })
     );
     water.rotation.x = -Math.PI / 2;
     water.position.y = WATER_LEVEL;
     water.userData.noCull = true;
     this.group.add(water);
     this.water = water;
+    this._waterBaseZ = wgeo.attributes.position.array.slice(); // flat reference for the ripple
   }
 
   _addBox(mesh, climbable = false, pad = 0) {
@@ -573,8 +577,8 @@ export class World {
     const trunkMat = litMat({ color: 0x6b4a2f });
     const deadMat = litMat({ color: 0x4a3a2a });
     const cactusMat = litMat({ color: 0x4f8a4a });
-    const leafMats = [0x3f7d3a, 0x4f8f3f, 0x5a6f2f].map((c) => litMat({ color: c }));
-    const pineMats = [0x2f6f4a, 0x357a52].map((c) => litMat({ color: c }));
+    const leafMats = [0x3f7d3a, 0x4f8f3f, 0x5a6f2f].map((c) => windify(litMat({ color: c })));
+    const pineMats = [0x2f6f4a, 0x357a52].map((c) => windify(litMat({ color: c })));
     const snowCapMat = litMat({ color: 0xf4f8ff });
     const charredMat = litMat({ color: 0x2a1f1a });
     const emberMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a });
@@ -691,7 +695,7 @@ export class World {
   // layered on top of the lighter world-wide scatter so the woods feel deep.
   _forests() {
     const trunkMat = litMat({ color: 0x5a3f28 });
-    const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => litMat({ color: c }));
+    const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => windify(litMat({ color: c })));
     const forestAreas = AREAS.filter((a) => (a.biome === 'forest' || a.biome === 'jungle') && !a.safe);
     for (const fa of forestAreas) {
       for (let i = 0; i < 220; i++) {
@@ -990,7 +994,8 @@ export class World {
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.4, 8), new THREE.MeshBasicMaterial({ color: 0xff8a2a }));
     flame.position.y = 1.3;
     const light = new THREE.PointLight(0xff8a2a, 2.2, 16); light.position.y = 1.6;
-    g.add(pit, flame, light);
+    const halo = glowSprite(0xffa53c, 5, 0.55); halo.position.y = 1.4; // fake-bloom glow
+    g.add(pit, flame, light, halo);
     g.position.set(x, y, z);
     g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     this.group.add(g);
@@ -1948,7 +1953,16 @@ export class World {
       b.flame.scale.set(1, f, 1);
       b.light.intensity = 1.8 + f * 0.6;
     }
-    if (this.water) this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.15;
+    if (this.water) {
+      this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.12;
+      const arr = this.water.geometry.attributes.position.array, base = this._waterBaseZ;
+      if (base) {
+        for (let i = 0; i < arr.length; i += 3) {
+          arr[i + 2] = base[i + 2] + Math.sin(base[i] * 0.05 + t * 1.1) * 0.35 + Math.cos(base[i + 1] * 0.06 + t * 0.9) * 0.3;
+        }
+        this.water.geometry.attributes.position.needsUpdate = true;
+      }
+    }
     if (this._nexusOrb) { this._nexusOrb.rotation.y += dt; this._nexusOrb.rotation.x += dt * 0.5; }
     if (this._arcanumOrb) { this._arcanumOrb.rotation.y += dt * 0.6; this._arcanumOrb.position.y += Math.sin(t * 1.2) * 0.02; }
 

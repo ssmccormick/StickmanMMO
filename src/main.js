@@ -17,6 +17,7 @@ import { Network } from './network.js';
 import { Saves } from './save.js';
 import { starterKit, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
 import { SKILL_BY_ID as SKILLS_BY_ID } from './skills.js';
+import { addOutlines, WIND } from './gfx.js';
 import * as Quests from './quests.js';
 import * as Achievements from './achievements.js';
 import { evaluateUnlocks } from './appearance.js';
@@ -122,6 +123,7 @@ function beginGame(classId, name, server, save, appearance) {
 
   player = new Player(scene, world, classId, name, appearance);
   player.world = world;
+  addOutlines(player.mesh); // crisp comic silhouette on the hero
   // Proficiency skill level-ups: a small toast + floater.
   player.onSkillUp = (id, level) => {
     const def = SKILLS_BY_ID[id];
@@ -350,6 +352,7 @@ function animate() {
   input.pollGamepad(dt); // fold any controller state into the unified input
 
   world.update(t, dt);
+  WIND.t.value = t; // advance the shared wind clock (foliage sway)
   if (started && player) world.followSun(player.pos, camera.position); // shadows/sky track the player
 
   if (started && player) {

@@ -4,7 +4,7 @@
 // Spawned per world zone so difficulty rises away from town.
 // ============================================================
 import * as THREE from 'three';
-import { litMat } from './gfx.js';
+import { litMat, addOutlines } from './gfx.js';
 import { animateStickman } from './stickman.js';
 import { createCreature } from './creatures.js';
 import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS, biomeKeyAt, WORLD_SIZE, WATER_LEVEL, MOUNTAINS } from './world.js';
@@ -100,6 +100,7 @@ export class Enemy {
     });
     // Each creature carries its own poser; fall back to the humanoid animator.
     this._poser = this.mesh.userData.animate || animateStickman;
+    if (this.boss) addOutlines(this.mesh); // named bosses get a bold comic silhouette
     scene.add(this.mesh);
 
     if (this.boss) {

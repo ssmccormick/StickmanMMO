@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { CLASSES } from './classes.js';
 import { skillForWeaponKind } from './skills.js';
+import { glowSprite } from './gfx.js';
 import { createStickman } from './stickman.js';
 import { rollDrop, goldDrop, generateItem, makeUnique, bossDrop, RARITY } from './items.js';
 import { heightAt } from './world.js';
@@ -771,6 +772,7 @@ export class Combat {
     beam.position.y = 3;
     g.add(gem, beam);
     g.add(new THREE.PointLight(color, 1.2, 5));
+    const halo = glowSprite(color, 1.6, 0.6); halo.position.y = 0.4; g.add(halo); // soft glow so drops pop
     // Drop onto the GROUND under the kill (so loot from flying enemies falls to
     // where you can actually walk over it, instead of floating at their altitude).
     const groundY = heightAt(pos.x, pos.z) + 0.7;

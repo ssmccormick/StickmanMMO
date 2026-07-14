@@ -27,7 +27,14 @@ html, body {
 }
 
 #game-root { position: fixed; inset: 0; }
-#game-canvas { display: block; width: 100%; height: 100%; }
+/* A light colour grade to counter ACES desaturation — richer, punchier scene. */
+#game-canvas { display: block; width: 100%; height: 100%; filter: saturate(1.14) contrast(1.045) brightness(1.03); }
+/* Cinematic vignette: darkens the frame edges. Placed right after the canvas in
+   the DOM so it paints over the world but under the HUD (no z-index needed). */
+#vignette {
+  position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse 80% 80% at 50% 46%, transparent 60%, rgba(6, 8, 14, 0.32) 100%);
+}
 
 .hidden { display: none !important; }
 

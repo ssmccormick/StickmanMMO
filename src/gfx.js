@@ -51,15 +51,39 @@ export function glowSprite(color = 0xffffff, size = 3, opacity = 0.5) {
   return s;
 }
 
-// A cheap comic outline: an inverted-hull black shell cloned from a mesh, pushed
-// out along its normals via BackSide rendering. Adds a crisp silhouette to
-// characters without any postprocessing. Returns the shell (already positioned
-// to overlay `mesh`), or null when outlines are off.
-const _outlineMat = new THREE.MeshBasicMaterial({ color: 0x10131a, side: THREE.BackSide });
-export function outlineShell(mesh, scale = 1.06) {
-  if (!QUALITY.outline || !mesh.geometry) return null;
-  const shell = new THREE.Mesh(mesh.geometry, _outlineMat);
-  shell.scale.setScalar(scale);
-  shell.userData.isOutline = true;
-  return shell;
+// Comic outline via inverted hull: for every mesh in a character, add a slightly
+// larger black back-face shell as a sibling so it inherits the same animation.
+// Gives a crisp cel silhouette with no postprocessing. Cheap enough for the hero
+// and bosses; skipped when outlines are off.
+const _outlineMat = new THREE.MeshBasicMaterial({ color: 0x0e1119, side: THREE.BackSide });
+export function addOutlines(root, scale = 1.08) {
+  if (!QUALITY.outline || !root) return;
+  const meshes = [];
+  root.traverse((o) => { if (o.isMesh && o.geometry && !o.userData.isOutline) meshes.push(o); });
+  for (const m of meshes) {
+    const shell = new THREE.Mesh(m.geometry, _outlineMat);
+    shell.position.copy(m.position); shell.rotation.copy(m.rotation);
+    shell.scale.copy(m.scale).multiplyScalar(scale);
+    shell.userData.isOutline = true; shell.castShadow = false; shell.receiveShadow = false;
+    shell.renderOrder = -1;
+    if (m.parent) m.parent.add(shell);
+  }
+}
+
+// A tiny shared "wind" clock; main.js advances WIND.t.value each frame. windify()
+// patches a material so foliage tops sway with it (bend grows with local height),
+// giving the world gentle motion without swaying every object on the CPU.
+export const WIND = { t: { value: 0 } };
+export function windify(mat, amount = 0.18) {
+  if (!QUALITY.toon && !mat) return mat;
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uWindT = WIND.t;
+    shader.uniforms.uWindAmt = { value: amount };
+    shader.vertexShader = 'uniform float uWindT; uniform float uWindAmt;\n' + shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\n  float wy = max(transformed.y, 0.0);\n  float wsw = sin(uWindT + position.x * 0.3 + position.z * 0.25);\n  transformed.x += wsw * uWindAmt * wy;\n  transformed.z += cos(uWindT * 0.8 + position.z * 0.3) * uWindAmt * 0.6 * wy;'
+    );
+  };
+  mat.customProgramCacheKey = () => 'windified';
+  return mat;
 }
