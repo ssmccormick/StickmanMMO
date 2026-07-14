@@ -59,7 +59,15 @@ const _outlineMat = new THREE.MeshBasicMaterial({ color: 0x0e1119, side: THREE.B
 export function addOutlines(root, scale = 1.08) {
   if (!QUALITY.outline || !root) return;
   const meshes = [];
-  root.traverse((o) => { if (o.isMesh && o.geometry && !o.userData.isOutline) meshes.push(o); });
+  root.traverse((o) => {
+    if (!o.isMesh || !o.geometry || o.userData.isOutline) return;
+    if (o.userData.noOutline) return;            // effect/fx meshes opt out
+    if (o.visible === false) return;             // hidden meshes (e.g. SSJ aura) — shell must not outlive their visibility
+    // Unlit effect meshes (glow cones, auras, flat basics) shouldn't get a solid silhouette.
+    const mat = o.material;
+    if (mat && (mat.isMeshBasicMaterial || mat.transparent)) return;
+    meshes.push(o);
+  });
   for (const m of meshes) {
     const shell = new THREE.Mesh(m.geometry, _outlineMat);
     shell.position.copy(m.position); shell.rotation.copy(m.rotation);

@@ -158,6 +158,16 @@ export class Combat {
     return new THREE.Vector3().subVectors(this._aimConvergePoint(), this._muzzle()).normalize();
   }
 
+  // Horizontal direction from the PLAYER toward the crosshair's point — used by
+  // melee swings so the arc + swish/cone FX face where you're actually aiming
+  // (the raw camera-forward is parallel to the camera, not through the crosshair).
+  _aimGroundDir() {
+    const p = this.player.pos, t = this._aimConvergePoint();
+    const dx = t.x - p.x, dz = t.z - p.z, l = Math.hypot(dx, dz);
+    if (l < 0.001) return this.cam.forward();
+    return new THREE.Vector3(dx / l, 0, dz / l);
+  }
+
   // Where a ground-targeted AoE lands: march the crosshair's ray to the ground,
   // clamped to within maxRange of the player so ability range still bounds it.
   _aimPoint(maxRange) {
@@ -204,8 +214,11 @@ export class Combat {
       });
       this._emitAction('bolt', prof.projColor || 0xffffff, this._muzzle(), dir);
     } else {
-      this._faceCam();
-      const dir = this.cam.forward();
+      // Aim the swing where the CROSSHAIR points (converged from the player),
+      // not parallel to the camera — otherwise the arc + swish/cone FX land off
+      // to the side in the over-shoulder view.
+      const dir = this._aimGroundDir();
+      this._face(dir);
       // The stab (combo step 2) drives the hero a short step forward.
       if (p.comboStep === 2 && p.lunge) p.lunge(dir);
       const range = (prof.range || this.def.range) + t * 2.0;
@@ -362,7 +375,10 @@ export class Combat {
   }
 
   _kMelee(ab) {
-    const dir = this.cam.forward();
+    // Full-circle spins (whirlwind) don't care about facing; directional cleaves
+    // must point at the crosshair like the basic swing.
+    const dir = ab.arc >= 6 ? this.cam.forward() : this._aimGroundDir();
+    if (ab.arc < 6) this._face(dir);
     const origin = this.player.pos;
     for (const e of this._inArc(origin, dir, ab.range, ab.arc)) {
       let dmg = this.player.apower * ab.mult;

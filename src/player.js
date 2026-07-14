@@ -189,6 +189,7 @@ export class Player {
       const c = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.44 * len, 5), gold);
       c.position.set(x, y, z);
       c.rotation.x = rx; c.rotation.z = rz;
+      c.userData.noOutline = true;
       hair.add(c);
     }
     hair.visible = false;
@@ -200,6 +201,7 @@ export class Player {
     const aura = new THREE.Mesh(new THREE.ConeGeometry(0.72, 2.7, 14, 1, true), auraMat);
     aura.position.y = 1.15;
     aura.visible = false;
+    aura.userData.noOutline = true;
     this.mesh.add(aura);
     this.ssjAura = aura;
   }

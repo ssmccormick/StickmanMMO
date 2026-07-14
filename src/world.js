@@ -284,7 +284,7 @@ export class World {
     // Water plane (lakes/seas sit in the low biome areas). Segmented + a smooth
     // (non-toon) lit material with a slight emissive sheen; world.update ripples
     // it so the surface shimmers instead of sitting dead flat.
-    const wgeo = new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2, 80, 80);
+    const wgeo = new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2, 40, 40);
     const water = new THREE.Mesh(
       wgeo,
       new THREE.MeshLambertMaterial({ color: 0x3f74ab, transparent: true, opacity: 0.82, emissive: 0x0d2338 })
@@ -1955,8 +1955,12 @@ export class World {
     }
     if (this.water) {
       this.water.position.y = -4.2 + Math.sin(t * 0.6) * 0.12;
-      const arr = this.water.geometry.attributes.position.array, base = this._waterBaseZ;
-      if (base) {
+      // Ripple only every 3rd frame — re-uploading the big plane every frame was
+      // a needless ongoing cost for a barely-visible effect.
+      this._wf = (this._wf || 0) + 1;
+      const base = this._waterBaseZ;
+      if (base && this._wf % 3 === 0) {
+        const arr = this.water.geometry.attributes.position.array;
         for (let i = 0; i < arr.length; i += 3) {
           arr[i + 2] = base[i + 2] + Math.sin(base[i] * 0.05 + t * 1.1) * 0.35 + Math.cos(base[i + 1] * 0.06 + t * 0.9) * 0.3;
         }
