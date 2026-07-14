@@ -167,6 +167,8 @@ function beginGame(classId, name, server, save, appearance) {
   }));
   combat = new Combat({ scene, player, enemies, ui, camera: followCam, audio });
   combat.onLevelUp = () => { audio.play('level'); ui.levelUp(player.stats.level); };
+  // Dodge roll leaves a whoosh trail; a weak (out-of-stamina) roll fizzles grey.
+  player.onDodge = (dir) => combat.dodgeWhoosh(player.pos, dir, player.dodgeWeak ? 0x8899aa : 0xdfefff);
   // Keep panels live as loot is picked up; refresh quest markers on kills.
   combat.onLoot = (item) => {
     if (ui.inventoryOpen) ui.renderInventory();

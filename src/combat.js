@@ -41,6 +41,14 @@ export class Combat {
     if (this.target && !this.target.alive) this.target = null;
     this._atkBonus = null; // per-action proficiency-skill bonus (set by attacks below)
 
+    // A committed melee swing lands its hit partway through the animation (the
+    // "active frame"). Rolling before it lands CANCELS the swing — so attacks
+    // are a commitment you must time, not a free action.
+    if (this._pendingStrike) {
+      if (!p.alive || p.dodging) { this._pendingStrike = null; }
+      else if (p.clock >= this._pendingStrike.at) { this._pendingStrike.exec(); this._pendingStrike = null; }
+    }
+
     // Resolve any in-progress spell cast first (it may fire this frame), then
     // advance a sustained channel (e.g. the Kamehameha beam) if one is running.
     this._updateCast(dt);
@@ -53,7 +61,7 @@ export class Combat {
         // Charged basic attack: HOLD LMB to wind up (movement crawls to a stop),
         // RELEASE to strike. A quick tap is a normal swing; a full 3s charge is a
         // devastating blow that also widens a melee swing into a cleave.
-        if (input.lmb && p.attackTimer <= 0) {
+        if (input.lmb && p.attackTimer <= 0 && !p.dodging && p.attackLock <= 0) {
           this._charge = Math.min(3, (this._charge || 0) + dt);
           this.charging = true; p.charging = true;
         } else if (this.charging) {
@@ -195,8 +203,7 @@ export class Combat {
     const prof = p.attackProfile ? p.attackProfile() : { ranged: this.def.ranged, range: this.def.range, speed: 24, shape: 'orb', projColor: this.def.projColor };
     const t = Math.min(3, charge) / 3;             // 0 = tap, 1 = full 3s charge
     const mult = 1 + t * 2.4;                        // up to ~3.4x on a full charge
-    // Train the wielded weapon's proficiency (poles→Spellcasting, fists→Martial).
-    this._setAtkSkill(prof.ranged && this.def.primary === 'int' ? 'spellcasting' : skillForWeaponKind(p._heldKind), 3);
+    const atkSkill = prof.ranged && this.def.primary === 'int' ? 'spellcasting' : skillForWeaponKind(p._heldKind);
     p.attackTimer = this.def.attackSpeed * (1 + t * 0.5);
     p.attackAnim = 1;
     // Combo counter: alternate the swing on quick successive melee hits.
@@ -205,6 +212,9 @@ export class Combat {
     this._lastSwing = p.clock;
     if (this.audio) this.audio.play('swing');
     if (prof.ranged) {
+      // Ranged shots fire on the spot but still root you briefly (a light commit).
+      this._setAtkSkill(atkSkill, 3);
+      p.attackLock = this.def.attackSpeed * 0.5;
       const dir = this._aimDir(prof.range, 0.8);
       this._face(dir);
       this.spawnProjectile(this._muzzle(), dir, {
@@ -214,29 +224,50 @@ export class Combat {
       });
       this._emitAction('bolt', prof.projColor || 0xffffff, this._muzzle(), dir);
     } else {
-      // Aim the swing where the CROSSHAIR points (converged from the player),
-      // not parallel to the camera — otherwise the arc + swish/cone FX land off
-      // to the side in the over-shoulder view.
+      // Melee swings are COMMITTED: you're rooted for the swing and the hit only
+      // lands partway through (the active frame). Aim where the CROSSHAIR points
+      // (converged from the player) so the arc + FX match your aim.
       const dir = this._aimGroundDir();
       this._face(dir);
-      // The stab (combo step 2) drives the hero a short step forward.
-      if (p.comboStep === 2 && p.lunge) p.lunge(dir);
       const range = (prof.range || this.def.range) + t * 2.0;
-      if (t < 0.15) {
-        // A quick swing: hit the best-aimed foe (forgiving reach).
-        const e = this._aimEnemy(range, 1.0);
-        if (e) this._strike(e, p.apower * mult, { crit: this.def.critBonus || 0 });
-        // Show the swing: a swish arc tracing the reach (thin streak on the stab).
-        this._swishFx(this.player.pos, dir, range + 0.6, p.comboStep, this.def.accent);
-      } else {
-        // A charged swing: a wide cleave that hits everything in front.
-        const arc = 1.6 + t * 2.2;
-        for (const e of this._inArc(this.player.pos, dir, range, arc)) this._strike(e, p.apower * mult, { crit: this.def.critBonus || 0 });
-        this._coneFx(this.player.pos, dir, range, arc, this.def.accent);
-        this._swishFx(this.player.pos, dir, range + 0.6, 1, this.def.accent);
-      }
-      this._emitAction('swing');
+      const commit = this._meleeCommit(t);
+      p.attackLock = commit;                       // rooted & vulnerable for the swing
+      const windup = commit * 0.42;                // the hit lands ~40% through
+      const comboStep = p.comboStep, accent = this.def.accent;
+      const apow = p.apower, critB = this.def.critBonus || 0, heldKind = p._heldKind;
+      // Defer the actual hit to the active frame; a dodge before then cancels it.
+      this._pendingStrike = { at: p.clock + windup, exec: () => {
+        this._setAtkSkill(atkSkill || skillForWeaponKind(heldKind), 3);
+        if (comboStep === 2 && p.lunge) p.lunge(dir); // the stab lunges forward on the hit
+        if (t < 0.15) {
+          const e = this._aimEnemy(range, 1.0);
+          if (e) this._strike(e, apow * mult, { crit: critB });
+          this._swishFx(this.player.pos, dir, range + 0.6, comboStep, accent);
+        } else {
+          const arc = 1.6 + t * 2.2;
+          for (const e of this._inArc(this.player.pos, dir, range, arc)) this._strike(e, apow * mult, { crit: critB });
+          this._coneFx(this.player.pos, dir, range, arc, accent);
+          this._swishFx(this.player.pos, dir, range + 0.6, 1, accent);
+        }
+        this._emitAction('swing');
+      } };
     }
+  }
+
+  // How long a melee swing roots you (rooted = vulnerable). Scales with the
+  // weapon's speed and how long the attack was charged.
+  _meleeCommit(t) { return THREE.MathUtils.clamp(this.def.attackSpeed, 0.3, 0.6) * (1 + t * 0.85); }
+
+  // A quick evasive "whoosh" arc left behind a dodge roll.
+  dodgeWhoosh(pos, dir, color = 0xdfefff) {
+    const heading = Math.atan2(dir.x, dir.z);
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.5, 1.5, 20, 1, -1.1, 2.2),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.rotation.z = -heading + Math.PI; // trail behind the roll
+    m.position.copy(pos); m.position.y += 0.5;
+    m.userData.baseOpacity = 0.5; m.userData.grow = 1.6;
+    this._tempMesh(m, 0.28);
+    if (this.audio) this.audio.play('swing');
   }
 
   // A growing orb at the weapon muzzle while a charged attack winds up.

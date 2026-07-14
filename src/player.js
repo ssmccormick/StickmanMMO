@@ -62,6 +62,11 @@ const WALK_SPEED = 7.0;
 const SPRINT_MULT = 1.7;
 const CLIMB_SPEED = 3.2;
 const RADIUS = 0.5;
+// Dodge roll tuning.
+const DODGE_COST = 26;      // stamina spent per roll
+const DODGE_IFRAMES = 0.36; // seconds of invincibility (a full roll grants these)
+const DODGE_CD = 0.5;       // min seconds between rolls
+const DODGE_SPEED = 15;     // peak roll speed (units/sec)
 const MAX_SLOTS = 8; // hotbar ability slots (keys 1..8)
 
 export class Player {
@@ -115,7 +120,17 @@ export class Player {
 
     this.attackTimer = 0;
     this.attackAnim = 0;
+    this.attackLock = 0;     // seconds rooted mid-swing (committed & vulnerable)
     this.comboStep = 0;      // alternates the swing on quick successive melee hits
+    // Dodge roll (Ctrl): a stamina-fuelled evasive roll with i-frames that also
+    // cancels a committed swing. Weak (no i-frames) when you're low on stamina.
+    this.dodging = false;
+    this.dodgeT = 0;         // 1 → 0 progress of the current roll
+    this.dodgeDur = 0.42;
+    this.dodgeDir = { x: 0, z: 1 };
+    this.dodgeCd = 0;        // brief cooldown between rolls
+    this.dodgeWeak = false;  // rolled while out of stamina (no i-frames, shorter)
+    this.onDodge = null;     // (dir) callback for the whoosh FX
     this._exhausted = false; // true after stamina hits 0 until it fully refills
     this._lungeT = 0;        // brief forward lunge on the stab (combo step 2)
     this._lungeDir = { x: 0, z: 1 };
@@ -516,6 +531,49 @@ export class Player {
     this._lungeT = 1;
   }
 
+  // ---- Dodge roll ----
+  // Roll in `dir` (or, if none, where you face). Costs stamina, grants i-frames,
+  // and CANCELS a committed swing. Rolling with too little stamina still moves
+  // you but is "weak" — no i-frames and a shorter roll — so being out of stamina
+  // is dangerous. Returns true if a roll started.
+  tryDodge(dir) {
+    if (!this.alive || this.mounted) return false;
+    if (this.dodging || this.dodgeCd > 0) return false;
+    if (this.state === 'climb' || this.state === 'swim') return false;
+    const d = (dir && (dir.x || dir.z)) ? dir : { x: Math.sin(this.facing), z: Math.cos(this.facing) };
+    const l = Math.hypot(d.x, d.z) || 1;
+    this.dodgeDir = { x: d.x / l, z: d.z / l };
+    // A proper roll needs a chunk of stamina; below that it's a weak stumble.
+    const strong = this.stats.sp >= DODGE_COST && !this._exhausted;
+    this.dodgeWeak = !strong;
+    this.dodging = true;
+    this.dodgeT = 1;
+    this.dodgeDur = strong ? 0.42 : 0.3;
+    this.dodgeCd = DODGE_CD + this.dodgeDur;
+    this.stats.sp = Math.max(0, this.stats.sp - (strong ? DODGE_COST : this.stats.sp)); // a weak roll burns what's left
+    if (strong) this.iframeUntil = this._clock + DODGE_IFRAMES; // i-frames only on a real roll
+    // Cancel any committed swing / charge and face the roll.
+    this.attackLock = 0; this.attackAnim = 0; this.charging = false;
+    this.facing = Math.atan2(this.dodgeDir.x, this.dodgeDir.z);
+    if (this.onDodge) this.onDodge(this.dodgeDir);
+    return true;
+  }
+  _updateDodge(dt) {
+    this.dodgeT = Math.max(0, this.dodgeT - dt / this.dodgeDur);
+    const ease = this.dodgeT;                 // fast at the start, slowing out
+    const spd = (this.dodgeWeak ? 0.5 : 1) * DODGE_SPEED * (0.35 + ease);
+    this.pos.x += this.dodgeDir.x * spd * dt;
+    this.pos.z += this.dodgeDir.z * spd * dt;
+    const res = this.world.resolveCircle(this.pos.x, this.pos.z, RADIUS);
+    this.pos.x = res.x; this.pos.z = res.z;
+    this.pos.y = heightAt(this.pos.x, this.pos.z);
+    this.vel.set(0, 0, 0);
+    this.state = 'ground';
+    this._speed01 = 0.7;
+    this.moveDir = null;
+    if (this.dodgeT <= 0) { this.dodging = false; this.mesh.rotation.x = 0; }
+  }
+
   _poseHeldWeapon() {
     const w = this._heldWeapon;
     const kind = this._heldKind;
@@ -587,31 +645,43 @@ export class Player {
     const moving = move.lengthSq() > 0.001;
     if (moving) move.normalize();
 
+    // Commitment + dodge timers.
+    this.dodgeCd = Math.max(0, this.dodgeCd - dt);
+    if (this.attackLock > 0) this.attackLock = Math.max(0, this.attackLock - dt);
+    // Dodge roll (Ctrl / pad / touch) — fires even mid-swing to cancel it.
+    if (!this.dodging && (input.just('ControlLeft') || input.just('ControlRight') || input.just('Dodge'))) {
+      this.tryDodge(moving ? { x: move.x, z: move.z } : null);
+    }
+
     const wantSprint = input.down('ShiftLeft') || input.down('ShiftRight');
     // No sprinting while exhausted (drained to empty) or mounted (the steed is
     // already your speed — stacking a sprint on top was far too fast).
-    const sprinting = wantSprint && moving && this.stats.sp > 1 && !this._exhausted && !this.mounted && this.state !== 'climb';
+    const sprinting = wantSprint && moving && this.stats.sp > 1 && !this._exhausted && !this.mounted && this.state !== 'climb' && this.attackLock <= 0 && !this.dodging;
 
     const groundHere = heightAt(this.pos.x, this.pos.z);
     const inWater = groundHere < WATER_LEVEL - 0.6 && this.pos.y < WATER_LEVEL + 1.2;
 
-    if (this.state === 'climb') {
+    if (this.dodging) {
+      this._updateDodge(dt);
+    } else if (this.state === 'climb') {
       this._updateClimb(dt, input, move, moving);
     } else if (inWater) {
       this._updateSwim(dt, input, move, moving);
     } else {
+      const rooted = this.attackLock > 0;                    // committed to a swing
       let speed = WALK_SPEED * (1 + this.gearSpeed + this.skillBonus('athletics').speed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
       if (this.mounted) speed *= this.mountSpeed * (1 + this.skillBonus('riding').speed) * (this.passives.has('trailblazer') ? 1.25 : 1); // steady canter (per-mount speed)
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1) * (1 - this.skillBonus('athletics').stamina); }
       if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
       if (this.charging) speed *= 0.18; // winding up a charged attack — a near standstill
+      if (rooted) speed *= 0.12; // rooted mid-swing: you can't just walk out of it
 
       this.vel.x = move.x * speed;
       this.vel.z = move.z * speed;
       this.vel.y -= GRAVITY * dt;
 
-      if (input.just('Space') && this.state === 'ground') { this.vel.y = JUMP_VEL; this.state = 'air'; }
+      if (input.just('Space') && this.state === 'ground' && !rooted) { this.vel.y = JUMP_VEL; this.state = 'air'; }
 
       this.pos.x += this.vel.x * dt;
       this.pos.z += this.vel.z * dt;
@@ -635,7 +705,7 @@ export class Player {
       if (this.pos.y <= ground) { this.pos.y = ground; this.vel.y = 0; this.state = 'ground'; }
       else if (this.state !== 'climb') this.state = 'air';
 
-      if (moving) this.facing = Math.atan2(move.x, move.z);
+      if (moving && !rooted) this.facing = Math.atan2(move.x, move.z); // keep swing facing while rooted
       this.moveDir = moving ? move.clone() : null;
       this._speed01 = THREE.MathUtils.clamp(Math.hypot(this.vel.x, this.vel.z) / (WALK_SPEED * SPRINT_MULT), 0, 1);
     }
@@ -1158,6 +1228,16 @@ export class Player {
       combo: this.comboStep || 0, charging: this.charging,
     });
     this._poseHeldWeapon();
+    // Dodge roll: a forward somersault. Pivot at ~waist height (H) so the flip
+    // arcs cleanly instead of sweeping through the ground around the feet.
+    if (this.dodging) {
+      const a = (1 - this.dodgeT) * Math.PI * 2;   // 0 → 2π over the roll
+      const H = 1.0;
+      this.mesh.rotation.x = a;
+      this.mesh.position.y = this.pos.y + H - H * Math.cos(a);
+    } else if (this.mesh.rotation.x) {
+      this.mesh.rotation.x = 0;
+    }
     // Fade stealth out when it expires.
     if (this.stealthUntil && this._clock >= this.stealthUntil) { this.stealthUntil = 0; this.setStealth(false); }
 
