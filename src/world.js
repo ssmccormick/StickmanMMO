@@ -111,6 +111,7 @@ export class World {
     this._puzzles();
     this._resourceNodes();
     this._stablemaster();
+    this._merchant(-16, 20, 'the Nexus', 'quartermaster', -0.6); // bag & pouch upgrades
     this._ambientLife();
     this._aerial();
     this._setupCulling();
@@ -496,6 +497,7 @@ export class World {
       alchemist: { label: 'Alchemist', awning: 0x4a9a5a, glyph: '🧪' },
       general: { label: 'Trader', awning: 0xc9a227, glyph: '💍' },
       stable: { label: 'Stablemaster', awning: 0x8a5a2a, glyph: '🐎' },
+      quartermaster: { label: 'Quartermaster', awning: 0x5a6a8a, glyph: '🎒' },
     }[type] || { label: 'Trader', awning: 0xc9a227 };
     const y = heightAt(x, z);
     const g = new THREE.Group();

@@ -307,8 +307,13 @@ function updateHarvest(t) {
   if (t >= h.until) {
     const gb = player.skillBonus('gathering');
     const drops = world.harvestNode(h.node, t, gb.yield || 0, gb.rareFind || 0);
-    const parts = [];
-    for (const id of Object.keys(drops)) { player.addMaterial(id, drops[id]); const m = materialById(id); parts.push(`${m ? m.glyph : ''} ${drops[id]}× ${m ? m.name : id}`); }
+    const parts = []; let overflow = false;
+    for (const id of Object.keys(drops)) {
+      const m = materialById(id);
+      if (player.addMaterial(id, drops[id])) parts.push(`${m ? m.glyph : ''} ${drops[id]}× ${m ? m.name : id}`);
+      else overflow = true;
+    }
+    if (overflow) ui.log('Your crafting pouch is full — upgrade it at the Quartermaster to hold more materials.', 'sys');
     player.gainSkillXp('gathering', NODE_TYPES[h.node.type].skillXp * h.node.tier);
     player.counters.harvest = (player.counters.harvest || 0) + 1;
     ui.log(`You harvested ${parts.join(', ')}.`, 'xp');
@@ -432,7 +437,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen || ui.wardrobeOpen || ui.craftingOpen || ui.mountShopOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen || ui.wardrobeOpen || ui.craftingOpen || ui.mountShopOpen || ui.upgradeShopOpen;
 
     // Crosshair shows while aiming (mouse-look, gamepad, or touch), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.aiming);
@@ -590,9 +595,14 @@ function animate() {
     } else if (harvesting) {
       updateHarvest(t);
     } else if (nearVendor) {
-      const stable = nearVendor.type === 'stable';
-      ui.showPrompt(`Press <b>E</b> to ${stable ? 'browse mounts at the' : 'trade with the'} <b>${nearVendor.label}</b>`);
-      if (input.just('KeyE')) { if (stable) ui.openMountShop(player); else ui.openVendor(player, nearVendor); }
+      const vt = nearVendor.type;
+      const verb = vt === 'stable' ? 'browse mounts at the' : vt === 'quartermaster' ? 'buy bag upgrades from the' : 'trade with the';
+      ui.showPrompt(`Press <b>E</b> to ${verb} <b>${nearVendor.label}</b>`);
+      if (input.just('KeyE')) {
+        if (vt === 'stable') ui.openMountShop(player);
+        else if (vt === 'quartermaster') ui.openUpgradeShop(player);
+        else ui.openVendor(player, nearVendor);
+      }
     } else if (giver && giverQuest) {
       const st = Quests.statusOf(player, giverQuest);
       const verb = st === 'available' ? 'speak with' : st === 'complete' ? 'turn in quest with' : 'talk to';

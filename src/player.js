@@ -27,6 +27,14 @@ function emptyGear() {
   return g;
 }
 
+// Bag/pouch capacity + upgrade steps (bought from the Quartermaster). Combat
+// bag counts item slots; the crafting pouch counts distinct material stacks.
+export const INV_BASE = 24, INV_STEP = 6, INV_MAX = 60;
+export const MAT_BASE = 12, MAT_STEP = 4, MAT_MAX = 32;
+// Escalating gold cost of the next capacity upgrade, by how many already bought.
+export function invUpgradeCost(tier) { return Math.round(250 * Math.pow(1.7, tier)); }
+export function matUpgradeCost(tier) { return Math.round(180 * Math.pow(1.7, tier)); }
+
 // Emotes: a bit of body language + a floating bubble. Shared with the UI.
 export const EMOTES = [
   { id: 'wave', name: 'Wave', glyph: '👋' },
@@ -79,7 +87,7 @@ export class Player {
     this.gear = emptyGear();
     this.activeWeapon = 0;  // 0 = weapon slot, 1 = weapon2 slot (Tab toggles)
     this.inventory = [];
-    this.maxInventory = 24;
+    this.maxInventory = INV_BASE;
     this.bonus = {};        // cached summed gear stats
     this.gold = 0;
     this.timed = [];        // active consumable buffs: {until, label, color, str?, dmgMult?, speedMult?...}
@@ -145,6 +153,7 @@ export class Player {
     this.mountSkin = 'horse';
     // Crafting pouch: stackable materials kept out of the 24-slot combat bag.
     this.materials = {};       // materialId -> count
+    this.maxMaterials = MAT_BASE; // distinct material stacks the pouch can hold (upgradeable)
     this.builds = [];          // placed structures: { type, x, y, z, rot }
     this.ownedMounts = new Set(); // mount skins bought from the Stablemaster
     this.activeMount = 'horse';   // which owned mount setMountSkin summons
@@ -1046,8 +1055,41 @@ export class Player {
   dismount() { this.mounted = false; if (this.steed) this.steed.visible = false; }
 
   // ---- Crafting pouch (stackable materials) ----
-  addMaterial(id, n = 1) { if (n > 0) this.materials[id] = (this.materials[id] || 0) + n; }
+  materialStacks() { return Object.keys(this.materials).length; }
+  pouchFull() { return this.materialStacks() >= this.maxMaterials; }
+  // Can a material land in the pouch? Existing stacks always grow; a brand-new
+  // material type needs a free stack slot.
+  canAddMaterial(id) { return (this.materials[id] || 0) > 0 || !this.pouchFull(); }
+  // Returns true if stored, false if the pouch is full for a new material type.
+  addMaterial(id, n = 1) {
+    if (!(n > 0)) return true;
+    if (!(this.materials[id] > 0) && this.pouchFull()) return false;
+    this.materials[id] = (this.materials[id] || 0) + n;
+    return true;
+  }
   materialCount(id) { return this.materials[id] || 0; }
+
+  // ---- Bag / pouch upgrades (Quartermaster) ----
+  invTier() { return Math.round((this.maxInventory - INV_BASE) / INV_STEP); }
+  invAtMax() { return this.maxInventory >= INV_MAX; }
+  invUpgradeCost() { return invUpgradeCost(this.invTier()); }
+  buyInvUpgrade() {
+    if (this.invAtMax()) return false;
+    const c = this.invUpgradeCost();
+    if (this.gold < c) return false;
+    this.gold -= c; this.maxInventory = Math.min(INV_MAX, this.maxInventory + INV_STEP);
+    return true;
+  }
+  matTier() { return Math.round((this.maxMaterials - MAT_BASE) / MAT_STEP); }
+  matAtMax() { return this.maxMaterials >= MAT_MAX; }
+  matUpgradeCost() { return matUpgradeCost(this.matTier()); }
+  buyMatUpgrade() {
+    if (this.matAtMax()) return false;
+    const c = this.matUpgradeCost();
+    if (this.gold < c) return false;
+    this.gold -= c; this.maxMaterials = Math.min(MAT_MAX, this.maxMaterials + MAT_STEP);
+    return true;
+  }
   canAfford(cost) { for (const id in cost) if ((this.materials[id] || 0) < cost[id]) return false; return true; }
   spendMaterials(cost) {
     if (!this.canAfford(cost)) return false;
@@ -1250,6 +1292,8 @@ export class Player {
       discoveredAreas: [...this.discoveredAreas],
       explored: [...this.explored],
       mountSkin: this.mountSkin,
+      maxInventory: this.maxInventory,
+      maxMaterials: this.maxMaterials,
       materials: this.materials,
       builds: this.builds,
       ownedMounts: [...this.ownedMounts],
@@ -1283,6 +1327,8 @@ export class Player {
     if (save.gear) this.gear = Object.assign(emptyGear(), save.gear);
     if (Array.isArray(save.inventory)) this.inventory = save.inventory;
     if (typeof save.gold === 'number') this.gold = save.gold;
+    if (typeof save.maxInventory === 'number') this.maxInventory = Math.max(INV_BASE, Math.min(INV_MAX, save.maxInventory));
+    if (typeof save.maxMaterials === 'number') this.maxMaterials = Math.max(MAT_BASE, Math.min(MAT_MAX, save.maxMaterials));
     if (save.materials && typeof save.materials === 'object') this.materials = { ...save.materials };
     if (Array.isArray(save.builds)) this.builds = save.builds.slice();
     if (Array.isArray(save.ownedMounts)) this.ownedMounts = new Set(save.ownedMounts);

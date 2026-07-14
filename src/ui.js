@@ -886,7 +886,7 @@ export class UI {
       ['questDialogOpen', 'closeQuestDialog'], ['questLogOpen', 'closeQuestLog'], ['charSheetOpen', 'closeCharSheet'],
       ['worldMapOpen', 'closeWorldMap'], ['dialogueOpen', 'closeDialogue'], ['codexOpen', 'closeCodex'],
       ['emotesOpen', 'closeEmotes'], ['achievementsOpen', 'closeAchievements'], ['wardrobeOpen', 'closeWardrobe'],
-      ['craftingOpen', 'closeCrafting'], ['mountShopOpen', 'closeMountShop'],
+      ['craftingOpen', 'closeCrafting'], ['mountShopOpen', 'closeMountShop'], ['upgradeShopOpen', 'closeUpgradeShop'],
       ['settingsOpen', 'closeSettings'],
     ];
     for (const [flag, fn] of panels) if (this[flag] && typeof this[fn] === 'function') { this[fn](); return true; }
@@ -1507,7 +1507,7 @@ export class UI {
     const tab = this._craftTab;
     let html = '';
     if (tab === 'mats') {
-      html += `<div class="sk-section">Crafting pouch</div><div class="mat-grid">`;
+      html += `<div class="sk-section">Crafting pouch — ${p.materialStacks()}/${p.maxMaterials} stacks</div><div class="mat-grid">`;
       let any = false;
       for (const id of MATERIAL_ORDER) {
         const n = p.materialCount(id); if (!n) continue; any = true;
@@ -1574,6 +1574,8 @@ export class UI {
     if (!p.canAfford(cost)) { this.log('Not enough materials.', 'sys'); return; }
     // Bag-space check for outputs that produce an item.
     if (r.out.k !== 'material' && p.inventory.length >= p.maxInventory) { this.log('Your bag is full.', 'sys'); return; }
+    // Pouch-space check for a refined material of a brand-new type.
+    if (r.out.k === 'material' && !p.canAddMaterial(r.out.id)) { this.log('Your crafting pouch is full — upgrade it at the Quartermaster.', 'sys'); return; }
     p.spendMaterials(cost);
     let madeName = '';
     if (r.out.k === 'material') {
@@ -1685,6 +1687,73 @@ export class UI {
           this.log(`Bought the <b>${m.glyph} ${m.name}</b> for ${m.price}g! Press R to ride.`, 'xp');
           this.floater(`${m.glyph} ${m.name}`, 'xp', p.pos);
           this.renderMountShop();
+        }
+      };
+    });
+  }
+
+  // ---- Quartermaster (bag & pouch upgrades) ----
+  _ensureUpgradeShop() {
+    if (this.upgradeOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel mount-panel">
+        <div class="inv-header"><span>🎒 Quartermaster <span class="mount-gold up-gold"></span></span><button class="inv-close">✕</button></div>
+        <div class="mount-body up-body"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    this.upgradeOverlay = ov;
+    this.upgradeBody = ov.querySelector('.up-body');
+    this.upgradeGoldEl = ov.querySelector('.up-gold');
+    ov.querySelector('.inv-close').onclick = () => this.closeUpgradeShop();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeUpgradeShop(); });
+  }
+  openUpgradeShop(player) {
+    this._ensureUpgradeShop();
+    this._upgradePlayer = player;
+    this.upgradeShopOpen = true;
+    this.upgradeOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.renderUpgradeShop();
+  }
+  closeUpgradeShop() { this.upgradeShopOpen = false; if (this.upgradeOverlay) this.upgradeOverlay.classList.add('hidden'); }
+  renderUpgradeShop() {
+    const p = this._upgradePlayer; if (!p) return;
+    this.upgradeGoldEl.textContent = `💰 ${p.gold}`;
+    const rows = [
+      { key: 'inv', glyph: '🎒', name: 'Backpack Expansion', desc: `Adventuring bag — carries your gear, loot & potions.`,
+        cur: p.maxInventory, step: 6, atMax: p.invAtMax(), cost: p.invUpgradeCost(), unit: 'slots' },
+      { key: 'mat', glyph: '🧰', name: 'Crafting Pouch Expansion', desc: `Material pouch — how many distinct materials you can stockpile.`,
+        cur: p.maxMaterials, step: 4, atMax: p.matAtMax(), cost: p.matUpgradeCost(), unit: 'stacks' },
+    ];
+    let html = `<div class="sk-section">Capacity upgrades</div><div class="mount-list">`;
+    for (const r of rows) {
+      const okGold = p.gold >= r.cost;
+      const label = r.atMax ? 'Maxed' : (okGold ? `💰 ${r.cost}` : `💰 ${r.cost}`);
+      html += `<div class="mount-row ${r.atMax ? 'active' : (okGold ? '' : 'locked')}" data-up="${r.key}">
+        <div class="mr-glyph">${r.glyph}</div>
+        <div class="mr-info"><div class="mr-name">${r.name}</div>
+          <div class="mr-desc">${r.desc}</div>
+          <div class="mr-stat">${r.cur} ${r.unit}${r.atMax ? ' (max)' : ` → ${r.cur + r.step} ${r.unit}`}</div></div>
+        <button class="mr-btn" ${r.atMax || !okGold ? 'disabled' : ''}>${label}</button></div>`;
+    }
+    html += `</div>`;
+    this.upgradeBody.innerHTML = html;
+    this.upgradeBody.querySelectorAll('.mount-row').forEach((row) => {
+      const btn = row.querySelector('.mr-btn');
+      btn.onclick = () => {
+        const key = row.dataset.up;
+        if (key === 'inv') {
+          if (p.invAtMax()) { this.log('Your backpack is already at maximum size.', 'sys'); return; }
+          const c = p.invUpgradeCost();
+          if (p.gold < c) { this.log('Not enough gold.', 'sys'); return; }
+          if (p.buyInvUpgrade()) { this.log(`Backpack expanded to <b>${p.maxInventory} slots</b>.`, 'xp'); if (this.inventoryOpen) this.renderInventory(); this.renderUpgradeShop(); }
+        } else {
+          if (p.matAtMax()) { this.log('Your crafting pouch is already at maximum size.', 'sys'); return; }
+          const c = p.matUpgradeCost();
+          if (p.gold < c) { this.log('Not enough gold.', 'sys'); return; }
+          if (p.buyMatUpgrade()) { this.log(`Crafting pouch expanded to <b>${p.maxMaterials} stacks</b>.`, 'xp'); if (this.craftingOpen) this.renderCrafting(); this.renderUpgradeShop(); }
         }
       };
     });
