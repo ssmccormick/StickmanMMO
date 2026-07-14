@@ -17,6 +17,7 @@ import { Network } from './network.js';
 import { Saves } from './save.js';
 import { starterKit, makeStoneSword, rollFishingCatch, RARITY } from './items.js';
 import { SKILL_BY_ID as SKILLS_BY_ID } from './skills.js';
+import { NODE_TYPES, materialById } from './crafting.js';
 import { addOutlines, WIND } from './gfx.js';
 import * as Quests from './quests.js';
 import * as Achievements from './achievements.js';
@@ -133,6 +134,7 @@ function beginGame(classId, name, server, save, appearance) {
   if (save) {
     // Continue an existing character.
     player.applySave(save);
+    world.rebuildStructures(player.builds); // re-raise any structures they built
   } else {
     // Brand new character → outfit them in a class-themed starter set (weapon +
     // armor pieces that actually show on the model), then persist to the roster.
@@ -287,6 +289,36 @@ function quickHeal() {
   if (ui.inventoryOpen) ui.renderInventory();
 }
 
+// ---- Harvesting: work a resource node (tree/rock/herb) for materials ----
+let harvesting = null;
+function startHarvest(node, t) {
+  const secs = 2.0 * (1 - (player.skillBonus('gathering').gatherSpeed || 0));
+  player.facing = Math.atan2(node.pos.x - player.pos.x, node.pos.z - player.pos.z);
+  harvesting = { node, until: t + Math.max(0.6, secs), anchor: player.pos.clone() };
+  const verb = { tree: 'chop', rock: 'mine', herb: 'gather' }[node.type] || 'harvest';
+  ui.log(`You begin to ${verb}…`, 'sys');
+  audio.play('cast');
+}
+function updateHarvest(t) {
+  const h = harvesting;
+  if (!player.alive || player.pos.distanceTo(h.anchor) > 1.8) { harvesting = null; ui.hidePrompt(); ui.log('You stop harvesting.', 'sys'); return; }
+  const left = Math.max(0, h.until - t);
+  ui.showPrompt(`⛏️ Harvesting the ${h.node.type}…  <b>${(left).toFixed(1)}s</b>`);
+  if (t >= h.until) {
+    const gb = player.skillBonus('gathering');
+    const drops = world.harvestNode(h.node, t, gb.yield || 0, gb.rareFind || 0);
+    const parts = [];
+    for (const id of Object.keys(drops)) { player.addMaterial(id, drops[id]); const m = materialById(id); parts.push(`${m ? m.glyph : ''} ${drops[id]}× ${m ? m.name : id}`); }
+    player.gainSkillXp('gathering', NODE_TYPES[h.node.type].skillXp * h.node.tier);
+    player.counters.harvest = (player.counters.harvest || 0) + 1;
+    ui.log(`You harvested ${parts.join(', ')}.`, 'xp');
+    ui.floater(parts[0] || 'Harvested', 'xp', player.pos);
+    audio.play('level');
+    if (ui.craftingOpen) ui.renderCrafting();
+    harvesting = null; ui.hidePrompt();
+  }
+}
+
 // ---- Fishing: cast at a water spot, wait for a bite, reel it in with E ----
 let fishing = null;
 function startFishing(spot, t) {
@@ -400,7 +432,7 @@ function animate() {
       return;
     }
 
-    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen || ui.wardrobeOpen;
+    const menuOpen = ui.inventoryOpen || ui.vendorOpen || ui.skillsOpen || ui.questDialogOpen || ui.questLogOpen || ui.charSheetOpen || ui.worldMapOpen || ui.dialogueOpen || ui.codexOpen || ui.emotesOpen || ui.achievementsOpen || ui.settingsOpen || ui.wardrobeOpen || ui.craftingOpen || ui.mountShopOpen;
 
     // Crosshair shows while aiming (mouse-look, gamepad, or touch), hidden in menus.
     ui.el.crosshair.classList.toggle('hidden', menuOpen || !input.aiming);
@@ -424,6 +456,7 @@ function animate() {
     if (input.just('KeyL')) ui.toggleCodex(player);
     if (input.just('KeyB')) ui.toggleAchievements(player);
     if (input.just('KeyN')) ui.toggleWardrobe(player);
+    if (input.just('KeyG')) ui.toggleCrafting(player, world);
     if (input.just('KeyV')) {
       const m = followCam.cycleMode();
       ui.log(m === 'fps' ? 'First-person view.' : 'Over-the-shoulder view.', 'sys');
@@ -479,7 +512,7 @@ function animate() {
       if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
     }
     if (newMinions.length) enemies.push(...newMinions);
-    combat.suppressInput = menuOpen || player.mounted || !!fishing; // no attacking while fishing
+    combat.suppressInput = menuOpen || player.mounted || !!fishing || !!harvesting; // no attacking while fishing/harvesting
     combat.update(dt, input);
     updateEnemyShots(dt, player); // fly the ranged mobs' projectiles you must dodge
     network.update(dt);
@@ -554,9 +587,12 @@ function animate() {
       ui.hidePrompt();
     } else if (fishing) {
       updateFishing(t);
+    } else if (harvesting) {
+      updateHarvest(t);
     } else if (nearVendor) {
-      ui.showPrompt(`Press <b>E</b> to trade with the <b>${nearVendor.label}</b>`);
-      if (input.just('KeyE')) ui.openVendor(player, nearVendor);
+      const stable = nearVendor.type === 'stable';
+      ui.showPrompt(`Press <b>E</b> to ${stable ? 'browse mounts at the' : 'trade with the'} <b>${nearVendor.label}</b>`);
+      if (input.just('KeyE')) { if (stable) ui.openMountShop(player); else ui.openVendor(player, nearVendor); }
     } else if (giver && giverQuest) {
       const st = Quests.statusOf(player, giverQuest);
       const verb = st === 'available' ? 'speak with' : st === 'complete' ? 'turn in quest with' : 'talk to';
@@ -760,6 +796,12 @@ function animate() {
         ui.floater(saved ? 'Saved' : 'Rested', 'heal', player.pos);
         audio.play('rest');
       }
+    } else if (player.alive && player.state === 'ground' && !player.mounted && world.nearestNode(player.pos, 3.2)) {
+      const node = world.nearestNode(player.pos, 3.2);
+      const nd = NODE_TYPES[node.type];
+      const verb = { tree: 'chop', rock: 'mine', herb: 'gather' }[node.type] || 'harvest';
+      ui.showPrompt(`Press <b>E</b> to ${verb} the <b>${nd.name}</b>  <span style="opacity:.7">(⛏️ Lv ${player.skillLevel('gathering')})</span>`);
+      if (input.just('KeyE')) startHarvest(node, t);
     } else if (player.alive && player.state === 'ground' && !player.mounted && (fishSpot = world.nearWater(player.pos.x, player.pos.z))) {
       ui.showPrompt(`Press <b>E</b> to cast a line and fish${player.fishingStat ? `  <span style="opacity:.7">(🎣 ${player.fishingStat})</span>` : ''}`);
       if (input.just('KeyE')) startFishing(fishSpot, t);

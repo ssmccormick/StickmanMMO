@@ -8,6 +8,8 @@ import { SKILLS, SKILL_MAX, skillXpForLevel } from './skills.js';
 import { QUALITY } from './gfx.js';
 import { Saves } from './save.js';
 import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
+import { MATERIALS, MATERIAL_ORDER, RECIPES, RECIPE_CATS, STRUCTURES, discountedCost, materialById } from './crafting.js';
+import { MOUNTS, SHOP_MOUNTS, MOUNT_ORDER, mountById } from './mounts.js';
 import { WEAPON_SKINS } from './weapons.js';
 import * as Quests from './quests.js';
 import { TOWNS, AREAS, MOUNTAINS, WATER_LEVEL, WORLD_SIZE, heightAt, biomeColorAt } from './world.js';
@@ -884,6 +886,7 @@ export class UI {
       ['questDialogOpen', 'closeQuestDialog'], ['questLogOpen', 'closeQuestLog'], ['charSheetOpen', 'closeCharSheet'],
       ['worldMapOpen', 'closeWorldMap'], ['dialogueOpen', 'closeDialogue'], ['codexOpen', 'closeCodex'],
       ['emotesOpen', 'closeEmotes'], ['achievementsOpen', 'closeAchievements'], ['wardrobeOpen', 'closeWardrobe'],
+      ['craftingOpen', 'closeCrafting'], ['mountShopOpen', 'closeMountShop'],
       ['settingsOpen', 'closeSettings'],
     ];
     for (const [flag, fn] of panels) if (this[flag] && typeof this[fn] === 'function') { this[fn](); return true; }
@@ -1214,6 +1217,12 @@ export class UI {
         if (b.fishing) bits.push(`+${Math.round(b.fishing)} fishing`);
         if (b.costMul) bits.push(`-${Math.round(b.costMul * 100)}% cost`);
         if (b.stamina) bits.push(`-${Math.round(b.stamina * 100)}% sprint`);
+        if (b.yield) bits.push(`+${Math.round(b.yield * 100)}% yield`);
+        if (b.gatherSpeed) bits.push(`+${Math.round(b.gatherSpeed * 100)}% harvest speed`);
+        if (b.rareFind) bits.push(`+${Math.round(b.rareFind * 100)}% rare finds`);
+        if (b.quality) bits.push(`+${Math.round(b.quality * 100)}% quality`);
+        if (b.craftDisc) bits.push(`-${Math.round(b.craftDisc * 100)}% mat cost`);
+        if (b.buildDisc) bits.push(`-${Math.round(b.buildDisc * 100)}% build cost`);
         const perks = def.perks.map((p) => `<span class="sk-perk ${s.level >= p.lvl ? 'on' : ''}" title="Lv ${p.lvl}: ${p.desc}">${s.level >= p.lvl ? '◆' : '◇'} ${p.name}</span>`).join('');
         html += `
           <div class="sk-card prof-card">
@@ -1438,6 +1447,247 @@ export class UI {
       tipEl.style.top = Math.min(e.clientY + 16, window.innerHeight - 200) + 'px';
     });
     el.addEventListener('mouseleave', () => tipEl.classList.add('hidden'));
+  }
+
+  // ---- Crafting & Building window (KeyG) ----
+  _ensureCrafting() {
+    if (this.craftOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel craft-panel">
+        <div class="inv-header"><span>🛠️ Workshop <span class="craft-gold"></span></span><button class="inv-close">✕</button></div>
+        <div class="craft-tabs">
+          <button class="craft-tab on" data-tab="craft">Craft</button>
+          <button class="craft-tab" data-tab="build">Build</button>
+          <button class="craft-tab" data-tab="mats">Materials</button>
+        </div>
+        <div class="craft-body"></div>
+      </div>
+      <div class="item-tip hidden"></div>`;
+    document.body.appendChild(ov);
+    this.craftOverlay = ov;
+    this.craftBody = ov.querySelector('.craft-body');
+    this.craftGoldEl = ov.querySelector('.craft-gold');
+    this.craftTip = ov.querySelector('.item-tip');
+    this._craftTab = 'craft';
+    ov.querySelectorAll('.craft-tab').forEach((b) => b.onclick = () => {
+      this._craftTab = b.dataset.tab;
+      ov.querySelectorAll('.craft-tab').forEach((x) => x.classList.toggle('on', x === b));
+      this.renderCrafting();
+    });
+    ov.querySelector('.inv-close').onclick = () => this.closeCrafting();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeCrafting(); });
+  }
+  toggleCrafting(player, world) {
+    this._ensureCrafting();
+    this._craftPlayer = player; this._craftWorld = world || this._craftWorld;
+    if (this.craftingOpen) { this.closeCrafting(); return; }
+    this.craftingOpen = true;
+    this.craftOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.renderCrafting();
+  }
+  closeCrafting() {
+    this.craftingOpen = false;
+    if (this.craftOverlay) this.craftOverlay.classList.add('hidden');
+    if (this.craftTip) this.craftTip.classList.add('hidden');
+  }
+  // A cost line "🪵 2/5" (red if short).
+  _costLine(cost, p) {
+    return Object.entries(cost).map(([id, n]) => {
+      const have = p.materialCount(id), m = materialById(id);
+      const ok = have >= n;
+      return `<span class="cost-chip ${ok ? '' : 'short'}" title="${m ? m.name : id}">${m ? m.glyph : '?'} ${have}/${n}</span>`;
+    }).join(' ');
+  }
+  renderCrafting() {
+    const p = this._craftPlayer; if (!p) return;
+    this.craftGoldEl.textContent = `💰 ${p.gold}`;
+    const tab = this._craftTab;
+    let html = '';
+    if (tab === 'mats') {
+      html += `<div class="sk-section">Crafting pouch</div><div class="mat-grid">`;
+      let any = false;
+      for (const id of MATERIAL_ORDER) {
+        const n = p.materialCount(id); if (!n) continue; any = true;
+        const m = MATERIALS[id];
+        html += `<div class="mat-cell" title="${m.name} — tier ${m.tier}"><div class="mat-glyph">${m.glyph}</div><div class="mat-n">${n}</div><div class="mat-name">${m.name}</div></div>`;
+      }
+      html += `</div>`;
+      if (!any) html += `<div class="roster-empty">No materials yet — harvest trees, rocks and herb patches out in the world (press E).</div>`;
+      this.craftBody.innerHTML = html;
+      return;
+    }
+    if (tab === 'build') {
+      const lvl = p.skillLevel('construction');
+      const disc = p.skillBonus('construction').buildDisc || 0;
+      html += `<div class="sk-section">Construction — Lv ${lvl} · placed where you stand</div>`;
+      for (const s of STRUCTURES) {
+        const cost = discountedCost(s.cost, disc);
+        const canLvl = lvl >= s.req, canPay = p.canAfford(cost);
+        const ok = canLvl && canPay;
+        html += `<div class="recipe-row ${ok ? '' : 'locked'}" data-build="${s.id}">
+          <div class="rr-glyph">${s.glyph}</div>
+          <div class="rr-info"><div class="rr-name">${s.name} ${s.fn ? `<span class="rr-tag">${s.fn === 'rest' ? 'rest point' : 'crafting station'}</span>` : ''}</div>
+            <div class="rr-desc">${s.desc}</div><div class="rr-cost">${this._costLine(cost, p)}</div></div>
+          <button class="rr-btn" ${ok ? '' : 'disabled'}>${canLvl ? (canPay ? 'Build' : 'Need mats') : `Lv ${s.req}`}</button>
+        </div>`;
+      }
+      this.craftBody.innerHTML = html;
+      this.craftBody.querySelectorAll('.recipe-row').forEach((row) => {
+        const s = STRUCTURES.find((x) => x.id === row.dataset.build);
+        row.querySelector('.rr-btn').onclick = () => this._doBuild(s);
+      });
+      return;
+    }
+    // Craft tab
+    const clvl = p.skillLevel('crafting');
+    html += `<div class="sk-section">Crafting — Lv ${clvl}</div>`;
+    const disc = p.skillBonus('crafting').craftDisc || 0;
+    for (const cat of RECIPE_CATS) {
+      html += `<div class="craft-cat">${cat}</div>`;
+      for (const r of RECIPES.filter((x) => x.cat === cat)) {
+        const cost = discountedCost(r.cost, disc);
+        const canLvl = clvl >= r.req, canPay = p.canAfford(cost);
+        const ok = canLvl && canPay;
+        const outLabel = r.out.k === 'material' ? `${MATERIALS[r.out.id].glyph} ${MATERIALS[r.out.id].name}${r.out.count > 1 ? ' ×' + r.out.count : ''}`
+          : r.out.k === 'consumable' ? `${r.glyph} potion` : `${r.glyph} ${r.out.rarity}+ ${r.out.slot}`;
+        html += `<div class="recipe-row ${ok ? '' : 'locked'}" data-recipe="${r.id}">
+          <div class="rr-glyph">${r.glyph}</div>
+          <div class="rr-info"><div class="rr-name">${r.name}</div>
+            <div class="rr-desc">Makes: ${outLabel}</div><div class="rr-cost">${this._costLine(cost, p)}</div></div>
+          <button class="rr-btn" ${ok ? '' : 'disabled'}>${canLvl ? (canPay ? 'Craft' : 'Need mats') : `Lv ${r.req}`}</button>
+        </div>`;
+      }
+    }
+    this.craftBody.innerHTML = html;
+    this.craftBody.querySelectorAll('.recipe-row').forEach((row) => {
+      const r = RECIPES.find((x) => x.id === row.dataset.recipe);
+      row.querySelector('.rr-btn').onclick = () => this._doCraft(r);
+    });
+  }
+  _doCraft(r) {
+    const p = this._craftPlayer; if (!p || !r) return;
+    if (p.skillLevel('crafting') < r.req) { this.log(`Requires Crafting Lv ${r.req}.`, 'sys'); return; }
+    const cost = discountedCost(r.cost, p.skillBonus('crafting').craftDisc || 0);
+    if (!p.canAfford(cost)) { this.log('Not enough materials.', 'sys'); return; }
+    // Bag-space check for outputs that produce an item.
+    if (r.out.k !== 'material' && p.inventory.length >= p.maxInventory) { this.log('Your bag is full.', 'sys'); return; }
+    p.spendMaterials(cost);
+    let madeName = '';
+    if (r.out.k === 'material') {
+      p.addMaterial(r.out.id, r.out.count || 1);
+      madeName = `${MATERIALS[r.out.id].glyph} ${MATERIALS[r.out.id].name} ×${r.out.count || 1}`;
+    } else if (r.out.k === 'consumable') {
+      const it = makeConsumable(r.out.id); p.addItem(it); madeName = `${it.glyph} ${it.name}`;
+    } else { // gear
+      const ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+      let ri = ORDER.indexOf(r.out.rarity);
+      // Crafting quality gives a chance to bump one tier (never to legendary here).
+      if (Math.random() < (p.skillBonus('crafting').quality || 0)) ri = Math.min(ri + 1, ORDER.indexOf('epic'));
+      const slot = r.out.slot === 'armor' ? ['head', 'chest', 'shoulders', 'hands', 'feet'][Math.floor(Math.random() * 5)]
+        : r.out.slot === 'trinket' ? (Math.random() < 0.5 ? 'ring' : 'amulet') : 'weapon';
+      const it = generateItem({ slot, level: p.stats.level, forceRarity: ORDER[ri] });
+      it.name = `Crafted ${it.name}`;
+      p.addItem(it); madeName = `${it.glyph} ${it.name}`;
+    }
+    p.gainSkillXp('crafting', r.xp || 12);
+    this.log(`Crafted <b>${madeName}</b>.`, 'xp');
+    if (this.inventoryOpen) this.renderInventory();
+    this.renderCrafting();
+  }
+  _doBuild(s) {
+    const p = this._craftPlayer, world = this._craftWorld;
+    if (!p || !s) return;
+    if (!world) { this.log('Cannot build here.', 'sys'); return; }
+    if (p.skillLevel('construction') < s.req) { this.log(`Requires Construction Lv ${s.req}.`, 'sys'); return; }
+    const cost = discountedCost(s.cost, p.skillBonus('construction').buildDisc || 0);
+    if (!p.canAfford(cost)) { this.log('Not enough materials.', 'sys'); return; }
+    // Place a couple of metres in front of the player, facing them.
+    const fx = p.pos.x + Math.sin(p.facing) * 3, fz = p.pos.z + Math.cos(p.facing) * 3;
+    const rec = world.placeStructure(s.id, fx, fz, p.facing + Math.PI);
+    if (!rec) { this.log('Cannot build there.', 'sys'); return; }
+    p.spendMaterials(cost);
+    p.builds.push({ id: s.id, x: rec.pos.x, y: rec.pos.y, z: rec.pos.z, rot: rec.rot });
+    p.gainSkillXp('construction', 18 + s.req);
+    this.log(`Built a <b>${s.glyph} ${s.name}</b>.`, 'xp');
+    this.floater(`${s.glyph} ${s.name}`, 'xp', p.pos);
+    this.renderCrafting();
+  }
+
+  // ---- Stablemaster (mount shop) ----
+  _ensureMountShop() {
+    if (this.mountShopOverlay) return;
+    const ov = document.createElement('div');
+    ov.className = 'inv-overlay hidden';
+    ov.innerHTML = `
+      <div class="inv-panel mount-panel">
+        <div class="inv-header"><span>🐎 Stablemaster <span class="mount-gold"></span></span><button class="inv-close">✕</button></div>
+        <div class="mount-body"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    this.mountShopOverlay = ov;
+    this.mountBody = ov.querySelector('.mount-body');
+    this.mountGoldEl = ov.querySelector('.mount-gold');
+    ov.querySelector('.inv-close').onclick = () => this.closeMountShop();
+    ov.addEventListener('click', (e) => { if (e.target === ov) this.closeMountShop(); });
+  }
+  openMountShop(player) {
+    this._ensureMountShop();
+    this._mountPlayer = player;
+    this.mountShopOpen = true;
+    this.mountShopOverlay.classList.remove('hidden');
+    if (document.exitPointerLock) document.exitPointerLock();
+    this.renderMountShop();
+  }
+  closeMountShop() { this.mountShopOpen = false; if (this.mountShopOverlay) this.mountShopOverlay.classList.add('hidden'); }
+  renderMountShop() {
+    const p = this._mountPlayer; if (!p) return;
+    this.mountGoldEl.textContent = `💰 ${p.gold}`;
+    const owned = p.ownedMountList();
+    const ride = p.skillLevel('riding');
+    let html = `<div class="sk-section">Your stable · Riding Lv ${ride}</div><div class="mount-list">`;
+    // Owned mounts first (switch which one you summon).
+    for (const id of MOUNT_ORDER) {
+      if (!owned.has(id)) continue;
+      const m = MOUNTS[id]; const active = p.activeMount === id;
+      html += `<div class="mount-row ${active ? 'active' : ''}" data-ride="${id}">
+        <div class="mr-glyph">${m.glyph}</div>
+        <div class="mr-info"><div class="mr-name">${m.name} ${active ? '<span class="mr-tag">riding</span>' : ''}</div>
+          <div class="mr-desc">${m.desc}</div><div class="mr-stat">Speed ×${m.speed.toFixed(2)}</div></div>
+        <button class="mr-btn">${active ? 'Active' : 'Ride'}</button></div>`;
+    }
+    html += `</div><div class="sk-section">For sale</div><div class="mount-list">`;
+    for (const id of SHOP_MOUNTS) {
+      if (owned.has(id)) continue;
+      const m = MOUNTS[id];
+      const okLvl = ride >= m.reqRiding, okGold = p.gold >= m.price;
+      const ok = okLvl && okGold;
+      html += `<div class="mount-row ${ok ? '' : 'locked'}" data-buy="${id}">
+        <div class="mr-glyph">${m.glyph}</div>
+        <div class="mr-info"><div class="mr-name">${m.name}</div>
+          <div class="mr-desc">${m.desc}</div><div class="mr-stat">Speed ×${m.speed.toFixed(2)} · Riding Lv ${m.reqRiding}</div></div>
+        <button class="mr-btn" ${ok ? '' : 'disabled'}>${okLvl ? `💰 ${m.price}` : `Lv ${m.reqRiding}`}</button></div>`;
+    }
+    html += `</div>`;
+    this.mountBody.innerHTML = html;
+    this.mountBody.querySelectorAll('.mount-row').forEach((row) => {
+      const btn = row.querySelector('.mr-btn');
+      if (row.dataset.ride) btn.onclick = () => {
+        if (p.setActiveMount(row.dataset.ride)) { this.log(`You'll ride the ${MOUNTS[row.dataset.ride].name} (press R to mount).`, 'xp'); this.renderMountShop(); }
+      };
+      else if (row.dataset.buy) btn.onclick = () => {
+        const m = MOUNTS[row.dataset.buy];
+        if (p.skillLevel('riding') < m.reqRiding) { this.log(`Requires Riding Lv ${m.reqRiding}.`, 'sys'); return; }
+        if (p.gold < m.price) { this.log('Not enough gold.', 'sys'); return; }
+        if (p.buyMount(row.dataset.buy)) {
+          this.log(`Bought the <b>${m.glyph} ${m.name}</b> for ${m.price}g! Press R to ride.`, 'xp');
+          this.floater(`${m.glyph} ${m.name}`, 'xp', p.pos);
+          this.renderMountShop();
+        }
+      };
+    });
   }
 
   // ---- Character sheet ----

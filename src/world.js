@@ -9,6 +9,7 @@ import { litMat, glowSprite, windify } from './gfx.js';
 import { createStickman } from './stickman.js';
 import { buildWeaponMesh } from './weapons.js';
 import { GIVERS } from './quests.js';
+import { NODE_TYPES, NODE_RESPAWN, rollNodeDrops, STRUCT_BY_ID } from './crafting.js';
 // The deterministic world-data + terrain-height layer lives in a Three-free
 // module so the multiplayer server can run the same world. world.js owns only
 // the Three.js side (meshes, colours, collision, culling).
@@ -80,6 +81,8 @@ export class World {
     this.bossSites = [];   // { x, z, type, level, name } — bosses spawned by main
     this.extraSpawns = []; // { x, z, type, level, elite } — structure guards spawned by main
     this.castleChests = []; // { pos, chest, lid, glow, opened, level, name, radius } — clear-to-open
+    this.nodes = [];       // harvestable resource nodes: { type, tier, pos, mesh, depleted, respawnAt }
+    this.builds = [];      // player-placed structures: { id, mesh, fn, pos }
     this._build();
   }
 
@@ -106,6 +109,8 @@ export class World {
     this._shrines();
     this._treasures();
     this._puzzles();
+    this._resourceNodes();
+    this._stablemaster();
     this._ambientLife();
     this._aerial();
     this._setupCulling();
@@ -490,6 +495,7 @@ export class World {
       armor: { label: 'Armorer', awning: 0x4a6a9a, glyph: '🛡️' },
       alchemist: { label: 'Alchemist', awning: 0x4a9a5a, glyph: '🧪' },
       general: { label: 'Trader', awning: 0xc9a227, glyph: '💍' },
+      stable: { label: 'Stablemaster', awning: 0x8a5a2a, glyph: '🐎' },
     }[type] || { label: 'Trader', awning: 0xc9a227 };
     const y = heightAt(x, z);
     const g = new THREE.Group();
@@ -547,6 +553,224 @@ export class World {
   nearestVendor(pos, maxDist = 4.5) {
     for (const v of this.vendors) if (v.pos.distanceTo(pos) < maxDist) return v;
     return null;
+  }
+
+  // ---- The Stablemaster (mount merchant) ----
+  // A hitching rail with a couple of idle horses just outside the Nexus, so a
+  // new player can find and buy mounts early. Registered as a `stable` vendor.
+  _stablemaster() {
+    const x = 16, z = 20, y = heightAt(x, z);
+    const g = new THREE.Group();
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(5, 0.16, 0.16), litMat({ color: 0x6a4a2a })); rail.position.set(0, 1.1, 0);
+    g.add(rail);
+    for (const sx of [-2.3, 2.3]) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.5, 6), litMat({ color: 0x5a3a22 })); post.position.set(sx, 0.75, 0); g.add(post); }
+    const trough = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 0.7), litMat({ color: 0x4a3320 })); trough.position.set(0, 0.2, 1.2); g.add(trough);
+    const sign = new THREE.Mesh(new THREE.CircleGeometry(0.4, 16), new THREE.MeshBasicMaterial({ color: 0xffcf3a, side: THREE.DoubleSide })); sign.position.set(0, 2.2, -0.6); g.add(sign);
+    g.position.set(x, y, z);
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.group.add(g);
+    this._addBox(rail, false);
+    const keeper = createStickman({ color: 0x9a7a4a, accent: 0x5a3a1a });
+    keeper.position.set(x - 1.4, y, z - 0.8); keeper.rotation.y = 0.6;
+    this.group.add(keeper);
+    this.vendors.push({ name: 'Stablemaster', label: 'Stablemaster', type: 'stable', pos: new THREE.Vector3(x, y, z) });
+  }
+
+  // ---- Harvest nodes (Gathering) ----
+  _resourceNodes() {
+    const TYPES = ['tree', 'tree', 'rock', 'rock', 'herb']; // ~40% tree, 40% rock, 20% herb
+    let placed = 0;
+    for (let i = 0; i < 900 && placed < 300; i++) {
+      const ang = hash2(i, 71) * Math.PI * 2;
+      const dist = 40 + hash2(i, 73) * 980;
+      const x = Math.cos(ang) * dist, z = Math.sin(ang) * dist;
+      const y = heightAt(x, z);
+      if (y < WATER_LEVEL + 1.2) continue;                 // not in water
+      // Skip very steep ground (nodes on a cliff face look wrong / unreachable).
+      const slope = Math.abs(heightAt(x + 1.5, z) - y) + Math.abs(heightAt(x, z + 1.5) - y);
+      if (slope > 2.2) continue;
+      if (Math.hypot(x, z) < 12) continue;                 // keep the spawn pad clear
+      const type = TYPES[Math.floor(hash2(i, 77) * TYPES.length)];
+      const tier = dist < 300 ? 1 : dist < 660 ? 2 : 3;
+      const mesh = this._nodeMesh(type, tier, i);
+      mesh.position.set(x, y, z);
+      mesh.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      this.group.add(mesh);
+      if (type !== 'herb') this._addBox(mesh.userData.solid || mesh, false); // trees/rocks block; herbs don't
+      this.nodes.push({ type, tier, pos: new THREE.Vector3(x, y, z), mesh, depleted: false, respawnAt: 0 });
+      placed++;
+    }
+  }
+  _nodeMesh(type, tier, seed = 0) {
+    const g = new THREE.Group();
+    const def = NODE_TYPES[type];
+    if (type === 'tree') {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 2.0, 7), litMat({ color: 0x6a4a2c })); trunk.position.y = 1.0;
+      g.add(trunk); g.userData.solid = trunk;
+      const leafCol = tier >= 3 ? 0x2f5a2a : tier === 2 ? 0x3f7a34 : 0x4a8a3a;
+      for (let k = 0; k < 3; k++) {
+        const f = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9 - k * 0.15, 0), windify(litMat({ color: leafCol, flatShading: true })));
+        f.position.set((hash2(seed, k + 5) - 0.5) * 0.5, 2.1 + k * 0.5, (hash2(seed, k + 9) - 0.5) * 0.5);
+        g.add(f);
+      }
+    } else if (type === 'rock') {
+      const r = 0.7 + tier * 0.18;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), litMat({ color: 0x8a8a92 }));
+      rock.position.y = r * 0.55; rock.rotation.set(hash2(seed, 1) * 3, hash2(seed, 2) * 3, hash2(seed, 3) * 3);
+      g.add(rock); g.userData.solid = rock;
+      // Ore flecks tinted by tier (copper→iron→mithril).
+      const oreCol = tier >= 3 ? 0xbfe0ff : tier === 2 ? 0xd8dde4 : 0xc27a3a;
+      for (let k = 0; k < 4; k++) {
+        const v = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), new THREE.MeshBasicMaterial({ color: oreCol }));
+        const a = hash2(seed, k + 3) * Math.PI * 2, e = hash2(seed, k + 7) * Math.PI;
+        v.position.set(Math.cos(a) * Math.sin(e) * r, r * 0.55 + Math.cos(e) * r * 0.7, Math.sin(a) * Math.sin(e) * r);
+        g.add(v);
+      }
+    } else { // herb
+      const stemCol = tier >= 3 ? 0x3f8a5a : tier === 2 ? 0x5aa04a : 0x6ab04a;
+      const flowerCol = tier >= 3 ? 0xa0e0ff : tier === 2 ? 0xffe24a : 0xff8ac0;
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2;
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.5, 5), litMat({ color: stemCol }));
+        stem.position.set(Math.cos(a) * 0.18, 0.25, Math.sin(a) * 0.18); g.add(stem);
+        const bloom = new THREE.Mesh(new THREE.IcosahedronGeometry(0.12, 0), new THREE.MeshBasicMaterial({ color: flowerCol }));
+        bloom.position.set(Math.cos(a) * 0.18, 0.52, Math.sin(a) * 0.18); g.add(bloom);
+      }
+    }
+    // A small findable glow marker (colour by node type), gently bobbing.
+    const halo = glowSprite(def.color, type === 'herb' ? 1.1 : 1.6, 0.4);
+    halo.position.y = type === 'tree' ? 2.8 : type === 'rock' ? 1.4 : 0.8;
+    g.add(halo); g.userData.halo = halo;
+    return g;
+  }
+  nearestNode(pos, maxDist = 3.5) {
+    for (const n of this.nodes) if (!n.depleted && n.pos.distanceTo(pos) < maxDist) return n;
+    return null;
+  }
+  // Work a node: roll its drops, deplete it, and start its respawn timer.
+  harvestNode(node, t, yieldBonus = 0, rareFind = 0) {
+    const drops = rollNodeDrops(node.type, node.tier, yieldBonus, rareFind);
+    node.depleted = true;
+    node.respawnAt = t + NODE_RESPAWN;
+    node.mesh.visible = false;
+    node.mesh.matrixWorldAutoUpdate = false;
+    return drops;
+  }
+
+  // ---- Runtime structure building (Construction) ----
+  // Build a structure's THREE mesh from its blueprint id. Meshes are simple
+  // stickman-style primitives. `campfire`/`lamp` include a flame/light hook.
+  buildStructureMesh(id) {
+    const g = new THREE.Group();
+    const wood = litMat({ color: 0x6a4a2c }); const wood2 = litMat({ color: 0x7a5a34 });
+    const stoneM = litMat({ color: 0x8a8a90 }); const metal = litMat({ color: 0x7a7f8a });
+    if (id === 'campfire') {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.14, 6, 12), stoneM); ring.rotation.x = Math.PI / 2; ring.position.y = 0.12; g.add(ring);
+      for (let k = 0; k < 3; k++) { const log = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.9, 5), wood); log.position.y = 0.2; log.rotation.set(0.5, k * 2.1, 0.3); g.add(log); }
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.8, 7), new THREE.MeshBasicMaterial({ color: 0xff8a2c })); flame.position.y = 0.6; g.add(flame);
+      const light = new THREE.PointLight(0xffa54a, 1.8, 14, 2); light.position.y = 0.9; g.add(light);
+      g.userData.flame = flame; g.userData.light = light;
+    } else if (id === 'fence') {
+      const rail1 = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.12), wood); rail1.position.set(0, 0.9, 0); g.add(rail1);
+      const rail2 = rail1.clone(); rail2.position.y = 0.5; g.add(rail2);
+      for (const sx of [-1.1, 1.1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.2, 0.16), wood2); p.position.set(sx, 0.6, 0); g.add(p); }
+      g.userData.solid = rail1;
+    } else if (id === 'tent') {
+      const canvas = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.8, 4), litMat({ color: 0xb0653a })); canvas.position.y = 0.9; canvas.rotation.y = Math.PI / 4; g.add(canvas);
+      const door = new THREE.Mesh(new THREE.CircleGeometry(0.5, 12), new THREE.MeshBasicMaterial({ color: 0x2a1a12, side: THREE.DoubleSide })); door.position.set(0, 0.5, 1.05); g.add(door);
+      g.userData.solid = canvas;
+    } else if (id === 'banner') {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 3, 6), wood2); pole.position.y = 1.5; g.add(pole);
+      const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 0.9), windify(litMat({ color: 0x9a2f3a }))); cloth.position.set(0, 2.3, 0.5); g.add(cloth);
+    } else if (id === 'wall') {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.8, 0.5), stoneM); w.position.y = 0.9; g.add(w);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.2, 0.6), litMat({ color: 0x9a9aa0 })); cap.position.y = 1.9; g.add(cap);
+      g.userData.solid = w;
+    } else if (id === 'lamp') {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.6, 6), metal); pole.position.y = 1.3; g.add(pole);
+      const lantern = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.4, 0.35), new THREE.MeshBasicMaterial({ color: 0xffe6a0 })); lantern.position.y = 2.6; g.add(lantern);
+      const glow = glowSprite(0xffdd88, 3, 0.6); glow.position.y = 2.6; g.add(glow);
+      const light = new THREE.PointLight(0xffdca0, 0.9, 16, 2); light.position.y = 2.6; g.add(light);
+      g.userData.light = light; g.userData.nightLamp = true;
+    } else if (id === 'forge') {
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.9, 1.0), stoneM); base.position.y = 0.45; g.add(base);
+      const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.2, 7), litMat({ color: 0x5a5a60 })); chimney.position.set(0.4, 1.4, 0); g.add(chimney);
+      const coal = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.2, 0.6), new THREE.MeshBasicMaterial({ color: 0xff6a2c })); coal.position.set(-0.2, 0.95, 0); g.add(coal);
+      const anvil = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.24), metal); anvil.position.set(-0.9, 0.7, 0.3); g.add(anvil);
+      const light = new THREE.PointLight(0xff6a2c, 1.0, 10, 2); light.position.set(-0.2, 1.1, 0); g.add(light);
+      g.userData.solid = base;
+    } else if (id === 'watchtower') {
+      for (const [sx, sz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 4, 6), wood2); leg.position.set(sx, 2, sz); g.add(leg); }
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.2, 2.2), wood); deck.position.y = 4; g.add(deck);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.8, 1.2, 4), litMat({ color: 0x7a3a2a })); roof.position.y = 5.1; roof.rotation.y = Math.PI / 4; g.add(roof);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.1), wood); rail.position.set(0, 4.35, 1.05); g.add(rail);
+      g.userData.solid = deck;
+    } else if (id === 'statue') {
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.4), litMat({ color: 0x9a9aa0 })); plinth.position.y = 0.3; g.add(plinth);
+      const hero = createStickman({ color: 0x9aa0aa, accent: 0x7a808a });
+      hero.position.y = 0.6; hero.scale.setScalar(1.1); g.add(hero);
+      g.userData.solid = plinth;
+    } else {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), wood); box.position.y = 0.5; g.add(box); g.userData.solid = box;
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    return g;
+  }
+  // Place a structure at (x,z) facing `rot`. Registers collision + culling and
+  // (for campfires) a rest bonfire. Returns the save record.
+  placeStructure(id, x, z, rot = 0) {
+    const def = STRUCT_BY_ID[id]; if (!def) return null;
+    const y = heightAt(x, z);
+    const mesh = this.buildStructureMesh(def.build);
+    mesh.position.set(x, y, z); mesh.rotation.y = rot;
+    this.group.add(mesh);
+    mesh.updateWorldMatrix(true, true);
+    if (mesh.userData.solid) this._registerCollider(mesh.userData.solid);
+    this._registerCull(mesh);
+    const rec = { id, mesh, fn: def.fn || null, pos: new THREE.Vector3(x, y, z), rot };
+    this.builds.push(rec);
+    // A placed campfire doubles as a Dark-Souls bonfire (rest / heal / save).
+    if (def.fn === 'rest' && mesh.userData.flame) {
+      this.bonfires.push({ pos: rec.pos.clone(), flame: mesh.userData.flame, light: mesh.userData.light, mesh, placed: true });
+    }
+    return rec;
+  }
+  // Rebuild placed structures from a save array (called on load).
+  rebuildStructures(builds) {
+    if (!Array.isArray(builds)) return;
+    for (const b of builds) this.placeStructure(b.id || b.type, b.x, b.z, b.rot || 0);
+  }
+  // A functional placed structure within reach (e.g. a Portable Forge to craft at).
+  nearestBuild(pos, fn, maxDist = 4) {
+    for (const b of this.builds) if ((!fn || b.fn === fn) && b.pos.distanceTo(pos) < maxDist) return b;
+    return null;
+  }
+  // Add an AABB collider from a mesh AND index it into the live collision grid
+  // (unlike _addBox, which is used at build-time before the grid is created).
+  _registerCollider(mesh, climbable = false) {
+    mesh.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(mesh);
+    const c = { min: box.min, max: box.max, climbable };
+    this.colliders.push(c);
+    if (this._colGrid) {
+      const CELL = this._colCell, PAD = 2;
+      const minx = Math.floor((c.min.x - PAD) / CELL), maxx = Math.floor((c.max.x + PAD) / CELL);
+      const minz = Math.floor((c.min.z - PAD) / CELL), maxz = Math.floor((c.max.z + PAD) / CELL);
+      for (let gx = minx; gx <= maxx; gx++) for (let gz = minz; gz <= maxz; gz++) {
+        const k = gx + ',' + gz; let a = this._colGrid.get(k); if (!a) this._colGrid.set(k, a = []); a.push(c);
+      }
+    }
+  }
+  // Bucket a runtime object into the culling grid so streaming shows/hides it.
+  _registerCull(obj) {
+    if (!this._cullBuckets) { obj.visible = true; return; }
+    const CELL = this._cullCell;
+    const k = Math.floor(obj.position.x / CELL) + ',' + Math.floor(obj.position.z / CELL);
+    let arr = this._cullBuckets.get(k); if (!arr) this._cullBuckets.set(k, arr = []);
+    arr.push(obj);
+    // Visible immediately only if its cell is currently active.
+    const active = this._cullActive && this._cullActive.has(k);
+    obj.visible = !!active; obj.matrixWorldAutoUpdate = !!active;
   }
 
   // Scattered ruins (broken pillars) out in the wild, per biome.
@@ -2093,6 +2317,20 @@ export class World {
     for (const tr of this.treasures) {
       if (tr.opened) { tr.lid.rotation.x = THREE.MathUtils.lerp(tr.lid.rotation.x, -2.2, Math.min(1, dt * 6)); tr.glow.intensity = 0; }
       else tr.glow.intensity = 0.55 + Math.sin(t * 3 + tr.pos.x) * 0.35;
+    }
+    // Harvest nodes: respawn depleted ones, and bob the "harvestable" marker.
+    for (const n of this.nodes) {
+      if (n.depleted) {
+        if (t >= n.respawnAt) { n.depleted = false; n.mesh.visible = true; n.mesh.matrixWorldAutoUpdate = true; }
+        continue;
+      }
+      const halo = n.mesh.userData.halo;
+      if (halo && n.mesh.visible) halo.material.opacity = 0.28 + Math.abs(Math.sin(t * 2 + n.pos.x)) * 0.22;
+    }
+    // Placed lamp posts glow after dusk (dayFactor: 0 night .. 1 noon).
+    const night = 1 - (this.dayFactor != null ? this.dayFactor : 1);
+    for (const b of this.builds) {
+      if (b.mesh.userData.nightLamp && b.mesh.userData.light) b.mesh.userData.light.intensity = 0.15 + night * 1.1;
     }
 
     // Birds: drift in lazy circles, flapping.

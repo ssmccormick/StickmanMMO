@@ -18,6 +18,7 @@ import {
 } from './classes.js';
 import { heightAt, WATER_LEVEL, WORLD_SIZE } from './world.js';
 import { sumStats, EQUIP_SLOTS, RARITY, SETS } from './items.js';
+import { MOUNTS, mountById } from './mounts.js';
 import * as Achievements from './achievements.js';
 
 function emptyGear() {
@@ -142,6 +143,11 @@ export class Player {
     this.discoveredAreas = new Set(); // named areas seen (for the map + Cartographer)
     this.explored = new Set(); // explored map cells (z*MAP_GRID + x)
     this.mountSkin = 'horse';
+    // Crafting pouch: stackable materials kept out of the 24-slot combat bag.
+    this.materials = {};       // materialId -> count
+    this.builds = [];          // placed structures: { type, x, y, z, rot }
+    this.ownedMounts = new Set(); // mount skins bought from the Stablemaster
+    this.activeMount = 'horse';   // which owned mount setMountSkin summons
     this._buildSsjFx();
 
     this.recomputeGear();
@@ -587,7 +593,7 @@ export class Player {
     } else {
       let speed = WALK_SPEED * (1 + this.gearSpeed + this.skillBonus('athletics').speed) * (this.buffs.until > this._clock ? this.buffs.speed : 1);
       if (this.ssjActive) speed *= 1 + this.ssjLevel * 0.12; // Saiyan swiftness
-      if (this.mounted) speed *= 1.75 * (1 + this.skillBonus('riding').speed) * (this.passives.has('trailblazer') ? 1.25 : 1); // steady canter
+      if (this.mounted) speed *= this.mountSpeed * (1 + this.skillBonus('riding').speed) * (this.passives.has('trailblazer') ? 1.25 : 1); // steady canter (per-mount speed)
       if (sprinting) { speed *= SPRINT_MULT; this.stats.sp -= 22 * dt * (this.passives.has('windwalker') ? 0.4 : 1) * (1 - this.skillBonus('athletics').stamina); }
       if (this.casting) speed *= 0.4; // charging a spell — slowed to a trudge
       if (this.charging) speed *= 0.18; // winding up a charged attack — a near standstill
@@ -836,20 +842,218 @@ export class Player {
     if (this.steed) this.scene.remove(this.steed);
     this.steed = skin === 'slime' ? this._buildSlimeSteed()
       : skin === 'dragon' ? this._buildDragonSteed()
+      : skin === 'direwolf' ? this._buildBeastSteed('direwolf')
+      : skin === 'charger' ? this._buildBeastSteed('charger')
+      : skin === 'raptor' ? this._buildRaptorSteed()
+      : skin === 'elk' ? this._buildElkSteed()
+      : skin === 'sandstrider' ? this._buildStriderSteed()
       : this._buildSteed();
     this.steed.visible = wasMounted;
     this.scene.add(this.steed);
   }
-  // A mount must be EARNED first (the base steed from the Marathoner achievement,
-  // or the Slime/Dragon mounts from their capstones).
-  get hasMount() { return this.passives.has('steed') || this.passives.has('slimemount') || this.passives.has('dragonmount'); }
+
+  // ---- Purchasable mount meshes (Stablemaster) ----
+  // A quadruped built to a variant profile. `direwolf` = low, lean, grey;
+  // `charger` = a barded (armored) warhorse. Both trot via userData.legs.
+  _buildBeastSteed(variant) {
+    const g = new THREE.Group();
+    const wolf = variant === 'direwolf';
+    const m = mountById(variant);
+    const hide = litMat({ color: m.color });
+    const hide2 = litMat({ color: wolf ? 0x6a6f78 : 0x4a4d55 });
+    const dark = litMat({ color: wolf ? 0x3a3f47 : 0x23242a });
+    const metal = litMat({ color: 0x8a8f9a });
+    const blanket = litMat({ color: wolf ? 0x5a3a3a : 0x6a2f2f });
+    const bodyY = wolf ? 1.0 : 1.12, len = wolf ? 1.15 : 1.05, gir = wolf ? 0.32 : 0.38;
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(gir, len, 6, 12), hide);
+    body.rotation.z = Math.PI / 2; body.position.set(0, bodyY, 0);
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(gir + 0.05, 12, 10), hide); chest.position.set(0, bodyY, 0.55); chest.scale.set(0.9, 0.95, 0.8);
+    const rump = new THREE.Mesh(new THREE.SphereGeometry(gir + 0.06, 12, 10), hide); rump.position.set(0, bodyY, -0.55); rump.scale.set(0.95, 1, 0.85);
+    g.add(body, chest, rump);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.26, wolf ? 0.6 : 0.95, 8), hide); neck.position.set(0, bodyY + (wolf ? 0.25 : 0.38), wolf ? 0.7 : 0.78); neck.rotation.x = wolf ? 1.0 : 0.62;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.3, wolf ? 0.5 : 0.44), hide2); head.position.set(0, bodyY + (wolf ? 0.4 : 0.74), wolf ? 1.05 : 1.16); head.rotation.x = wolf ? 0.1 : 0.25;
+    const muzzle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.28), hide2); muzzle.position.set(0, bodyY + (wolf ? 0.34 : 0.62), wolf ? 1.32 : 1.4); muzzle.rotation.x = wolf ? 0.05 : 0.25;
+    g.add(neck, head, muzzle);
+    for (const s of [1, -1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, wolf ? 0.22 : 0.16, 5), hide2); ear.position.set(s * 0.09, bodyY + (wolf ? 0.6 : 0.94), wolf ? 0.98 : 1.06); g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshBasicMaterial({ color: wolf ? 0xffd23c : 0x120b06 })); eye.position.set(s * 0.11, bodyY + (wolf ? 0.44 : 0.78), wolf ? 1.24 : 1.32); g.add(eye);
+    }
+    // Tail: bushy for the wolf, whisked for the horse.
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(wolf ? 0.1 : 0.06, wolf ? 0.03 : 0.14, wolf ? 0.8 : 0.9, 6), dark);
+    tail.position.set(0, bodyY - (wolf ? 0.05 : 0.07), -0.95); tail.rotation.x = wolf ? -1.1 : -0.5; g.add(tail);
+    // Charger barding: face plate, chest plate, saddle blanket.
+    if (!wolf) {
+      const face = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.24, 0.06), metal); face.position.set(0, bodyY + 0.78, 1.36); g.add(face);
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.34, 6), metal); spike.position.set(0, bodyY + 1.02, 1.28); spike.rotation.x = 0.3; g.add(spike);
+      const barding = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.4, 0.5), metal); barding.position.set(0, bodyY - 0.05, 0.5); g.add(barding);
+    }
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.86), blanket); pad.position.set(0, bodyY + 0.3, 0.05); g.add(pad);
+    const saddle = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.46, 4, 8), litMat({ color: 0x4a2f1c })); saddle.rotation.z = Math.PI / 2; saddle.position.set(0, bodyY + 0.38, 0.05); saddle.scale.set(1, 1, 0.9); g.add(saddle);
+    const legs = [];
+    for (const [lx, lz] of [[0.22, 0.5], [-0.22, 0.5], [0.22, -0.5], [-0.22, -0.5]]) {
+      const leg = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.06, bodyY, 6), hide); upper.position.y = -bodyY / 2; leg.add(upper);
+      const paw = new THREE.Mesh(wolf ? new THREE.SphereGeometry(0.09, 6, 6) : new THREE.CylinderGeometry(0.1, 0.1, 0.14, 6), dark); paw.position.y = -bodyY + 0.06; leg.add(paw);
+      leg.position.set(lx, bodyY, lz); g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = legs; g.userData.phase = 0; g.userData.seat = wolf ? 1.28 : 1.4;
+    return g;
+  }
+
+  // A feathered ridge-runner (dinosaur-ish): two big legs, small arms, a long
+  // balancing tail. The fastest mount.
+  _buildRaptorSteed() {
+    const g = new THREE.Group();
+    const m = mountById('raptor');
+    const skin = litMat({ color: m.color });
+    const belly = litMat({ color: 0x94a86a });
+    const feather = litMat({ color: 0xb5502e });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.8, 6, 12), skin);
+    body.rotation.z = Math.PI / 2; body.position.set(0, 1.15, 0);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.7, 8), skin); neck.position.set(0, 1.5, 0.55); neck.rotation.x = 0.5;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.5), skin); head.position.set(0, 1.78, 0.9); head.rotation.x = 0.18;
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.1, 0.4), belly); jaw.position.set(0, 1.68, 0.98); jaw.rotation.x = 0.12;
+    g.add(body, neck, head, jaw);
+    const crest = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.3, 5), feather); crest.position.set(0, 1.94, 0.72); crest.rotation.x = -0.4; g.add(crest);
+    for (const s of [1, -1]) { const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffca2c })); eye.position.set(s * 0.1, 1.82, 1.0); g.add(eye); }
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.4, 6), skin); tail.position.set(0, 1.12, -0.95); tail.rotation.x = -Math.PI / 2 - 0.2; g.add(tail);
+    // Little forelimbs.
+    for (const s of [1, -1]) { const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.4, 5), skin); arm.position.set(s * 0.22, 1.2, 0.42); arm.rotation.x = 0.8; g.add(arm); }
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.7), litMat({ color: 0x5a3a2a })); pad.position.set(0, 1.44, 0.02); g.add(pad);
+    // Two powerful legs (the trot animator swings these).
+    const legs = [];
+    for (const s of [1, -1]) {
+      const leg = new THREE.Group();
+      const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.5, 4, 8), skin); thigh.position.y = -0.35; leg.add(thigh);
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.6, 6), skin); shin.position.set(0, -0.85, 0.08); leg.add(shin);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.34), belly); foot.position.set(0, -1.12, 0.16); leg.add(foot);
+      leg.position.set(s * 0.18, 1.15, -0.05); g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = legs; g.userData.phase = 0; g.userData.seat = 1.42;
+    return g;
+  }
+
+  // A towering antlered stag.
+  _buildElkSteed() {
+    const g = new THREE.Group();
+    const m = mountById('elk');
+    const hide = litMat({ color: m.color });
+    const hide2 = litMat({ color: 0x8a6a44 });
+    const antler = litMat({ color: 0xd8c9a4 });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 1.05, 6, 12), hide);
+    body.rotation.z = Math.PI / 2; body.position.set(0, 1.3, 0);
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.38, 12, 10), hide); chest.position.set(0, 1.3, 0.55); chest.scale.set(0.9, 1, 0.8); g.add(chest);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 1.0, 8), hide); neck.position.set(0, 1.75, 0.8); neck.rotation.x = 0.5;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.3, 0.5), hide2); head.position.set(0, 2.15, 1.15); head.rotation.x = 0.3;
+    g.add(body, neck, head);
+    // Branching antlers.
+    for (const s of [1, -1]) {
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.5, 5), antler); base.position.set(s * 0.1, 2.4, 1.06); base.rotation.z = s * 0.5; g.add(base);
+      for (let b = 0; b < 3; b++) {
+        const tine = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.3, 5), antler);
+        tine.position.set(s * (0.28 + b * 0.06), 2.5 + b * 0.16, 1.06 - b * 0.05); tine.rotation.z = s * 0.9; g.add(tine);
+      }
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 5), hide2); ear.position.set(s * 0.13, 2.28, 1.02); ear.rotation.z = s * 0.6; g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), new THREE.MeshBasicMaterial({ color: 0x14100a })); eye.position.set(s * 0.12, 2.18, 1.32); g.add(eye);
+    }
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), hide2); tail.position.set(0, 1.34, -0.95); g.add(tail);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.86), litMat({ color: 0x4a3a5a })); pad.position.set(0, 1.6, 0.05); g.add(pad);
+    const saddle = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.46, 4, 8), litMat({ color: 0x3a2a1c })); saddle.rotation.z = Math.PI / 2; saddle.position.set(0, 1.68, 0.05); g.add(saddle);
+    const legs = [];
+    for (const [lx, lz] of [[0.24, 0.5], [-0.24, 0.5], [0.24, -0.5], [-0.24, -0.5]]) {
+      const leg = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.05, 1.3, 6), hide); upper.position.y = -0.65; leg.add(upper);
+      const hoof = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.12, 6), litMat({ color: 0x1a140c })); hoof.position.y = -1.28; leg.add(hoof);
+      leg.position.set(lx, 1.3, lz); g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = legs; g.userData.phase = 0; g.userData.seat = 1.62;
+    return g;
+  }
+
+  // A long-legged desert strider (camel-like).
+  _buildStriderSteed() {
+    const g = new THREE.Group();
+    const m = mountById('sandstrider');
+    const hide = litMat({ color: m.color });
+    const hide2 = litMat({ color: 0xb08a3a });
+    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.95, 6, 12), hide);
+    body.rotation.z = Math.PI / 2; body.position.set(0, 1.45, 0);
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 10), hide); hump.position.set(0, 1.72, -0.05); hump.scale.set(0.9, 0.8, 0.9); g.add(hump);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, 1.2, 8), hide); neck.position.set(0, 1.95, 0.7); neck.rotation.x = 0.42;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.24, 0.44), hide2); head.position.set(0, 2.45, 1.05); head.rotation.x = 0.2;
+    g.add(body, neck, head);
+    for (const s of [1, -1]) {
+      const ear = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 5), hide2); ear.position.set(s * 0.08, 2.6, 0.98); g.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), new THREE.MeshBasicMaterial({ color: 0x1a120a })); eye.position.set(s * 0.1, 2.48, 1.22); g.add(eye);
+    }
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.02, 0.7, 5), hide2); tail.position.set(0, 1.4, -0.9); tail.rotation.x = -0.4; g.add(tail);
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.08, 0.8), litMat({ color: 0x7a4a2a })); pad.position.set(0, 1.68, 0.05); g.add(pad);
+    const saddle = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.42, 4, 8), litMat({ color: 0x5a3218 })); saddle.rotation.z = Math.PI / 2; saddle.position.set(0, 1.76, 0.1); g.add(saddle);
+    const legs = [];
+    for (const [lx, lz] of [[0.2, 0.46], [-0.2, 0.46], [0.2, -0.46], [-0.2, -0.46]]) {
+      const leg = new THREE.Group();
+      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.045, 1.45, 6), hide); upper.position.y = -0.72; leg.add(upper);
+      const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.1, 6), hide2); foot.position.y = -1.42; leg.add(foot);
+      leg.position.set(lx, 1.45, lz); g.add(leg); legs.push(leg);
+    }
+    g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    g.userData.legs = legs; g.userData.phase = 0; g.userData.seat = 1.78;
+    return g;
+  }
+  // A mount must be EARNED (the base steed from Marathoner, the Slime/Dragon
+  // capstone mounts) OR BOUGHT from the Stablemaster (ownedMounts).
+  get hasMount() { return this.passives.has('steed') || this.passives.has('slimemount') || this.passives.has('dragonmount') || this.ownedMounts.size > 0; }
   canMount() { return this.hasMount && this.alive && (this.state === 'ground' || this.state === 'air'); }
+  // The speed multiplier of the currently-summoned mount (falls back to horse).
+  get mountSpeed() { return (MOUNTS[this.mountSkin] || MOUNTS.horse).speed; }
+  // Which mounts this hero can currently ride (earned + bought).
+  ownedMountList() {
+    const owned = new Set(this.ownedMounts);
+    if (this.passives.has('steed')) owned.add('horse');
+    if (this.passives.has('slimemount')) owned.add('slime');
+    if (this.passives.has('dragonmount')) owned.add('dragon');
+    return owned;
+  }
+  ownsMount(skin) { return this.ownedMountList().has(skin); }
+  // Buy a mount from the Stablemaster: spends gold, records ownership, summons it.
+  buyMount(skin) {
+    const m = mountById(skin);
+    if (!m || this.ownsMount(skin)) return false;
+    if (this.skillLevel('riding') < (m.reqRiding || 1)) return false;
+    if (this.gold < m.price) return false;
+    this.gold -= m.price;
+    this.ownedMounts.add(skin);
+    this.setActiveMount(skin);
+    return true;
+  }
+  // Choose which owned mount to ride; rebuilds the steed mesh if it changed.
+  setActiveMount(skin) {
+    if (!this.ownsMount(skin)) return false;
+    this.activeMount = skin;
+    this.setMountSkin(skin);
+    return true;
+  }
   toggleMount() {
     if (this.mounted) { this.dismount(); return false; }
     if (!this.canMount()) return false;
+    // Make sure the summoned steed matches the chosen mount.
+    if (this.activeMount && this.ownsMount(this.activeMount) && this.mountSkin !== this.activeMount) this.setMountSkin(this.activeMount);
     this.mounted = true; this.steed.visible = true; return true;
   }
   dismount() { this.mounted = false; if (this.steed) this.steed.visible = false; }
+
+  // ---- Crafting pouch (stackable materials) ----
+  addMaterial(id, n = 1) { if (n > 0) this.materials[id] = (this.materials[id] || 0) + n; }
+  materialCount(id) { return this.materials[id] || 0; }
+  canAfford(cost) { for (const id in cost) if ((this.materials[id] || 0) < cost[id]) return false; return true; }
+  spendMaterials(cost) {
+    if (!this.canAfford(cost)) return false;
+    for (const id in cost) { this.materials[id] -= cost[id]; if (this.materials[id] <= 0) delete this.materials[id]; }
+    return true;
+  }
 
   // Swimming: WASD glides horizontally, Space ascends, Shift dives; gentle
   // buoyancy floats you up otherwise. Air drains while your head is submerged.
@@ -926,7 +1130,7 @@ export class Player {
     // trot the steed beneath.
     if (this.mounted) {
       const sd = this.steed.userData;
-      const seat = sd.dragon ? 1.55 : sd.slime ? 1.5 : 1.4; // saddle height for this mount
+      const seat = sd.seat || (sd.dragon ? 1.55 : sd.slime ? 1.5 : 1.4); // saddle height for this mount
       this.mesh.position.y += seat - 1.0;                   // the rider's hip (local +1) rests at the saddle
       // Sitting pose: thighs forward and splayed to straddle, hands forward on
       // the reins, a slight forward lean — instead of legs dangling straight.
@@ -1046,6 +1250,10 @@ export class Player {
       discoveredAreas: [...this.discoveredAreas],
       explored: [...this.explored],
       mountSkin: this.mountSkin,
+      materials: this.materials,
+      builds: this.builds,
+      ownedMounts: [...this.ownedMounts],
+      activeMount: this.activeMount,
       appearance: this.appearance,
     };
   }
@@ -1075,6 +1283,10 @@ export class Player {
     if (save.gear) this.gear = Object.assign(emptyGear(), save.gear);
     if (Array.isArray(save.inventory)) this.inventory = save.inventory;
     if (typeof save.gold === 'number') this.gold = save.gold;
+    if (save.materials && typeof save.materials === 'object') this.materials = { ...save.materials };
+    if (Array.isArray(save.builds)) this.builds = save.builds.slice();
+    if (Array.isArray(save.ownedMounts)) this.ownedMounts = new Set(save.ownedMounts);
+    if (typeof save.activeMount === 'string') this.activeMount = save.activeMount;
     if (save.questLog && typeof save.questLog === 'object') this.questLog = save.questLog;
     if (Array.isArray(save.discovered)) this.discovered = save.discovered;
     this.stoneSwordPulled = !!save.stoneSword;
@@ -1087,6 +1299,9 @@ export class Player {
     // Restore the saved look (older saves without one keep the class default).
     if (save.appearance) this.setAppearance(save.appearance);
     Achievements.reapply(this); // rebuilds achBonus/passives, recomputes gear, restores mount skin
+    // Re-summon the mount the player last chose (a bought mount survives reapply,
+    // which only restores achievement-granted skins).
+    if (this.activeMount && this.ownsMount(this.activeMount)) this.setMountSkin(this.activeMount);
     // Top vitals to the gear-adjusted maxima after equipping saved items.
     this.stats.hp = this.effMaxHp; this.stats.mp = this.effMaxMp; this.stats.sp = this.effMaxSp;
   }

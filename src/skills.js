@@ -84,6 +84,43 @@ export const SKILLS = [
       { lvl: 50, name: 'Windwalker', desc: '+8% move speed, 12% cheaper sprint', speed: 0.08, stamina: 0.12 },
     ],
   },
+  // ---- Gathering trades ----
+  // Harvesting resource nodes (trees, ore, herbs) trains Gathering; it lifts your
+  // yield, speeds the swing, and unlocks a chance for a bonus rare material.
+  {
+    id: 'gathering', name: 'Gathering', glyph: '⛏️', cat: 'gathering', perLevel: { yield: 0.008 },
+    perks: [
+      { lvl: 10, name: 'Efficient Harvest', desc: 'Harvest 10% faster', gatherSpeed: 0.10 },
+      { lvl: 20, name: 'Bountiful Yield', desc: '+10% materials per node', yield: 0.10 },
+      { lvl: 30, name: 'Keen Eye', desc: '5% chance for a bonus rare material', rareFind: 0.05 },
+      { lvl: 40, name: 'Rich Veins', desc: '+15% materials per node', yield: 0.15 },
+      { lvl: 50, name: 'Master Gatherer', desc: '+20% yield, 15% faster, +5% rare finds', yield: 0.20, gatherSpeed: 0.15, rareFind: 0.05 },
+    ],
+  },
+  // Turning materials into gear, tools and consumables trains Crafting; it makes
+  // recipes cheaper and lifts the quality (rarity) of what you forge.
+  {
+    id: 'crafting', name: 'Crafting', glyph: '🔨', cat: 'crafting', perLevel: { quality: 0.006, craftDisc: 0.003 },
+    perks: [
+      { lvl: 10, name: 'Frugal Smith', desc: 'Recipes cost 8% less material', craftDisc: 0.08 },
+      { lvl: 20, name: 'Fine Work', desc: '+8% chance to craft a higher rarity', quality: 0.08 },
+      { lvl: 30, name: 'Efficient Craft', desc: 'Recipes cost 10% less material', craftDisc: 0.10 },
+      { lvl: 40, name: 'Masterwork', desc: '+12% higher-rarity chance', quality: 0.12 },
+      { lvl: 50, name: 'Grandmaster Artisan', desc: '+15% quality, 10% cheaper recipes', quality: 0.15, craftDisc: 0.10 },
+    ],
+  },
+  // Raising structures in the world trains Construction; it discounts build costs
+  // and (by level) unlocks sturdier, more useful buildings.
+  {
+    id: 'construction', name: 'Construction', glyph: '🏗️', cat: 'construction', perLevel: { buildDisc: 0.005 },
+    perks: [
+      { lvl: 10, name: 'Thrifty Builder', desc: 'Structures cost 8% less', buildDisc: 0.08 },
+      { lvl: 20, name: 'Architect', desc: 'Unlock advanced blueprints', buildDisc: 0.02 },
+      { lvl: 30, name: 'Sturdy Frames', desc: 'Structures cost 10% less', buildDisc: 0.10 },
+      { lvl: 40, name: 'Master Mason', desc: 'Structures cost 12% less', buildDisc: 0.12 },
+      { lvl: 50, name: 'Grand Architect', desc: 'Unlock grand builds, 15% cheaper', buildDisc: 0.15 },
+    ],
+  },
 ];
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s]));
@@ -103,7 +140,8 @@ export function skillForWeaponKind(kind) { return WEAPON_SKILL[kind] || 'martial
 // Sum a skill's smooth per-level bonus with its unlocked milestone perks.
 export function skillBonus(id, level) {
   const def = SKILL_BY_ID[id];
-  const agg = { dmg: 0, crit: 0, speed: 0, fishing: 0, costMul: 0, stamina: 0 };
+  const agg = { dmg: 0, crit: 0, speed: 0, fishing: 0, costMul: 0, stamina: 0,
+    yield: 0, gatherSpeed: 0, rareFind: 0, quality: 0, craftDisc: 0, buildDisc: 0 };
   if (!def) return agg;
   const lv = Math.max(1, level | 0);
   for (const k in def.perLevel) agg[k] += def.perLevel[k] * (lv - 1);
