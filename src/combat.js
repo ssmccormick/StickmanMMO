@@ -240,8 +240,17 @@ export class Combat {
         this._setAtkSkill(atkSkill || skillForWeaponKind(heldKind), 3);
         if (comboStep === 2 && p.lunge) p.lunge(dir); // the stab lunges forward on the hit
         if (t < 0.15) {
-          const e = this._aimEnemy(range, 1.0);
-          if (e) this._strike(e, apow * mult, { crit: critB });
+          // Hit whatever the VISIBLE swing sweeps through: an arc around `dir`
+          // (where you aimed), matching the swish FX — the stab is a narrow,
+          // longer-reaching thrust; the slashes are a wider frontal sweep.
+          const isStab = comboStep === 2;
+          const swArc = isStab ? 1.0 : 2.0;               // full angle (±half)
+          const swRange = range + (isStab ? 1.1 : 0.4);
+          let hit = false;
+          for (const e of this._inArc(this.player.pos, dir, swRange, swArc)) { this._strike(e, apow * mult, { crit: critB }); hit = true; }
+          // Fallback: if the arc caught nothing, still honour a locked/aimed target
+          // just at the edge of reach (keeps aim-assist forgiving).
+          if (!hit) { const e = this._aimEnemy(swRange, 0.9); if (e) this._strike(e, apow * mult, { crit: critB }); }
           this._swishFx(this.player.pos, dir, range + 0.6, comboStep, accent);
         } else {
           const arc = 1.6 + t * 2.2;

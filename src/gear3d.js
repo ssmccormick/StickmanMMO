@@ -189,8 +189,9 @@ export function applyArmorVisual(root, visual, app = {}) {
     if (j.armR) attach(buildGauntlet(v.hands, limb), j.armR, 0, -0.6, 0);
   }
   if (v.feet) {
-    if (j.legL) attach(buildBoot(v.feet, limb), j.legL, 0, -0.66, 0);
-    if (j.legR) attach(buildBoot(v.feet, limb), j.legR, 0, -0.66, 0);
+    // Boots ride at the ankle — legs are length 1.0 (foot ≈ -0.9 from the hip).
+    if (j.legL) attach(buildBoot(v.feet, limb), j.legL, 0, -0.9, 0);
+    if (j.legR) attach(buildBoot(v.feet, limb), j.legR, 0, -0.9, 0);
   }
 
   root.userData.armor = { key, meshes };

@@ -75,9 +75,10 @@ export function createStickman(opts = {}) {
   const armR = limbMesh(accentMat, 0.62); armR.position.set(-0.18, shoulderY, 0);
   hip.add(armL, armR);
 
-  // Legs from hip
-  const legL = limbMesh(bodyMat, 0.7); legL.position.set(0.1, 0, 0);
-  const legR = limbMesh(bodyMat, 0.7); legR.position.set(-0.1, 0, 0);
+  // Legs from hip. Length reaches the ground: the hip sits at y=1.0 and the leg
+  // pivots there, so a length of 1.0 puts the feet at y≈0 (no floating).
+  const legL = limbMesh(bodyMat, 1.0); legL.position.set(0.1, 0, 0);
+  const legR = limbMesh(bodyMat, 1.0); legR.position.set(-0.1, 0, 0);
   hip.add(legL, legR);
 
   // A held "weapon" stick on the right arm. Uses its OWN material (cloned)
@@ -321,9 +322,13 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
   }
   group.rotation.x = THREE.MathUtils.lerp(group.rotation.x, 0, Math.min(1, dt * 8));
 
-  // Advance walk phase proportional to speed.
-  a.phase += dt * (4 + speed01 * 10);
-  const swing = Math.sin(a.phase) * (0.2 + speed01 * 0.7);
+  // The walk phase only advances while actually moving — otherwise the legs
+  // would keep pumping in place. A slow, always-running "breath" clock drives
+  // the idle bob so a standing figure still feels alive without stepping.
+  const moving = speed01 > 0.06;
+  if (moving) a.phase += dt * (4 + speed01 * 10);
+  a.idle = (a.idle || 0) + dt;
+  const swing = Math.sin(a.phase) * (speed01 * 0.85); // amplitude ∝ speed (0 at rest)
 
   // Emotes override the pose with a brief, looping bit of body language.
   if (emote && speed01 < 0.05) {
@@ -331,6 +336,7 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     return;
   }
 
+  const K = Math.min(1, dt * 10); // easing factor toward a target pose
   if (climbing) {
     // Reach up alternately while climbing.
     const c = Math.sin(a.phase * 1.4);
@@ -339,15 +345,27 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     j.legL.rotation.x = 0.4 - c * 0.5;
     j.legR.rotation.x = 0.4 + c * 0.5;
     j.hip.rotation.x = 0.2;
-  } else {
+  } else if (moving) {
+    // Walk / run cycle.
     j.legL.rotation.x = swing;
     j.legR.rotation.x = -swing;
     j.armL.rotation.x = -swing * 0.8;
     j.armR.rotation.x = swing * 0.8;
     j.hip.rotation.x = 0;
-    // Subtle idle bob + body lean while moving.
-    j.torso.rotation.x = speed01 * 0.18;
-    group.children[0].position.y = 1.0 + Math.abs(Math.sin(a.phase)) * 0.04 * speed01;
+    j.torso.rotation.x = speed01 * 0.18;                 // lean into the run
+    j.hip.position.y = 1.0 + Math.abs(Math.sin(a.phase)) * 0.04 * speed01; // stride bob
+  } else {
+    // IDLE STANCE: feet planted, a relaxed at-the-ready pose with a gentle
+    // breathing rise/fall — no stepping in place.
+    const breath = Math.sin(a.idle * 1.6);
+    j.legL.rotation.x = THREE.MathUtils.lerp(j.legL.rotation.x, 0, K);
+    j.legR.rotation.x = THREE.MathUtils.lerp(j.legR.rotation.x, 0, K);
+    j.armL.rotation.x = THREE.MathUtils.lerp(j.armL.rotation.x, 0.06 + breath * 0.03, K);
+    j.armL.rotation.z = THREE.MathUtils.lerp(j.armL.rotation.z, -0.07, K);
+    j.armR.rotation.x = THREE.MathUtils.lerp(j.armR.rotation.x, 0.06 + breath * 0.03, K);
+    j.hip.rotation.x = 0;
+    j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, 0.02 + breath * 0.02, K);
+    j.hip.position.y = THREE.MathUtils.lerp(j.hip.position.y, 1.0 + breath * 0.012, K);
   }
 
   // Attack swing overrides the right arm — and the STYLE alternates on quick
