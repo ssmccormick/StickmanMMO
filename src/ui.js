@@ -5,6 +5,7 @@
 // ============================================================
 import { CLASSES, CLASS_ORDER, passiveById, PASSIVES } from './classes.js';
 import { SKILLS, SKILL_MAX, skillXpForLevel } from './skills.js';
+import { QUALITY } from './gfx.js';
 import { Saves } from './save.js';
 import { SLOTS, EQUIP_SLOTS, SLOT_LABEL, RARITY, itemTooltip, generateItem, buyPrice, sellPrice, makeConsumable } from './items.js';
 import { WEAPON_SKINS } from './weapons.js';
@@ -737,6 +738,7 @@ export class UI {
       lookSens: 1,                             // camera look multiplier
       invertY: false,
       showHint: !this.touchDevice,             // hide the wordy hint on phones
+      celShading: true,                        // cel/toon shading + outlines + glow
       abilityKeys: DEFAULT_ABILITY_KEYS.slice(), // remappable ability-slot keys (1..8)
     };
   }
@@ -745,7 +747,10 @@ export class UI {
     try { saved = JSON.parse(localStorage.getItem('smmo_settings')) || {}; } catch (e) { saved = {}; }
     this.settings = Object.assign(this._defaultSettings(), saved);
     this._sanitizeKeybinds();
+    this._applyGfx(); // set the graphics flags BEFORE any world/mesh is built
   }
+  // Push the cel-shading preference into the graphics flags (read at build time).
+  _applyGfx() { const on = this.settings.celShading !== false; QUALITY.toon = QUALITY.glow = QUALITY.outline = on; }
   // Guarantee exactly ABILITY_SLOTS ability-key entries (older saves / bad data
   // fall back to the default for that slot).
   _sanitizeKeybinds() {
@@ -799,6 +804,8 @@ export class UI {
         <input id="set-ls" type="range" min="0.3" max="2.5" step="0.05" value="${s.lookSens}"></div>
       <div class="set-row set-check"><label><input id="set-inv" type="checkbox" ${s.invertY ? 'checked' : ''}> Invert look (Y axis)</label></div>
       <div class="set-row set-check"><label><input id="set-hint" type="checkbox" ${s.showHint ? 'checked' : ''}> Show controls hint</label></div>
+      <div class="set-row set-check"><label><input id="set-cel" type="checkbox" ${s.celShading !== false ? 'checked' : ''}> Cel shading (crisp toon look + outlines)</label></div>
+      <div class="set-hint-sm">Cel shading applies on your next character load.</div>
       <div class="set-keybinds-head">Ability Hotkeys</div>
       <div class="set-hint-sm">Click a key, then press a new one to rebind it (Esc cancels).</div>
       <div id="set-keybinds" class="kb-grid"></div>
@@ -817,6 +824,7 @@ export class UI {
     bind('set-ls', 'lookSens', 'set-ls-v', pct);
     this.setBody.querySelector('#set-inv').addEventListener('change', (e) => this.setSetting('invertY', e.target.checked));
     this.setBody.querySelector('#set-hint').addEventListener('change', (e) => this.setSetting('showHint', e.target.checked));
+    this.setBody.querySelector('#set-cel').addEventListener('change', (e) => { this.setSetting('celShading', e.target.checked); this._applyGfx(); });
     this.setBody.querySelector('.set-reset').addEventListener('click', () => { this.settings = this._defaultSettings(); this._saveSettings(); this.applySettings(); this.renderSettings(); if (this._player) this.refreshHotbar(this._player); });
     this.setBody.querySelector('.set-quit').addEventListener('click', () => { if (this.onQuitToMenu) this.onQuitToMenu(); });
     this._renderKeybinds();
