@@ -27,6 +27,11 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Filmic tone mapping + sRGB output: richer, less "flat" colour out of the same
+// scene. The exposure is nudged slightly bright to keep the cel look punchy.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1400);
@@ -345,6 +350,7 @@ function animate() {
   input.pollGamepad(dt); // fold any controller state into the unified input
 
   world.update(t, dt);
+  if (started && player) world.followSun(player.pos, camera.position); // shadows/sky track the player
 
   if (started && player) {
     // Stream the world: only show objects near the player (the rest is fogged).

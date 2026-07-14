@@ -12,6 +12,7 @@
 // or { b: baseId, r: rarity, s: setId|null }.
 // ============================================================
 import * as THREE from 'three';
+import { litMat } from './gfx.js';
 import { RARITY, SETS } from './items.js';
 
 // Resolve a piece's colour: the set colour if it belongs to one, else the
@@ -34,8 +35,8 @@ function pieceColor(piece, cloth = false) {
 
 const isCloth = (baseId) => ['hood', 'robe', 'tunic', 'cape', 'cloak', 'mantle', 'gloves', 'sandals'].includes(baseId);
 
-function mat(hex) { return new THREE.MeshLambertMaterial({ color: hex }); }
-const trimMat = () => new THREE.MeshLambertMaterial({ color: 0xc9a227 });
+function mat(hex) { return litMat({ color: hex }); }
+const trimMat = () => litMat({ color: 0xc9a227 });
 
 // ---- Per-slot builders. Each returns a Group posed in the parent joint's
 // local space (the caller attaches it to the right joint). ----
@@ -106,7 +107,7 @@ function buildShoulder(piece, side) {
 
 function buildCape(piece) {
   const g = new THREE.Group();
-  const m = new THREE.MeshLambertMaterial({ color: pieceColor(piece, true), side: THREE.DoubleSide });
+  const m = litMat({ color: pieceColor(piece, true), side: THREE.DoubleSide });
   // A cloth panel hanging from the shoulders down the back, flaring at the hem.
   const cape = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.3, 0.95, 10, 1, true, Math.PI * 0.72, Math.PI * 0.56), m);
   cape.position.set(0, 0.18, -0.14); cape.rotation.x = -0.12; g.add(cape);

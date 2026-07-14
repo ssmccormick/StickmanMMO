@@ -5,6 +5,7 @@
 // stick. `color` tints the business end (blade/head/orb) by rarity.
 // ============================================================
 import * as THREE from 'three';
+import { litMat } from './gfx.js';
 
 // Which weapon kinds attack at range (fire a projectile) vs. in melee.
 export function isRangedWeaponKind(kind) {
@@ -71,11 +72,11 @@ export function buildWeaponMesh(kind, color = 0xcfd2da, skin = null) {
     : (skin && skin !== 'default' ? WEAPON_SKIN_BY_ID[skin] : null);
   const pick = (v, d) => (sk && sk[v] != null ? sk[v] : d);
   const g = new THREE.Group();
-  const steel = new THREE.MeshLambertMaterial({ color: pick('steel', color) });
+  const steel = litMat({ color: pick('steel', color) });
   const glow = new THREE.MeshBasicMaterial({ color: pick('glow', color) });
-  const wood = new THREE.MeshLambertMaterial({ color: pick('wood', 0x6a4a2a) });
-  const dark = new THREE.MeshLambertMaterial({ color: pick('dark', 0x33333a) });
-  const gold = new THREE.MeshLambertMaterial({ color: pick('gold', 0xc9a227) });
+  const wood = litMat({ color: pick('wood', 0x6a4a2a) });
+  const dark = litMat({ color: pick('dark', 0x33333a) });
+  const gold = litMat({ color: pick('gold', 0xc9a227) });
   const add = (geo, mat, x, y, z, rot) => {
     const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z);
     if (rot) m.rotation.set(rot[0] || 0, rot[1] || 0, rot[2] || 0);

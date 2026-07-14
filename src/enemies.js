@@ -4,6 +4,7 @@
 // Spawned per world zone so difficulty rises away from town.
 // ============================================================
 import * as THREE from 'three';
+import { litMat } from './gfx.js';
 import { animateStickman } from './stickman.js';
 import { createCreature } from './creatures.js';
 import { heightAt, BOSSES, EDGE_SHORE, LEVIATHAN_RADIUS, biomeKeyAt, WORLD_SIZE, WATER_LEVEL, MOUNTAINS } from './world.js';
@@ -143,7 +144,7 @@ export class Enemy {
     this.onDeath = opts.onDeath || null;
     if (typeId === 'lootgoblin') {
       // A fat loot sack slung on its back so it reads as a treasure thief.
-      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), new THREE.MeshLambertMaterial({ color: 0xb98a2e }));
+      const sack = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), litMat({ color: 0xb98a2e }));
       sack.scale.set(0.9, 1.05, 0.9); sack.position.set(0, 1.15, -0.32); sack.castShadow = true;
       const tie = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
       tie.position.set(0, 1.5, -0.32); sack.add(tie);

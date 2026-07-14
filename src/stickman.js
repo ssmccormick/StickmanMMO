@@ -5,6 +5,7 @@
 // (walk cycle, attack swing, climbing, death flop).
 // ============================================================
 import * as THREE from 'three';
+import { litMat } from './gfx.js';
 
 // Reusable geometries (created once, shared across every stickman).
 const G = {
@@ -43,9 +44,9 @@ function resolveAppearance({ color, accent, scale, appearance }) {
 export function createStickman(opts = {}) {
   const app = resolveAppearance(opts);
   const root = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color: app.bodyColor });
-  const accentMat = new THREE.MeshLambertMaterial({ color: app.accentColor });
-  const hairMat = new THREE.MeshLambertMaterial({ color: app.hairColor });
+  const bodyMat = litMat({ color: app.bodyColor });
+  const accentMat = litMat({ color: app.accentColor });
+  const hairMat = litMat({ color: app.hairColor });
 
   // Hip is the animation root; everything hangs off it.
   const hip = new THREE.Group();
@@ -149,8 +150,8 @@ export function buildHair(style, mat) {
   if (!style || style === 'none') return null;
   const g = new THREE.Group();
   const HR = 0.28;
-  const gold = () => new THREE.MeshLambertMaterial({ color: 0xffd24a });
-  const dark = () => new THREE.MeshLambertMaterial({ color: 0x1a1a1f });
+  const gold = () => litMat({ color: 0xffd24a });
+  const dark = () => litMat({ color: 0x1a1a1f });
   const cap = (rMul, thetaLen, yOff, mtl) => {
     const c = new THREE.Mesh(new THREE.SphereGeometry(HR * rMul, 14, 9, 0, Math.PI * 2, 0, Math.PI * thetaLen), mtl || mat);
     c.position.y = yOff; return c;
@@ -240,8 +241,8 @@ export function buildHair(style, mat) {
       break;
     }
     case 'cowboyhat': {
-      const felt = new THREE.MeshLambertMaterial({ color: 0x6b4a2a });
-      const band = new THREE.MeshLambertMaterial({ color: 0x2a2018 });
+      const felt = litMat({ color: 0x6b4a2a });
+      const band = litMat({ color: 0x2a2018 });
       const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.46, 0.03, 20), felt);
       brim.position.y = 0.16; brim.scale.z = 1.12; g.add(brim);          // wide oval brim
       const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.27, 0.3, 16), felt);
@@ -250,7 +251,7 @@ export function buildHair(style, mat) {
       crease.position.y = 0.33; g.add(crease);                            // centre pinch ridge
       const hatband = new THREE.Mesh(new THREE.CylinderGeometry(0.245, 0.275, 0.06, 16), band);
       hatband.position.y = 0.2; g.add(hatband);
-      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.045, 0.02), new THREE.MeshLambertMaterial({ color: 0xc9a227 }));
+      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.045, 0.02), litMat({ color: 0xc9a227 }));
       buckle.position.set(0, 0.2, 0.275); g.add(buckle);
       break;
     }
@@ -260,7 +261,7 @@ export function buildHair(style, mat) {
       brim.position.y = 0.2; g.add(brim);
       const top = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.42, 18), m2);
       top.position.y = 0.42; g.add(top);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.08, 18), new THREE.MeshLambertMaterial({ color: 0xd83c3c }));
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.08, 18), litMat({ color: 0xd83c3c }));
       band.position.y = 0.27; g.add(band);
       break;
     }
@@ -289,7 +290,7 @@ export function buildHair(style, mat) {
       break;
     }
     case 'vines': {
-      const vm = new THREE.MeshLambertMaterial({ color: 0x4a7a3a });
+      const vm = litMat({ color: 0x4a7a3a });
       const band = new THREE.Mesh(new THREE.TorusGeometry(HR * 1.02, 0.05, 8, 18), vm);
       band.position.y = 0.16; band.rotation.x = Math.PI / 2; g.add(band);
       for (let i = 0; i < 5; i++) {

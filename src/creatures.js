@@ -9,6 +9,7 @@
 // falls back to the standard humanoid animator.
 // ============================================================
 import * as THREE from 'three';
+import { litMat } from './gfx.js';
 import { createStickman } from './stickman.js';
 
 export function createCreature(typeId, opts = {}) {
@@ -33,7 +34,7 @@ function makeBandit({ color, accent, scale = 1 } = {}) {
   const root = createStickman({ color, accent, scale });
   const j = root.userData.joints;
   if (j.crest) j.crest.visible = false;
-  const cloth = new THREE.MeshLambertMaterial({ color: 0x24262b });
+  const cloth = litMat({ color: 0x24262b });
   // A bandana/mask across the lower face and a hood on top.
   const mask = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.15, 0.34), cloth);
   mask.position.set(0, -0.04, 0.1); j.head.add(mask);
@@ -47,11 +48,11 @@ function makeKnight({ color, accent, scale = 1 } = {}) {
   const root = createStickman({ color, accent, scale });
   const j = root.userData.joints;
   if (j.crest) j.crest.visible = false;
-  const steel = new THREE.MeshLambertMaterial({ color: 0x9aa4b2 });
+  const steel = litMat({ color: 0x9aa4b2 });
   // Domed helmet + a coloured plume.
   const helm = new THREE.Mesh(new THREE.SphereGeometry(0.31, 10, 8), steel);
   helm.scale.y = 1.12; helm.position.set(0, 0.06, 0); j.head.add(helm);
-  const plume = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 6), new THREE.MeshLambertMaterial({ color: accent }));
+  const plume = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.36, 6), litMat({ color: accent }));
   plume.position.set(0, 0.36, -0.05); j.head.add(plume);
   // Pauldrons + a chest plate.
   for (const s of [0.18, -0.18]) {
@@ -68,7 +69,7 @@ function makeOgre({ color, accent, scale = 1 } = {}) {
   const root = createStickman({ color, accent, scale });
   const j = root.userData.joints;
   if (j.crest) j.crest.visible = false;
-  const skin = new THREE.MeshLambertMaterial({ color });
+  const skin = litMat({ color });
   // Barrel chest/belly + hunched shoulders for a hulking silhouette.
   const belly = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), skin);
   belly.scale.set(1.25, 1.0, 1.0); belly.position.set(0, 0.4, 0); j.hip.add(belly);
@@ -78,7 +79,7 @@ function makeOgre({ color, accent, scale = 1 } = {}) {
   }
   // Oversized head with a heavy brow and two tusks.
   j.head.scale.setScalar(1.3);
-  const tuskMat = new THREE.MeshLambertMaterial({ color: 0xf0ecd8 });
+  const tuskMat = litMat({ color: 0xf0ecd8 });
   for (const s of [0.1, -0.1]) {
     const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 5), tuskMat);
     tusk.position.set(s, -0.16, 0.2); tusk.rotation.x = 0.35; j.head.add(tusk);
@@ -98,8 +99,8 @@ function makeOgre({ color, accent, scale = 1 } = {}) {
 
 function makeWolf({ color, accent, scale = 1 } = {}) {
   const root = new THREE.Group();
-  const fur = new THREE.MeshLambertMaterial({ color });
-  const dark = new THREE.MeshLambertMaterial({ color: accent });
+  const fur = litMat({ color });
+  const dark = litMat({ color: accent });
   const body = new THREE.Group(); body.position.y = 0.55; root.add(body);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.95), fur); body.add(torso);
@@ -155,7 +156,7 @@ function animateWolf(group, dt, { speed01 = 0, attack = 0, dead = false } = {}) 
 
 function makeSlime({ color, accent, scale = 1 } = {}) {
   const root = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color });
+  const mat = litMat({ color });
   const body = new THREE.Group(); root.add(body);
   const blob = new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 10), mat);
   blob.scale.set(1, 0.8, 1); blob.position.y = 0.4; body.add(blob);
@@ -165,7 +166,7 @@ function makeSlime({ color, accent, scale = 1 } = {}) {
     const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), new THREE.MeshBasicMaterial({ color: 0x202020 }));
     pupil.position.set(s, 0.5, 0.42); body.add(pupil);
   }
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), new THREE.MeshLambertMaterial({ color: accent }));
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), litMat({ color: accent }));
   core.position.y = 0.32; body.add(core);
 
   root.scale.setScalar(scale);
@@ -192,8 +193,8 @@ function animateSlime(group, dt, { speed01 = 0, attack = 0, dead = false } = {})
 function makeWraith({ color, accent, scale = 1 } = {}) {
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
-  const skin = new THREE.MeshLambertMaterial({ color });
-  const wingMat = new THREE.MeshLambertMaterial({ color: accent, side: THREE.DoubleSide });
+  const skin = litMat({ color });
+  const wingMat = litMat({ color: accent, side: THREE.DoubleSide });
   const torso = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 7), skin); torso.scale.set(0.8, 1.1, 0.8); body.add(torso);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), skin); head.position.set(0, 0.4, 0.05); body.add(head);
   for (const s of [1, -1]) {
@@ -233,9 +234,9 @@ function animateWraith(group, dt, { speed01 = 0, attack = 0, dead = false } = {}
 function makeDragon({ color = 0x4a2030, accent = 0x73402c, scale = 1 } = {}) {
   const root = new THREE.Group();
   const body = new THREE.Group(); root.add(body);
-  const scaleMat = new THREE.MeshLambertMaterial({ color });
-  const bellyMat = new THREE.MeshLambertMaterial({ color: accent });
-  const membrane = new THREE.MeshLambertMaterial({ color: 0x2a1020, side: THREE.DoubleSide });
+  const scaleMat = litMat({ color });
+  const bellyMat = litMat({ color: accent });
+  const membrane = litMat({ color: 0x2a1020, side: THREE.DoubleSide });
 
   // Serpentine spine (head at +Z).
   const segs = []; const N = 7;

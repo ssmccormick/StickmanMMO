@@ -5,6 +5,7 @@
 // and each level-up queues a player choice (attribute + skill).
 // ============================================================
 import * as THREE from 'three';
+import { litMat } from './gfx.js';
 import { createStickman, animateStickman, applyAppearance } from './stickman.js';
 import { defaultAppearance, normalizeAppearance } from './appearance.js';
 import { SKILLS, SKILL_MAX, skillXpForLevel, skillBonus as skillBonusFor } from './skills.js';
@@ -728,12 +729,12 @@ export class Player {
   // ---- Mount ----
   _buildSteed() {
     const g = new THREE.Group();
-    const hide = new THREE.MeshLambertMaterial({ color: 0x7a5334 });
-    const hide2 = new THREE.MeshLambertMaterial({ color: 0x8a6340 });
-    const mane = new THREE.MeshLambertMaterial({ color: 0x2e2013 });
-    const leather = new THREE.MeshLambertMaterial({ color: 0x4a2f1c });
-    const blanket = new THREE.MeshLambertMaterial({ color: 0x8a3a3a });
-    const hoof = new THREE.MeshLambertMaterial({ color: 0x241a12 });
+    const hide = litMat({ color: 0x7a5334 });
+    const hide2 = litMat({ color: 0x8a6340 });
+    const mane = litMat({ color: 0x2e2013 });
+    const leather = litMat({ color: 0x4a2f1c });
+    const blanket = litMat({ color: 0x8a3a3a });
+    const hoof = litMat({ color: 0x241a12 });
 
     // Barrel body + a rounded chest and haunches for a fuller silhouette.
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.36, 1.05, 6, 12), hide);
@@ -780,7 +781,7 @@ export class Player {
   _buildSlimeSteed() {
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.9, 16, 12),
-      new THREE.MeshLambertMaterial({ color: 0x5fd35f, transparent: true, opacity: 0.85 }));
+      litMat({ color: 0x5fd35f, transparent: true, opacity: 0.85 }));
     body.scale.y = 0.72; body.position.y = 0.66;
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0x10240f });
     const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), eyeMat); e1.position.set(0.26, 0.85, 0.7);
@@ -797,9 +798,9 @@ export class Player {
   // A rideable dragon (the Dragonslayer capstone reward).
   _buildDragonSteed() {
     const g = new THREE.Group();
-    const scaleMat = new THREE.MeshLambertMaterial({ color: 0x4a2030 });
-    const bellyMat = new THREE.MeshLambertMaterial({ color: 0x73402c });
-    const membrane = new THREE.MeshLambertMaterial({ color: 0x2a1020, side: THREE.DoubleSide });
+    const scaleMat = litMat({ color: 0x4a2030 });
+    const bellyMat = litMat({ color: 0x73402c });
+    const membrane = litMat({ color: 0x2a1020, side: THREE.DoubleSide });
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.0, 4, 8), scaleMat);
     body.rotation.z = Math.PI / 2; body.position.set(0, 1.0, 0);
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 0.8, 6), scaleMat); neck.position.set(0, 1.4, 0.7); neck.rotation.x = 0.7;
@@ -1163,7 +1164,7 @@ export class Player {
     const m = this.mesh && this.mesh.userData.mats;
     if (m) { setOp(m.body); setOp(m.accent); setOp(m.hair); }
     if (this.mesh) this.mesh.traverse((o) => {
-      if (o.isMesh && o.material && o.material.type === 'MeshLambertMaterial') setOp(o.material);
+      if (o.isMesh && o.material && (o.material.type === 'MeshLambertMaterial' || o.material.type === 'MeshToonMaterial')) setOp(o.material);
     });
   }
 }

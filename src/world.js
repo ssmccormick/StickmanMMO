@@ -5,6 +5,7 @@
 // world collision (AABB boxes + ground height query).
 // ============================================================
 import * as THREE from 'three';
+import { litMat, glowSprite } from './gfx.js';
 import { createStickman } from './stickman.js';
 import { buildWeaponMesh } from './weapons.js';
 import { GIVERS } from './quests.js';
@@ -26,6 +27,8 @@ export {
 };
 
 const EMPTY_COLLIDERS = []; // shared empty list for resolveCircle grid misses
+const _skyC = new THREE.Color();       // scratch colour for the sky-dome day/night lerp
+const _up = new THREE.Vector3(0, 1, 0);
 
 // Blended ground color at a point (used per terrain vertex).
 const _bc = new THREE.Color(), _g1 = new THREE.Color(), _g2 = new THREE.Color(), _rk = new THREE.Color();
@@ -82,6 +85,7 @@ export class World {
 
   _build() {
     this._sky();
+    this._weather();
     this._terrain();
     this._towns();
     this._scatter();
@@ -170,17 +174,45 @@ export class World {
     const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x6a7050, 0.85);
     this.scene.add(hemi);
     this.hemi = hemi;
-    const sun = new THREE.DirectionalLight(0xfff2d6, 1.1);
+    const sun = new THREE.DirectionalLight(0xfff2d6, 1.15);
     sun.position.set(60, 120, 40);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    const s = 90;
+    // A tighter frustum gives crisper shadows; main.js keeps it centred on the
+    // player each frame so shadows work anywhere in the (huge) world, not just
+    // near the origin.
+    const s = 70;
     sun.shadow.camera.left = -s; sun.shadow.camera.right = s;
     sun.shadow.camera.top = s; sun.shadow.camera.bottom = -s;
-    sun.shadow.camera.far = 320;
-    sun.shadow.bias = -0.0004;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 360;
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.02;
     this.scene.add(sun);
+    this.scene.add(sun.target);
     this.sun = sun;
+    this._sunOff = new THREE.Vector3(60, 120, 40); // light dir offset from the player
+
+    // A gradient sky DOME (horizon → zenith) replaces the flat background — the
+    // single biggest atmosphere upgrade. Its colours are animated with the
+    // day/night cycle. Huge, unlit, no fog, no cull.
+    this.skyUniforms = {
+      top: { value: new THREE.Color(0x3f77b0) },
+      bottom: { value: new THREE.Color(0xbfe0f0) },
+      offset: { value: 12 }, exponent: { value: 0.9 },
+    };
+    const domeMat = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms, side: THREE.BackSide, depthWrite: false, fog: false,
+      vertexShader: 'varying vec3 vW; void main(){ vW = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader: 'uniform vec3 top; uniform vec3 bottom; uniform float offset; uniform float exponent; varying vec3 vW; void main(){ float h = normalize(vW + vec3(0.0, offset, 0.0)).y; gl_FragColor = vec4(mix(bottom, top, pow(max(h,0.0), exponent)), 1.0); }',
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(900, 24, 16), domeMat);
+    dome.userData.noCull = true;
+    this.scene.add(dome);
+    this.skyDome = dome;
+
+    // A soft sun disc/glow following the light direction (additive, backdrop).
+    this.sunGlow = glowSprite(0xfff2c0, 90, 0.5);
+    this.sunGlow.userData.noCull = true;
+    this.scene.add(this.sunGlow);
 
     // Day/night palette + a star field that fades in at night.
     this._dayCol = new THREE.Color(0x9fc4e8);
@@ -243,7 +275,7 @@ export class World {
     }
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+    const mat = litMat({ vertexColors: true });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.receiveShadow = true;
     mesh.userData.noCull = true; // one big ground mesh — always drawn (fog hides the far parts)
@@ -252,7 +284,7 @@ export class World {
     // Water plane (lakes/seas sit in the low biome areas).
     const water = new THREE.Mesh(
       new THREE.PlaneGeometry(WORLD_SIZE * 2, WORLD_SIZE * 2),
-      new THREE.MeshLambertMaterial({ color: 0x3b6ea5, transparent: true, opacity: 0.78 })
+      litMat({ color: 0x3b6ea5, transparent: true, opacity: 0.78 })
     );
     water.rotation.x = -Math.PI / 2;
     water.position.y = WATER_LEVEL;
@@ -301,14 +333,14 @@ export class World {
     const big = !!t.nexus;
 
     // Plaza.
-    const plaza = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.4, 40), new THREE.MeshLambertMaterial({ color: pal.plaza }));
+    const plaza = new THREE.Mesh(new THREE.CylinderGeometry(R, R, 0.4, 40), litMat({ color: pal.plaza }));
     plaza.position.set(cx, baseY, cz); plaza.receiveShadow = true;
     this.group.add(plaza);
 
     // Houses ringed around the plaza (two rings for the bigger Nexus city).
     const houseCount = big ? 16 : 6;
-    const wallMats = [new THREE.MeshLambertMaterial({ color: pal.wall }), new THREE.MeshLambertMaterial({ color: pal.wall2 })];
-    const roofMats = pal.roofs.map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const wallMats = [litMat({ color: pal.wall }), litMat({ color: pal.wall2 })];
+    const roofMats = pal.roofs.map((c) => litMat({ color: c }));
     for (let i = 0; i < houseCount; i++) {
       const ang = (i / houseCount) * Math.PI * 2 + (big ? 0 : 0.4);
       const hr = R * 0.7 + (hash2(i + cx, cz) - 0.5) * 3;
@@ -349,7 +381,7 @@ export class World {
 
     // Landmark: the Nexus gets a glowing portal-obelisk; others a biome totem.
     if (big) {
-      const obelisk = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 7, 6), new THREE.MeshLambertMaterial({ color: 0x6a5a8a }));
+      const obelisk = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 1.1, 7, 6), litMat({ color: 0x6a5a8a }));
       obelisk.position.set(cx, baseY + 3.5, cz); obelisk.castShadow = true;
       const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9, 0), new THREE.MeshBasicMaterial({ color: 0x9fd0ff }));
       orb.position.set(cx, baseY + 8, cz);
@@ -358,7 +390,7 @@ export class World {
       this._nexusOrb = orb;
       this._addBox(obelisk, false);
     } else {
-      const totem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 3.4, 6), new THREE.MeshLambertMaterial({ color: roofMats[0].color }));
+      const totem = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 3.4, 6), litMat({ color: roofMats[0].color }));
       totem.position.set(cx, baseY + 1.7, cz); totem.castShadow = true;
       this.group.add(totem); this._addBox(totem, false);
     }
@@ -369,7 +401,7 @@ export class World {
       const ang = (a / lamps) * Math.PI * 2;
       const lx = cx + Math.cos(ang) * (R - 3), lz = cz + Math.sin(ang) * (R - 3);
       const ly = heightAt(lx, lz);
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3, 6), new THREE.MeshLambertMaterial({ color: 0x3a3a3a }));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3, 6), litMat({ color: 0x3a3a3a }));
       post.position.set(lx, ly + 1.5, lz); post.castShadow = true;
       const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffe8a0 }));
       lamp.position.set(lx, ly + 3.1, lz);
@@ -417,11 +449,11 @@ export class World {
   _tower(x, z, pal) {
     const y = heightAt(x, z);
     const g = new THREE.Group();
-    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.7, 8, 10), new THREE.MeshLambertMaterial({ color: pal.wall2 }));
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.7, 8, 10), litMat({ color: pal.wall2 }));
     shaft.position.y = 4;
-    const batt = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 1, 10), new THREE.MeshLambertMaterial({ color: pal.wall }));
+    const batt = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 1, 10), litMat({ color: pal.wall }));
     batt.position.y = 8.2;
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(2, 2.2, 10), new THREE.MeshLambertMaterial({ color: pal.roofs[0] }));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(2, 2.2, 10), litMat({ color: pal.roofs[0] }));
     roof.position.y = 9.8;
     g.add(shaft, batt, roof);
     g.position.set(x, y, z);
@@ -433,13 +465,13 @@ export class World {
   _well(x, z) {
     const y = heightAt(x, z);
     const g = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1, 1, 12), new THREE.MeshLambertMaterial({ color: 0x8a8276 }));
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1, 1, 12), litMat({ color: 0x8a8276 }));
     ring.position.y = 0.5;
     for (const sx of [-0.8, 0.8]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }));
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2, 5), litMat({ color: 0x5a3a22 }));
       post.position.set(sx, 1.5, 0); g.add(post);
     }
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.8, 4), new THREE.MeshLambertMaterial({ color: 0x6a4a2a }));
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.8, 4), litMat({ color: 0x6a4a2a }));
     roof.position.y = 2.8; roof.rotation.y = Math.PI / 4;
     g.add(ring, roof);
     g.position.set(x, y, z);
@@ -457,14 +489,14 @@ export class World {
     }[type] || { label: 'Trader', awning: 0xc9a227 };
     const y = heightAt(x, z);
     const g = new THREE.Group();
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.2), new THREE.MeshLambertMaterial({ color: 0x7a5230 }));
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 1.2), litMat({ color: 0x7a5230 }));
     counter.position.y = 0.5;
-    const postMat = new THREE.MeshLambertMaterial({ color: 0x5a3a22 });
+    const postMat = litMat({ color: 0x5a3a22 });
     for (const sx of [-1.4, 1.4]) {
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 6), postMat);
       post.position.set(sx, 1.3, -0.5); g.add(post);
     }
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), new THREE.MeshLambertMaterial({ color: TYPE.awning }));
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 1.6), litMat({ color: TYPE.awning }));
     awning.position.set(0, 2.5, -0.4); awning.rotation.x = -0.25; g.add(awning);
     const sign = new THREE.Mesh(new THREE.CircleGeometry(0.35, 16), new THREE.MeshBasicMaterial({ color: 0xffcf3a, side: THREE.DoubleSide }));
     sign.position.set(0, 2.9, 0.4); g.add(sign);
@@ -515,7 +547,7 @@ export class World {
 
   // Scattered ruins (broken pillars) out in the wild, per biome.
   _ruins() {
-    const pillarMat = new THREE.MeshLambertMaterial({ color: 0x9a948a });
+    const pillarMat = litMat({ color: 0x9a948a });
     for (let i = 0; i < 270; i++) {
       const ang = hash2(i, 201) * Math.PI * 2;
       const rad = 50 + hash2(i, 203) * (WORLD_SIZE - 70);
@@ -538,16 +570,16 @@ export class World {
   }
 
   _scatter() {
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x6b4a2f });
-    const deadMat = new THREE.MeshLambertMaterial({ color: 0x4a3a2a });
-    const cactusMat = new THREE.MeshLambertMaterial({ color: 0x4f8a4a });
-    const leafMats = [0x3f7d3a, 0x4f8f3f, 0x5a6f2f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
-    const pineMats = [0x2f6f4a, 0x357a52].map((c) => new THREE.MeshLambertMaterial({ color: c }));
-    const snowCapMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
-    const charredMat = new THREE.MeshLambertMaterial({ color: 0x2a1f1a });
+    const trunkMat = litMat({ color: 0x6b4a2f });
+    const deadMat = litMat({ color: 0x4a3a2a });
+    const cactusMat = litMat({ color: 0x4f8a4a });
+    const leafMats = [0x3f7d3a, 0x4f8f3f, 0x5a6f2f].map((c) => litMat({ color: c }));
+    const pineMats = [0x2f6f4a, 0x357a52].map((c) => litMat({ color: c }));
+    const snowCapMat = litMat({ color: 0xf4f8ff });
+    const charredMat = litMat({ color: 0x2a1f1a });
     const emberMat = new THREE.MeshBasicMaterial({ color: 0xff5a2a });
-    const jungleTrunk = new THREE.MeshLambertMaterial({ color: 0x6a5a3a });
-    const frondMats = [0x2f7e2a, 0x3a8e34, 0x256e22].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const jungleTrunk = litMat({ color: 0x6a5a3a });
+    const frondMats = [0x2f7e2a, 0x3a8e34, 0x256e22].map((c) => litMat({ color: c }));
     const crystalScatter = [0x7ab0ff, 0xb07bff, 0x9a8ad8].map((c) => new THREE.MeshBasicMaterial({ color: c }));
 
     for (let i = 0; i < 3300; i++) {
@@ -646,7 +678,7 @@ export class World {
       } else {
         // Rock (tinted by biome).
         const r = 0.6 + hash2(i, 31) * 1.6;
-        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), new THREE.MeshLambertMaterial({ color: biome.rock }));
+        const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), litMat({ color: biome.rock }));
         rock.position.set(x, y + r * 0.4, z);
         rock.rotation.set(hash2(i, 1) * 3, hash2(i, 2) * 3, hash2(i, 3) * 3);
         rock.castShadow = true; rock.receiveShadow = true;
@@ -658,8 +690,8 @@ export class World {
   // Heavy, thick forests of tall trees densely packed into the forest areas,
   // layered on top of the lighter world-wide scatter so the woods feel deep.
   _forests() {
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a3f28 });
-    const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const trunkMat = litMat({ color: 0x5a3f28 });
+    const canopyMats = [0x274e22, 0x2f5f2a, 0x386b2f, 0x3f5a26].map((c) => litMat({ color: c }));
     const forestAreas = AREAS.filter((a) => (a.biome === 'forest' || a.biome === 'jungle') && !a.safe);
     for (const fa of forestAreas) {
       for (let i = 0; i < 220; i++) {
@@ -692,7 +724,7 @@ export class World {
   _groundDetail() {
     // Bushes (small leafy clumps) and flower tufts to dress the ground.
     // Purely decorative — no colliders, so they never block movement.
-    const bushMats = [0x3f7d3a, 0x4f8f3f, 0x57752f].map((c) => new THREE.MeshLambertMaterial({ color: c }));
+    const bushMats = [0x3f7d3a, 0x4f8f3f, 0x57752f].map((c) => litMat({ color: c }));
     const flowerMats = [0xe85c8a, 0xf2c14e, 0xe8e8e8, 0x9a7bdc].map((c) => new THREE.MeshBasicMaterial({ color: c }));
 
     for (let i = 0; i < 1800; i++) {
@@ -723,7 +755,7 @@ export class World {
         const n = 1 + Math.floor(hash2(i, 59) * 3);
         for (let k = 0; k < n; k++) {
           const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.4, 4),
-            new THREE.MeshLambertMaterial({ color: 0x5a7a3a }));
+            litMat({ color: 0x5a7a3a }));
           stem.position.set((hash2(i, k) - 0.5) * 0.6, 0.2, (hash2(k, i + 1) - 0.5) * 0.6);
           const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), flowerMats[(i + k) % flowerMats.length]);
           bloom.position.set(stem.position.x, 0.42, stem.position.z);
@@ -738,7 +770,7 @@ export class World {
   _cliffs() {
     // Tall climbable rock walls placed around the map. Tagged climbable
     // so the player can scale them BotW-style with stamina.
-    const cliffMat = new THREE.MeshLambertMaterial({ color: 0x8a8073 });
+    const cliffMat = litMat({ color: 0x8a8073 });
     // NOTE: cliffs are kept AXIS-ALIGNED (no Y rotation). A rotated box's
     // world AABB is larger than the box itself, which produced "invisible
     // walls" you could climb where no rock appeared. Axis-aligned keeps the
@@ -759,7 +791,7 @@ export class World {
       this.group.add(mesh);
       this._addBox(mesh, true);
       // A reward platform marker on top (loot chest).
-      const chest = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.9), new THREE.MeshLambertMaterial({ color: 0xb8860b }));
+      const chest = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.9), litMat({ color: 0xb8860b }));
       chest.position.set(sp.x, baseY + sp.h - 0.6, sp.z);
       chest.castShadow = true;
       this.group.add(chest);
@@ -771,8 +803,8 @@ export class World {
   // barriers; mountains flagged with a cave get a dark mouth at the base that
   // descends into an instanced cavern.
   _mountains() {
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x6e6a63 });
-    const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+    const rockMat = litMat({ color: 0x6e6a63 });
+    const snowMat = litMat({ color: 0xf4f8ff });
     for (const m of MOUNTAINS) {
       const baseY = heightAt(m.x, m.z);
       const g = new THREE.Group();
@@ -803,7 +835,7 @@ export class World {
         const cave = CAVES.find((c) => c.id === m.cave);
         const mx = m.x, mz = m.z + fw + 1.4, my = heightAt(mx, mz);
         const arch = new THREE.Mesh(new THREE.TorusGeometry(2.0, 0.55, 8, 16, Math.PI),
-          new THREE.MeshLambertMaterial({ color: 0x4a463f }));
+          litMat({ color: 0x4a463f }));
         arch.position.set(mx, my + 0.2, mz);
         const mouth = new THREE.Mesh(new THREE.CircleGeometry(2.0, 16, 0, Math.PI),
           new THREE.MeshBasicMaterial({ color: 0x05060a }));
@@ -820,9 +852,9 @@ export class World {
   // (and gaps are left where areas, towns and roads sit) so you funnel between
   // regions through the passes. Peaks are solid (non-climbable) colliders.
   _ranges() {
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x6e6a63 });
-    const rockDark = new THREE.MeshLambertMaterial({ color: 0x595550 });
-    const snowMat = new THREE.MeshLambertMaterial({ color: 0xf4f8ff });
+    const rockMat = litMat({ color: 0x6e6a63 });
+    const rockDark = litMat({ color: 0x595550 });
+    const snowMat = litMat({ color: 0xf4f8ff });
     // Borders run along the bisector between each pair of neighbouring regions.
     const headings = BIOME_REGIONS.map((r) => (Math.atan2(r.z, r.x) * 180 / Math.PI + 360) % 360).sort((a, b) => a - b);
     const borders = headings.map((a, i) => (((a + (i + 1 < headings.length ? headings[i + 1] : headings[0] + 360)) / 2) % 360));
@@ -873,8 +905,8 @@ export class World {
   // Instanced caverns reached via a mountain mouth: a deep, dark, crystal-lit
   // room far off the overworld (flat floor at a low Y so it reads as "down").
   _caves() {
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0x2e2a33 });
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x3a3640 });
+    const floorMat = litMat({ color: 0x2e2a33 });
+    const rockMat = litMat({ color: 0x3a3640 });
     const crystalCols = [0x6fd0ff, 0xb07bff, 0x7bffcf];
     for (const c of CAVES) {
       const sx = c.sx, sz = c.sz, fy = c.floorY, half = 36;
@@ -925,9 +957,9 @@ export class World {
       this._portal(sx, fy, sz + half - 7, 0x9fd0ff);
       const spawn = new THREE.Vector3(sx, fy, sz + half - 18);
       const chest = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), new THREE.MeshLambertMaterial({ color: 0xb8860b })); base.position.y = 0.45;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), litMat({ color: 0xb8860b })); base.position.y = 0.45;
       const lid = new THREE.Group();
-      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), new THREE.MeshLambertMaterial({ color: 0x8a6410 })); lidMesh.position.set(0, 0.25, 0);
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), litMat({ color: 0x8a6410 })); lidMesh.position.set(0, 0.25, 0);
       lid.position.set(0, 0.9, -0.6); lid.add(lidMesh);
       const glow = new THREE.PointLight(0xffcf3a, 0, 8); glow.position.y = 1.4;
       chest.add(base, lid, glow); chest.position.set(sx, fy, sz - half + 7);
@@ -948,10 +980,10 @@ export class World {
   _makeBonfire(x, z, name) {
     const y = heightAt(x, z);
     const g = new THREE.Group();
-    const pit = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 0.5, 10), new THREE.MeshLambertMaterial({ color: 0x4a4a4a }));
+    const pit = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 0.5, 10), litMat({ color: 0x4a4a4a }));
     pit.position.y = 0.25;
     for (let i = 0; i < 5; i++) {
-      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.3, 5), new THREE.MeshLambertMaterial({ color: 0x5a3a22 }));
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.3, 5), litMat({ color: 0x5a3a22 }));
       log.position.y = 0.6; log.rotation.z = 0.5; log.rotation.y = (i / 5) * Math.PI * 2;
       g.add(log);
     }
@@ -1018,13 +1050,13 @@ export class World {
       scattered.push({ id: 'ecamp_' + i, level, x, z });
     }
     const specs = [...CAMPS, ...scattered];
-    const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
-    const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });
+    const chestMat = litMat({ color: 0xb8860b });
+    const lidMat = litMat({ color: 0x8a6410 });
     for (const sp of specs) {
       const y = heightAt(sp.x, sp.z);
       // Fire-ring decor marking the camp.
       const ring = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.25, 6, 18),
-        new THREE.MeshLambertMaterial({ color: 0x3a2a1a }));
+        litMat({ color: 0x3a2a1a }));
       ring.rotation.x = -Math.PI / 2; ring.position.set(sp.x, y + 0.12, sp.z);
       this.group.add(ring);
       // Treasure chest with an openable lid.
@@ -1126,9 +1158,9 @@ export class World {
 
   // A square-walled enemy castle: curtain walls, four corner towers, a gatehouse.
   _castle(cx, cy, cz, name) {
-    const stone = new THREE.MeshLambertMaterial({ color: 0x8a8578 });
-    const stone2 = new THREE.MeshLambertMaterial({ color: 0x726c60 });
-    const roof = new THREE.MeshLambertMaterial({ color: 0x5a3030 });
+    const stone = litMat({ color: 0x8a8578 });
+    const stone2 = litMat({ color: 0x726c60 });
+    const roof = litMat({ color: 0x5a3030 });
     const H = 40; // curtain half-width (footprint 80×80)
     const wallH = 7, wallT = 2;
     const g = new THREE.Group(); g.position.set(cx, cy, cz);
@@ -1177,8 +1209,8 @@ export class World {
     const H = 40;
     const vx = cx, vz = cz - H * 0.3 + 11; // just in front of the keep
     const y = heightAt(vx, vz);
-    const chestMat = new THREE.MeshLambertMaterial({ color: 0xd4af37 });
-    const lidMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
+    const chestMat = litMat({ color: 0xd4af37 });
+    const lidMat = litMat({ color: 0xb8860b });
     const chest = new THREE.Group();
     const base = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.5, 1.9), chestMat); base.position.y = 0.75;
     const lid = new THREE.Group();
@@ -1203,9 +1235,9 @@ export class World {
   // from walking off the top while the tiers stay walkable.
   _mageTower(cx, footY, cz, summitY) {
     const mt = MAGE_TOWER;
-    const stone = new THREE.MeshLambertMaterial({ color: 0x4a4668 });
-    const stone2 = new THREE.MeshLambertMaterial({ color: 0x565080 });
-    const trim = new THREE.MeshLambertMaterial({ color: 0x7a6ab0 });
+    const stone = litMat({ color: 0x4a4668 });
+    const stone2 = litMat({ color: 0x565080 });
+    const trim = litMat({ color: 0x7a6ab0 });
     const g = new THREE.Group(); g.position.set(cx, 0, cz); // children use absolute Y
     this.group.add(g);
 
@@ -1254,9 +1286,9 @@ export class World {
   // A small, friendly fishing village on the coast: a few huts, a jetty over the
   // water, drying racks, and villagers. Also a bonfire so it's a rest/save stop.
   _fishingVillage(cx, cy, cz, name, deg) {
-    const wall = new THREE.MeshLambertMaterial({ color: 0xb8a07a });
-    const roof = new THREE.MeshLambertMaterial({ color: 0x5a7a8a });
-    const woodM = new THREE.MeshLambertMaterial({ color: 0x6a4a2a });
+    const wall = litMat({ color: 0xb8a07a });
+    const roof = litMat({ color: 0x5a7a8a });
+    const woodM = litMat({ color: 0x6a4a2a });
     const g = new THREE.Group(); g.position.set(cx, cy, cz);
     this.group.add(g);
     // Huts.
@@ -1296,8 +1328,8 @@ export class World {
 
   // A palisade bandit base: a ring of sharpened stakes with a couple of tents.
   _banditBase(cx, cy, cz) {
-    const woodM = new THREE.MeshLambertMaterial({ color: 0x5a3f28 });
-    const tentM = new THREE.MeshLambertMaterial({ color: 0x6a5a3a });
+    const woodM = litMat({ color: 0x5a3f28 });
+    const tentM = litMat({ color: 0x6a5a3a });
     const g = new THREE.Group(); g.position.set(cx, cy, cz);
     this.group.add(g);
     const N = 16, ringR = 9;
@@ -1327,8 +1359,8 @@ export class World {
   // deep ocean at the World's Edge. Built once; world.update() animates the rise.
   triggerLeviathan(x, z) {
     if (this._leviathan) return this._leviathan;
-    const skin = new THREE.MeshLambertMaterial({ color: 0x233038 });
-    const belly = new THREE.MeshLambertMaterial({ color: 0x3a5560 });
+    const skin = litMat({ color: 0x233038 });
+    const belly = litMat({ color: 0x3a5560 });
     const g = new THREE.Group();
     const body = new THREE.Mesh(new THREE.CylinderGeometry(6, 9, 46, 12), skin); body.position.y = 23; g.add(body);
     const chest = new THREE.Mesh(new THREE.CylinderGeometry(5, 6.5, 16, 12), belly); chest.position.set(0, 20, 3.5); g.add(chest);
@@ -1372,8 +1404,8 @@ export class World {
   }
 
   _dungeons() {
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0x3a3540 });
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0x2a2630 });
+    const floorMat = litMat({ color: 0x3a3540 });
+    const wallMat = litMat({ color: 0x2a2630 });
     for (const d of DUNGEONS) {
       const sx = d.sx, sz = d.sz, fy = 0, half = 36;
       // Floor.
@@ -1405,9 +1437,9 @@ export class World {
       const spawn = new THREE.Vector3(sx, fy, sz + half - 9);
       // Loot chest near the boss end.
       const chest = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), new THREE.MeshLambertMaterial({ color: 0xb8860b })); base.position.y = 0.45;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.9, 1.2), litMat({ color: 0xb8860b })); base.position.y = 0.45;
       const lid = new THREE.Group();
-      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), new THREE.MeshLambertMaterial({ color: 0x8a6410 })); lidMesh.position.set(0, 0.25, 0);
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 1.2), litMat({ color: 0x8a6410 })); lidMesh.position.set(0, 0.25, 0);
       lid.position.set(0, 0.9, -0.6); lid.add(lidMesh);
       const glow = new THREE.PointLight(0xffcf3a, 0, 8); glow.position.y = 1.4;
       chest.add(base, lid, glow); chest.position.set(sx, fy, sz - half + 6);
@@ -1468,7 +1500,7 @@ export class World {
     let yy = 0;
     for (let i = 0; i < 4; i++) {
       const rr = 0.95 - i * 0.16;
-      const s = new THREE.Mesh(new THREE.DodecahedronGeometry(rr, 0), new THREE.MeshLambertMaterial({ color: cols[i % 3] }));
+      const s = new THREE.Mesh(new THREE.DodecahedronGeometry(rr, 0), litMat({ color: cols[i % 3] }));
       s.position.y = yy + rr * 0.7; s.rotation.set(i, i * 2, i); g.add(s); yy += rr * 1.2;
     }
     const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), new THREE.MeshBasicMaterial({ color: 0xff7a2a }));
@@ -1487,13 +1519,13 @@ export class World {
     const y = heightAt(x, z);
     const g = new THREE.Group();
     // A mossy anvil-stone.
-    const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(2.1, 0), new THREE.MeshLambertMaterial({ color: 0x6b6b62 }));
+    const stone = new THREE.Mesh(new THREE.DodecahedronGeometry(2.1, 0), litMat({ color: 0x6b6b62 }));
     stone.scale.set(1.15, 0.65, 1.15); stone.position.y = 0.9; stone.rotation.y = 0.6;
     g.add(stone);
     // A ring of guardian rocks around the base.
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + 0.3;
-      const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7 + (i % 3) * 0.25, 0), new THREE.MeshLambertMaterial({ color: 0x5e5e55 }));
+      const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.7 + (i % 3) * 0.25, 0), litMat({ color: 0x5e5e55 }));
       r.position.set(Math.cos(a) * 3.4, 0.3, Math.sin(a) * 3.4); r.rotation.set(a, a * 2, a);
       g.add(r);
     }
@@ -1544,9 +1576,9 @@ export class World {
       let x = sites[i].x, z = sites[i].z, y = heightAt(x, z);
       if (y < -3) { x *= 0.85; z *= 0.85; y = heightAt(x, z); }
       const g = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.0, 0.5, 8), new THREE.MeshLambertMaterial({ color: 0x6a6a62 }));
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.0, 0.5, 8), litMat({ color: 0x6a6a62 }));
       base.position.y = 0.25;
-      const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 2.2, 6), new THREE.MeshLambertMaterial({ color: 0x8a8478 }));
+      const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, 2.2, 6), litMat({ color: 0x8a8478 }));
       plinth.position.y = 1.35;
       const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), new THREE.MeshBasicMaterial({ color: type.color }));
       orb.position.y = 2.9;
@@ -1554,7 +1586,7 @@ export class World {
       // Four small pillars around it.
       for (let k = 0; k < 4; k++) {
         const a = (k / 4) * Math.PI * 2 + 0.4;
-        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.8, 6), new THREE.MeshLambertMaterial({ color: 0x7a7468 }));
+        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 1.8, 6), litMat({ color: 0x7a7468 }));
         pil.position.set(Math.cos(a) * 1.7, 0.9, Math.sin(a) * 1.7); g.add(pil);
       }
       g.add(base, plinth, orb, light);
@@ -1573,8 +1605,8 @@ export class World {
   // Hidden treasure chests scattered across the wild — tucked off the roads and
   // away from towns to reward exploration. Loot scales with how far out it sits.
   _treasures() {
-    const chestMat = new THREE.MeshLambertMaterial({ color: 0xb8860b });
-    const lidMat = new THREE.MeshLambertMaterial({ color: 0x8a6410 });
+    const chestMat = litMat({ color: 0xb8860b });
+    const lidMat = litMat({ color: 0x8a6410 });
     let placed = 0;
     for (let i = 0; i < 200 && placed < 30; i++) {
       const ang = hash2(i, 611) * Math.PI * 2;
@@ -1649,8 +1681,8 @@ export class World {
   // key — main.js spawns it and hunting it down solves the chest). Every site is
   // vetted to sit on flat ground clear of mountains so its beacons stay visible.
   _puzzles() {
-    const chestMat = new THREE.MeshLambertMaterial({ color: 0xcaa64a });
-    const lidMat = new THREE.MeshLambertMaterial({ color: 0x9a7a2a });
+    const chestMat = litMat({ color: 0xcaa64a });
+    const lidMat = litMat({ color: 0x9a7a2a });
     const runeColors = [0x6fc8ff, 0xff8a5a, 0x9be36a, 0xc78bff];
     const SHAPES = ['tetra', 'cube', 'octa'];
     let placed = 0;
@@ -1685,7 +1717,7 @@ export class World {
           const a = (k / nStones) * Math.PI * 2 + 0.5;
           const sx = x + Math.cos(a) * 5, sz = z + Math.sin(a) * 5, sy = heightAt(sx, sz);
           const sg = new THREE.Group();
-          const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.9, 6), new THREE.MeshLambertMaterial({ color: 0x5a5a52 })); pil.position.y = 0.95;
+          const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.9, 6), litMat({ color: 0x5a5a52 })); pil.position.y = 0.95;
           const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), new THREE.MeshBasicMaterial({ color: runeColors[k] })); orb.position.y = 2.1;
           sg.add(pil, orb); sg.position.set(sx, sy, sz);
           sg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
@@ -1707,7 +1739,7 @@ export class World {
         if (this._onMountain(kx, kz, 8) || heightAt(kx, kz) < WATER_LEVEL + 1) { kd = 12; kx = x + Math.cos(ka) * kd; kz = z + Math.sin(ka) * kd; }
         const ky = heightAt(kx, kz);
         const kg = new THREE.Group();
-        const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.1, 6), new THREE.MeshLambertMaterial({ color: 0x5a5a52 })); ped.position.y = 0.55;
+        const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 1.1, 6), litMat({ color: 0x5a5a52 })); ped.position.y = 0.55;
         const keyShape = new THREE.Mesh(this._shapeGeo(shape, 0.32), new THREE.MeshBasicMaterial({ color: 0xffe27a })); keyShape.position.y = 1.55;
         const kglow = new THREE.PointLight(0xffe27a, 1.8, 16); kglow.position.y = 1.55;
         kg.add(ped, keyShape, kglow); kg.position.set(kx, ky, kz);
@@ -1786,9 +1818,9 @@ export class World {
     this.fireflies.userData.noCull = true;
     this.group.add(this.fireflies);
 
-    const matRabbit = new THREE.MeshLambertMaterial({ color: 0xb9a98a });
-    const matSnake = new THREE.MeshLambertMaterial({ color: 0x4f8a3a });
-    const matBird = new THREE.MeshLambertMaterial({ color: 0x6a5a4a });
+    const matRabbit = litMat({ color: 0xb9a98a });
+    const matSnake = litMat({ color: 0x4f8a3a });
+    const matBird = litMat({ color: 0x6a5a4a });
     for (let i = 0; i < 48; i++) {
       const ang = hash2(i, 401) * Math.PI * 2;
       const rad = 30 + hash2(i, 403) * (WORLD_SIZE - 60);
@@ -1841,7 +1873,7 @@ export class World {
   // Birds flapping across the sky + one great dragon circling high above.
   _aerial() {
     this.birds = [];
-    const birdMat = new THREE.MeshLambertMaterial({ color: 0x2b2b30 });
+    const birdMat = litMat({ color: 0x2b2b30 });
     for (let i = 0; i < 20; i++) {
       const b = new THREE.Group();
       const wings = [];
@@ -1866,9 +1898,9 @@ export class World {
 
   _buildDragon() {
     const g = new THREE.Group();
-    const scaleMat = new THREE.MeshLambertMaterial({ color: 0x4a2030 });
-    const bellyMat = new THREE.MeshLambertMaterial({ color: 0x73402c });
-    const membrane = new THREE.MeshLambertMaterial({ color: 0x2a1020, side: THREE.DoubleSide });
+    const scaleMat = litMat({ color: 0x4a2030 });
+    const bellyMat = litMat({ color: 0x73402c });
+    const membrane = litMat({ color: 0x2a1020, side: THREE.DoubleSide });
     const segs = []; const N = 9;
     for (let i = 0; i < N; i++) {
       const r = 1.8 * (1 - i / (N + 3));
@@ -1903,6 +1935,7 @@ export class World {
 
   // Animate flickering bonfires + drifting clouds + day/night.
   update(t, dt = 0.016) {
+    this._wt = t; this._wdt = dt; // for the biome weather particles (see _updateWeather)
     this._dayNight(t);
     if (this.clouds) {
       for (const c of this.clouds) {
@@ -2076,7 +2109,10 @@ export class World {
     const ang = phase * Math.PI * 2 - Math.PI / 2; // sunrise at phase 0
     const elev = Math.sin(phase * Math.PI * 2);    // -1..1 (noon = +1)
     const day = Math.max(0, elev);                 // 0 at night
+    // Sun DIRECTION (the light vector); main.js positions it relative to the
+    // player each frame so shadows follow you across the whole world.
     this.sun.position.set(Math.cos(ang) * 160, Math.max(8, Math.sin(ang) * 160), 60);
+    this._sunDir = this.sun.position.clone().normalize();
     this.sun.intensity = 0.15 + day * 1.0;
     this.hemi.intensity = 0.22 + day * 0.62;
     // Sky/fog: night → dusk (low sun) → day.
@@ -2085,6 +2121,16 @@ export class World {
     col.lerp(this._duskCol, dusk * 0.5);
     this.scene.background.copy(col);
     if (this.scene.fog) this.scene.fog.color.copy(col);
+    // Gradient dome: warm-bottom sky by day, deep blue by night, dusk-tinted low.
+    if (this.skyUniforms) {
+      const T = this.skyUniforms.top.value, B = this.skyUniforms.bottom.value;
+      T.setHex(0x05081a).lerp(_skyC.setHex(0x3f77b0), day);
+      B.setHex(0x141d33).lerp(_skyC.setHex(0xbfe0f0), day).lerp(_skyC.setHex(0xe8935a), dusk * 0.55);
+    }
+    if (this.sunGlow) {
+      this.sunGlow.material.opacity = 0.15 + day * 0.5;
+      this.sunGlow.material.color.setHex(0xffe2a0).lerp(_skyC.setHex(0xff7a3c), dusk * 0.7);
+    }
     if (this.stars) this.stars.material.opacity = Math.max(0, 0.9 - day * 4);
     this.timeOfDay = day > 0.15 ? 'day' : (elev > 0 ? 'dawn' : dusk > 0.3 ? 'dusk' : 'night');
     this.isNight = day <= 0.05;
@@ -2093,6 +2139,65 @@ export class World {
     const tt = (phase * 24 + 6) % 24; // phase 0 = 06:00 (sunrise)
     const hh = Math.floor(tt), mm = Math.floor((tt - hh) * 60);
     this.clockText = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  }
+
+  // A small drifting particle field that follows the player and takes on the
+  // mood of whatever biome they're in — snow in the peaks, embers in the ash,
+  // pollen in the meadows/wood, dust in the desert/badlands. Cheap atmosphere.
+  _weather() {
+    const N = 320;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 70; pos[i * 3 + 1] = Math.random() * 34; pos[i * 3 + 2] = (Math.random() - 0.5) * 70; }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.4, transparent: true, opacity: 0, depthWrite: false, sizeAttenuation: true }));
+    pts.frustumCulled = false; pts.userData.noCull = true;
+    this.scene.add(pts);
+    this.weather = pts;
+    this._weatherProfiles = {
+      snow:     { c: 0xffffff, s: 0.5,  o: 0.7,  fall: -3.2, drift: 0.7 },
+      ash:      { c: 0xff7a3c, s: 0.36, o: 0.55, fall: 2.4,  drift: 0.5 },
+      desert:   { c: 0xe6d6a0, s: 0.32, o: 0.35, fall: -0.3, drift: 1.4 },
+      badlands: { c: 0xc79a68, s: 0.32, o: 0.35, fall: -0.3, drift: 1.3 },
+      crystal:  { c: 0xcdf2ff, s: 0.34, o: 0.4,  fall: 0.6,  drift: 0.4 },
+      forest:   { c: 0xdfeec0, s: 0.3,  o: 0.32, fall: -0.5, drift: 0.6 },
+      jungle:   { c: 0xcfe6a8, s: 0.3,  o: 0.32, fall: -0.5, drift: 0.6 },
+      swamp:    { c: 0xbfd08a, s: 0.3,  o: 0.3,  fall: -0.3, drift: 0.5 },
+      meadow:   { c: 0xeef2c8, s: 0.28, o: 0.26, fall: -0.4, drift: 0.6 },
+      default:  { c: 0xe8eec8, s: 0.28, o: 0.22, fall: -0.4, drift: 0.6 },
+    };
+  }
+  _updateWeather(pos) {
+    const w = this.weather; if (!w) return;
+    const pr = this._weatherProfiles[biomeKeyAt(pos.x, pos.z)] || this._weatherProfiles.default;
+    const dt = this._wdt || 0.016, t = this._wt || 0;
+    w.position.set(pos.x, pos.y, pos.z);
+    w.material.color.setHex(pr.c); w.material.size = pr.s;
+    w.material.opacity += (pr.o - w.material.opacity) * Math.min(1, dt * 2);
+    const arr = w.geometry.attributes.position.array, R = 35;
+    for (let i = 0; i < arr.length; i += 3) {
+      arr[i] += Math.sin(t * 1.3 + i) * pr.drift * dt;
+      arr[i + 1] += pr.fall * dt;
+      arr[i + 2] += Math.cos(t + i) * pr.drift * dt;
+      if (arr[i] > R) arr[i] -= 2 * R; else if (arr[i] < -R) arr[i] += 2 * R;
+      if (arr[i + 1] > 34) arr[i + 1] -= 36; else if (arr[i + 1] < -2) arr[i + 1] += 36;
+      if (arr[i + 2] > R) arr[i + 2] -= 2 * R; else if (arr[i + 2] < -R) arr[i + 2] += 2 * R;
+    }
+    w.geometry.attributes.position.needsUpdate = true;
+  }
+
+  // Anchor the sun's shadow frustum + sky dome + sun glow to the player/camera
+  // so shadows and atmosphere work anywhere in the (huge) world, not just near
+  // the origin. Called each frame from the main loop.
+  followSun(pos, camPos) {
+    this._updateWeather(pos);
+    if (this.sun && this._sunDir) {
+      this.sun.position.copy(pos).addScaledVector(this._sunDir, 170);
+      this.sun.target.position.copy(pos);
+      this.sun.target.updateMatrixWorld();
+    }
+    if (this.skyDome && camPos) this.skyDome.position.copy(camPos);
+    if (this.sunGlow && camPos) this.sunGlow.position.copy(camPos).addScaledVector(this._sunDir || _up, 700);
   }
 
   nearestBonfire(pos, maxDist = 4) {
