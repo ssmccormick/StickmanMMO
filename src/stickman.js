@@ -388,10 +388,11 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
       j.armR.rotation.x = -0.45 - arc * 1.25;
       j.armR.rotation.z = 0.05;
       j.torso.rotation.x = arc * 0.24;       // lean into the thrust
-    } else {                    // overhead diagonal chop: high-right → low-left
-      j.armR.rotation.x = -2.35 + t * 2.5;
-      j.armR.rotation.z = -0.75 + t * 1.85;
-      j.torso.rotation.z = -0.22 + t * 0.44; // shoulder rolls down through the chop
+    } else {                    // overhead chop straight down the FRONT (centred)
+      j.armR.rotation.x = -2.5 + t * 2.75;   // raised overhead → driven forward/down
+      j.armR.rotation.z = -0.12 + t * 0.24;  // stays near-centred (only a slight roll)
+      j.torso.rotation.z = -0.06 + t * 0.12; // subtle shoulder follow-through
+      j.torso.rotation.x = arc * 0.14;       // lean into the chop
     }
   } else if (charging) {
     // Wind-up: cock the weapon arm back and lean into the coming blow.
