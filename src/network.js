@@ -5,7 +5,7 @@
 // stickmen with nameplates, and relays chat.
 // ============================================================
 import * as THREE from 'three';
-import { createStickman, animateStickman, applyAppearance } from './stickman.js';
+import { createStickman, animateStickman, applyAppearance, RIG } from './stickman.js';
 import { applyArmorVisual } from './gear3d.js';
 import { buildHeldWeapon } from './weapons.js';
 import { CLASSES } from './classes.js';
@@ -290,13 +290,14 @@ export class Network {
   _setRemoteWeapon(o) {
     const j = o.mesh.userData.joints;
     if (!j || !j.armR) return;
+    const hand = j.handR || j.armR;
     const w = o.equip && o.equip.weapon;
     const kind = w ? w.kind : null;
     const skin = (o.equip && o.equip.skin) || 'default';
     const key = kind ? `${kind}:${w.r || 'common'}:${skin}` : 'none';
     if (key === o._heldKey) return;
     if (o._heldWeapon) {
-      j.armR.remove(o._heldWeapon);
+      (o._heldWeapon.parent || hand).remove(o._heldWeapon);
       o._heldWeapon.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) x.material.dispose(); });
       o._heldWeapon = null;
     }
@@ -304,8 +305,10 @@ export class Network {
     if (kind) {
       const color = (RARITY[w.r] || RARITY.common).hex;
       const wm = buildHeldWeapon(kind, color, skin);
+      // buildHeldWeapon poses the grip shoulder-relative; shift onto the hand.
+      if (j.handR) wm.position.y += RIG.armUpper + RIG.armLower;
       wm.scale.setScalar(1 + Object.keys(RARITY).indexOf(w.r) * 0.06);
-      j.armR.add(wm);
+      hand.add(wm);
       o._heldWeapon = wm;
     }
     o._heldKey = key;

@@ -6,7 +6,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { litMat } from './gfx.js';
-import { createStickman, animateStickman, applyAppearance } from './stickman.js';
+import { createStickman, animateStickman, applyAppearance, RIG } from './stickman.js';
 import { defaultAppearance, normalizeAppearance } from './appearance.js';
 import { SKILLS, SKILL_MAX, skillXpForLevel, skillBonus as skillBonusFor } from './skills.js';
 import { buildWeaponMesh, isRangedWeaponKind, WEAPON_PROFILE, WEAPON_HOLD } from './weapons.js';
@@ -495,24 +495,26 @@ export class Player {
     const skin = (this.appearance && this.appearance.weaponSkin) || 'default';
     // Swap the held model only when the weapon kind/rarity/skin actually changes.
     const key = kind ? kind + ':' + w.rarity + ':' + skin : 'none';
+    const hand = j.handR || j.armR;
     if (key !== this._heldKey) {
       if (this._heldWeapon) {
-        j.armR.remove(this._heldWeapon);
+        (this._heldWeapon.parent || hand).remove(this._heldWeapon);
         this._heldWeapon.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
         this._heldWeapon = null;
       }
       if (j.weapon) j.weapon.visible = false; // hide the generic stick
       if (kind) {
         const wm = buildWeaponMesh(kind, color, skin);
-        // Each weapon kind is held in its own natural pose: poles (staff/bow)
-        // run straight up & down in the grip, the wand points forward like a
-        // focus, and blades sit angled in a ready stance.
+        // Each weapon kind is held in its own natural pose. WEAPON_HOLD.pos is
+        // shoulder-relative; the hand joint sits armUpper+armLower below the
+        // shoulder, so shift the grip down onto the hand.
         const h = WEAPON_HOLD[kind] || WEAPON_HOLD.default;
-        wm.position.set(h.pos[0], h.pos[1], h.pos[2]);
+        const drop = j.handR ? (RIG.armUpper + RIG.armLower) : 0;
+        wm.position.set(h.pos[0], h.pos[1] + drop, h.pos[2]);
         wm.rotation.set(h.rot[0], h.rot[1], h.rot[2]);
         const tier = 1 + Object.keys(RARITY).indexOf(w.rarity) * 0.06;
         wm.scale.setScalar(tier);
-        j.armR.add(wm);
+        hand.add(wm);
         this._heldWeapon = wm;
       }
       this._heldKey = key;
@@ -582,31 +584,22 @@ export class Player {
     const base = (WEAPON_HOLD[kind] || WEAPON_HOLD.default).rot;
     const attacking = this.attackAnim > 0;
     if (!isRangedWeaponKind(kind)) {
-      // Melee: the ARM now carries the swing's arc (see animateStickman); the
-      // blade just follows the grip — a light straighten through a slash, and a
-      // full forward point on the stab (comboStep 2) so the tip leads the thrust.
-      if (attacking) {
-        // Straighten the blade IN LINE with the arm through the swing so it
-        // sweeps the arc (slash) / leads the thrust (stab) instead of staying
-        // angled in the grip — then eases back to the upright ready pose.
-        const arc = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 over the swing
-        const ext = Math.PI * 0.92;                            // blade in line with the arm
-        w.rotation.set(base[0] + (ext - base[0]) * arc, base[1], base[2] * (1 - arc));
-      } else {
-        w.rotation.set(base[0], base[1], base[2]);
-      }
+      // Melee: the SHOULDER + ELBOW now carry the whole swing (see
+      // animateStickman), so the blade just stays gripped at its ready pose and
+      // follows the hand through the arc — no extra weapon rotation needed.
+      w.rotation.set(base[0], base[1], base[2]);
       return;
     }
     if (kind === 'bow' || kind === 'crossbow') {
       // A bow/crossbow is levelled and loosed, not thrust like a spear: raise the
-      // arm to aim it forward on release; the weapon keeps its steady orientation
-      // (the arrow/bolt already leaves from the tip via weaponMuzzle()).
-      if (attacking) j.armR.rotation.set(-1.5, 0, 0);
+      // arm (elbow straight) to aim it forward on release.
+      if (attacking) { j.armR.rotation.set(-1.5, 0, 0); j.armRlo.rotation.x = 0; }
       w.rotation.set(base[0], base[1], base[2]);
     } else if (attacking) {
-      // Staff / wand / thrown: rest upright, then thrust the tip outward on cast.
+      // Staff / wand / thrown: extend the arm (straight elbow) to thrust the tip.
       const t = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 ease over the swing
-      j.armR.rotation.set(-1.4 * t, 0, 0);                 // extend the arm toward the foe
+      j.armR.rotation.set(-1.4 * t, 0, 0);
+      j.armRlo.rotation.x = 0.3 * (1 - t);                 // forearm straightens into the cast
       w.rotation.set(base[0] + (2.9 - base[0]) * t, base[1], base[2] * (1 - t)); // tip points outward
     } else {
       w.rotation.set(base[0], base[1], base[2]);            // resting upright pose
@@ -1260,6 +1253,11 @@ export class Player {
       if (rj) {
         rj.legL.rotation.set(-1.2, 0, 0.34); rj.legR.rotation.set(-1.2, 0, -0.34);
         rj.armL.rotation.set(-0.5, 0, 0.12); rj.armR.rotation.set(-0.5, 0, -0.12);
+        // Bend knees so the lower legs hang down alongside the mount (the
+        // animator may have left them mid-stride), and relax the elbows/ankles.
+        rj.legLlo.rotation.x = 1.1; rj.legRlo.rotation.x = 1.1;
+        rj.footL.rotation.x = 0; rj.footR.rotation.x = 0;
+        rj.armLlo.rotation.x = 0.5; rj.armRlo.rotation.x = 0.5;
         rj.torso.rotation.x = 0.14;
       }
       this.steed.position.set(this.pos.x, this.pos.y, this.pos.z);

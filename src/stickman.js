@@ -14,16 +14,41 @@ const G = {
   torso: new THREE.CylinderGeometry(0.12, 0.1, 1, 7),
 };
 
-function limbMesh(mat, length) {
-  const m = new THREE.Mesh(G.limb, mat);
-  m.scale.y = length;
-  // Pivot at the top: shift geometry down so it rotates from the shoulder/hip.
-  m.position.y = -length / 2;
-  const pivot = new THREE.Group();
-  pivot.add(m);
-  pivot.userData.bar = m;   // the inner bar — scaled in x/z to set limb thickness
-  pivot.userData.len = length;
-  return pivot;
+// Articulated limb proportions. Arms bend at an elbow (upper + forearm) and legs
+// at a knee (thigh + calf) with a foot — so the walk/idle/attack animator can
+// drive real joints instead of swinging one rigid stick.
+export const RIG = { armUpper: 0.34, armLower: 0.30, thigh: 0.52, calf: 0.48 };
+
+// One tapered bone: a Group that pivots at its TOP, with the bar shifted down so
+// it rotates from the shoulder/hip/elbow/knee. `isLimbBar` tags it for the
+// thickness (limb) scaling in applyAppearance.
+function segment(mat, len) {
+  const bar = new THREE.Mesh(G.limb, mat);
+  bar.scale.set(1, len, 1);
+  bar.position.y = -len / 2;
+  bar.userData.isLimbBar = true;
+  const g = new THREE.Group();
+  g.add(bar);
+  g.userData.bar = bar; g.userData.len = len;
+  return g;
+}
+// Upper arm → forearm → hand (the weapon/gauntlet mount point).
+function buildArm(mat) {
+  const upper = segment(mat, RIG.armUpper);
+  const fore = segment(mat, RIG.armLower); fore.position.y = -RIG.armUpper; upper.add(fore);
+  const hand = new THREE.Group(); hand.position.y = -RIG.armLower; fore.add(hand);
+  upper.userData.lower = fore; upper.userData.hand = hand;
+  return upper;
+}
+// Thigh → calf → foot (the boot mount point).
+function buildLeg(mat) {
+  const thigh = segment(mat, RIG.thigh);
+  const calf = segment(mat, RIG.calf); calf.position.y = -RIG.thigh; thigh.add(calf);
+  const foot = new THREE.Group(); foot.position.y = -RIG.calf; calf.add(foot);
+  const fm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.22), mat); fm.position.set(0, -0.02, 0.06);
+  foot.add(fm);
+  thigh.userData.lower = calf; thigh.userData.foot = foot;
+  return thigh;
 }
 
 // Normalise the various ways createStickman is called into one appearance
@@ -69,28 +94,37 @@ export function createStickman(opts = {}) {
   crest.position.y = 1.2;
   hip.add(crest);
 
-  // Shoulders origin
+  // Shoulders origin. Arms bend at the elbow (upper + forearm + hand).
   const shoulderY = 0.66;
-  const armL = limbMesh(accentMat, 0.62); armL.position.set(0.18, shoulderY, 0);
-  const armR = limbMesh(accentMat, 0.62); armR.position.set(-0.18, shoulderY, 0);
+  const armL = buildArm(accentMat); armL.position.set(0.18, shoulderY, 0);
+  const armR = buildArm(accentMat); armR.position.set(-0.18, shoulderY, 0);
   hip.add(armL, armR);
 
-  // Legs from hip. Length reaches the ground: the hip sits at y=1.0 and the leg
-  // pivots there, so a length of 1.0 puts the feet at y≈0 (no floating).
-  const legL = limbMesh(bodyMat, 1.0); legL.position.set(0.1, 0, 0);
-  const legR = limbMesh(bodyMat, 1.0); legR.position.set(-0.1, 0, 0);
+  // Legs from the hip bend at the knee (thigh + calf + foot). Thigh+calf = 1.0,
+  // so with the hip at y=1.0 the ankle lands at y≈0 (feet on the ground).
+  const legL = buildLeg(bodyMat); legL.position.set(0.1, 0, 0);
+  const legR = buildLeg(bodyMat); legR.position.set(-0.1, 0, 0);
   hip.add(legL, legR);
 
-  // A held "weapon" stick on the right arm. Uses its OWN material (cloned)
-  // so recolouring it by gear rarity doesn't tint the arms/crest too.
+  // A held "weapon" stick in the right HAND (end of the forearm). Uses its OWN
+  // material (cloned) so recolouring it by gear rarity doesn't tint the arms.
   const weapon = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 5), accentMat.clone());
-  weapon.position.y = -0.62; weapon.rotation.z = Math.PI / 2.5;
-  armR.add(weapon);
+  weapon.position.y = -0.02; weapon.rotation.z = Math.PI / 2.5;
+  armR.userData.hand.add(weapon);
 
   root.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
 
   // Bundle joint refs + materials + per-instance animation phase on the group.
-  root.userData.joints = { hip, torso, head, crest, armL, armR, legL, legR, weapon, hair: null };
+  // Upper joints keep their original names; lower/hand/foot joints are new.
+  root.userData.joints = {
+    hip, torso, head, crest,
+    armL, armR, legL, legR,
+    armLlo: armL.userData.lower, armRlo: armR.userData.lower,
+    handL: armL.userData.hand, handR: armR.userData.hand,
+    legLlo: legL.userData.lower, legRlo: legR.userData.lower,
+    footL: legL.userData.foot, footR: legR.userData.foot,
+    weapon, hair: null,
+  };
   root.userData.mats = { body: bodyMat, accent: accentMat, hair: hairMat };
   root.userData.anim = { phase: Math.random() * Math.PI * 2, attack: 0, climb: 0 };
 
@@ -113,11 +147,10 @@ export function applyAppearance(root, app) {
   root.scale.setScalar(app.size);
   j.torso.scale.set(app.build, 0.7, app.build);
   j.head.scale.setScalar(app.headSize);
-  // Limb thickness: scale only the inner bar's x/z so the held weapon and joint
-  // pivots (which drive animation) keep their normal proportions.
+  // Limb thickness: scale only the bars' x/z (every segment) so hands, feet and
+  // joint pivots — which drive animation — keep their normal proportions.
   for (const limb of [j.armL, j.armR, j.legL, j.legR]) {
-    const bar = limb.userData.bar;
-    if (bar) { bar.scale.x = app.limb; bar.scale.z = app.limb; }
+    limb.traverse((o) => { if (o.userData.isLimbBar) { o.scale.x = app.limb; o.scale.z = app.limb; } });
   }
 
   // Rebuild hair only when the STYLE changes. Colour tweaks just recolour the
@@ -337,72 +370,98 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
   }
 
   const K = Math.min(1, dt * 10); // easing factor toward a target pose
+  const L = (o, k, v) => { o[k] = THREE.MathUtils.lerp(o[k], v, K); }; // ease a channel
+
+  // ---- Lower body + off-hand: climb / walk / idle ----
   if (climbing) {
-    // Reach up alternately while climbing.
+    // Reach up alternately, hauling with bent arms and driving with bent knees.
     const c = Math.sin(a.phase * 1.4);
-    j.armL.rotation.x = -2.3 + c * 0.6;
-    j.armR.rotation.x = -2.3 - c * 0.6;
-    j.legL.rotation.x = 0.4 - c * 0.5;
-    j.legR.rotation.x = 0.4 + c * 0.5;
-    j.hip.rotation.x = 0.2;
+    j.armL.rotation.x = -2.3 + c * 0.6; j.armR.rotation.x = -2.3 - c * 0.6;
+    j.armLlo.rotation.x = 0.5 - c * 0.4; j.armRlo.rotation.x = 0.5 + c * 0.4;
+    j.legL.rotation.x = 0.4 - c * 0.5; j.legR.rotation.x = 0.4 + c * 0.5;
+    j.legLlo.rotation.x = -0.7 - Math.max(0, -c) * 0.6; j.legRlo.rotation.x = -0.7 - Math.max(0, c) * 0.6;
+    j.footL.rotation.x = 0.3; j.footR.rotation.x = 0.3;
+    j.hip.rotation.x = 0.2; j.hip.rotation.y = 0;
+    j.torso.rotation.y = c * 0.12;
   } else if (moving) {
-    // Walk / run cycle.
-    j.legL.rotation.x = swing;
-    j.legR.rotation.x = -swing;
-    j.armL.rotation.x = -swing * 0.8;
-    j.armR.rotation.x = swing * 0.8;
-    j.hip.rotation.x = 0;
-    j.torso.rotation.x = speed01 * 0.18;                 // lean into the run
-    j.hip.position.y = 1.0 + Math.abs(Math.sin(a.phase)) * 0.04 * speed01; // stride bob
+    // Walk / run: thighs swing, knees flex to clear the ground and extend to
+    // plant, ankles roll through the step; arms counter-swing with bent elbows;
+    // the torso/hips counter-rotate and the whole body bobs on each stride.
+    const s = swing;                         // thigh swing, ∝ speed
+    const lift = speed01;
+    const kL = Math.max(0, Math.sin(a.phase - 0.7)); // per-leg knee-lift envelopes
+    const kR = Math.max(0, Math.sin(a.phase + Math.PI - 0.7));
+    j.legL.rotation.x = s; j.legR.rotation.x = -s;
+    j.legLlo.rotation.x = -(0.12 + kL * 1.35) * lift; // knees never hyperextend (≤0)
+    j.legRlo.rotation.x = -(0.12 + kR * 1.35) * lift;
+    j.footL.rotation.x = (0.12 + kL * 0.5) * lift;    // toe-off then flatten
+    j.footR.rotation.x = (0.12 + kR * 0.5) * lift;
+    j.armL.rotation.x = -s * 1.1; j.armR.rotation.x = s * 1.1;
+    j.armLlo.rotation.x = 0.35 + Math.max(0, -s) * 0.9; // elbows bend on the back-swing
+    j.armRlo.rotation.x = 0.35 + Math.max(0, s) * 0.9;
+    j.armL.rotation.z = 0.09;
+    j.torso.rotation.y = -s * 0.16; j.torso.rotation.x = lift * 0.14; j.torso.rotation.z = 0;
+    j.hip.rotation.y = s * 0.09; j.hip.rotation.x = 0;
+    j.hip.position.y = 1.0 + Math.abs(Math.sin(a.phase * 2)) * 0.05 * lift; // two bobs per stride
   } else {
-    // IDLE STANCE: feet planted, a relaxed at-the-ready pose with a gentle
-    // breathing rise/fall — no stepping in place.
+    // IDLE: planted feet, soft knees, relaxed bent arms, a breathing rise/fall
+    // and a slow weight-shift so a standing figure never looks frozen.
     const breath = Math.sin(a.idle * 1.6);
-    j.legL.rotation.x = THREE.MathUtils.lerp(j.legL.rotation.x, 0, K);
-    j.legR.rotation.x = THREE.MathUtils.lerp(j.legR.rotation.x, 0, K);
-    j.armL.rotation.x = THREE.MathUtils.lerp(j.armL.rotation.x, 0.06 + breath * 0.03, K);
-    j.armL.rotation.z = THREE.MathUtils.lerp(j.armL.rotation.z, -0.07, K);
-    j.armR.rotation.x = THREE.MathUtils.lerp(j.armR.rotation.x, 0.06 + breath * 0.03, K);
-    j.hip.rotation.x = 0;
-    j.torso.rotation.x = THREE.MathUtils.lerp(j.torso.rotation.x, 0.02 + breath * 0.02, K);
-    j.hip.position.y = THREE.MathUtils.lerp(j.hip.position.y, 1.0 + breath * 0.012, K);
+    const shift = Math.sin(a.idle * 0.7) * 0.04;
+    L(j.legL.rotation, 'x', 0.02); L(j.legR.rotation, 'x', 0.02);
+    L(j.legLlo.rotation, 'x', -0.13); L(j.legRlo.rotation, 'x', -0.13);
+    L(j.footL.rotation, 'x', 0); L(j.footR.rotation, 'x', 0);
+    L(j.armL.rotation, 'x', 0.09 + breath * 0.03); L(j.armL.rotation, 'z', -0.1);
+    L(j.armR.rotation, 'x', 0.09 + breath * 0.03);
+    L(j.armLlo.rotation, 'x', 0.22); L(j.armRlo.rotation, 'x', 0.22);
+    L(j.torso.rotation, 'x', 0.02 + breath * 0.02); L(j.torso.rotation, 'y', shift);
+    L(j.hip.rotation, 'y', shift * 0.5); j.hip.rotation.x = 0;
+    L(j.hip.position, 'y', 1.0 + breath * 0.012);
   }
 
-  // Attack swing overrides the right arm — and the STYLE alternates on quick
-  // successive hits (a 3-hit combo). Each swing travels a real ARC by driving
-  // the arm with `t` (0→1, start→end) instead of a symmetric sine, so the blade
-  // sweeps ACROSS the body rather than just poking out and snapping back:
-  //   0) an overhead diagonal slash, high-right down to low-left,
-  //   1) a flat horizontal cut sweeping across the front,
-  //   2) a forward stab/thrust (the body lunges with it, in player.js).
-  // `rotation.x` pitches the arm forward/back; `rotation.z` rolls it across the
-  // frontal plane (+ = up/across to the character's left, − = out to the right).
+  // ---- Weapon arm: a committed, articulated swing (overrides the right arm) ----
+  // Each combo drives the SHOULDER (armR) and ELBOW (armRlo) through a real
+  // wind-up → strike → follow-through, with torso/hip rotation, an off-hand
+  // counter-swing and a bit of leg plant so the whole body commits to the blow:
+  //   0) overhead chop down the front, 1) horizontal cut, 2) forward stab.
   if (attack > 0) {
-    const t = 1 - attack;                    // 0 → 1 across the swing (directional)
-    const arc = Math.sin(t * Math.PI);       // 0→1→0 (for thrust in/out + body dips)
-    if (combo === 1) {          // horizontal cut across the front (left → right)
-      j.armR.rotation.x = -1.5 + arc * 0.2;
-      j.armR.rotation.z = 1.15 - t * 2.35;
-      j.torso.rotation.z = 0.28 - t * 0.56;  // hips/shoulders whip through the cut
-    } else if (combo === 2) {   // forward stab: cock, then drive the point ahead
-      j.armR.rotation.x = -0.45 - arc * 1.25;
-      j.armR.rotation.z = 0.05;
-      j.torso.rotation.x = arc * 0.24;       // lean into the thrust
-    } else {                    // overhead chop straight down the FRONT (centred)
-      j.armR.rotation.x = -2.5 + t * 2.75;   // raised overhead → driven forward/down
-      j.armR.rotation.z = -0.12 + t * 0.24;  // stays near-centred (only a slight roll)
-      j.torso.rotation.z = -0.06 + t * 0.12; // subtle shoulder follow-through
-      j.torso.rotation.x = arc * 0.14;       // lean into the chop
+    const t = 1 - attack;                    // 0 → 1 across the swing
+    const arc = Math.sin(t * Math.PI);       // 0→1→0 (peak at mid-swing)
+    if (combo === 1) {          // horizontal cut sweeping left → right
+      j.armR.rotation.x = -1.35 + arc * 0.25;
+      j.armR.rotation.z = 1.2 - t * 2.4;
+      j.armRlo.rotation.x = 0.25 + arc * 0.8;      // elbow leads, then extends
+      j.torso.rotation.y = 0.38 - t * 0.78;         // big torso whip
+      j.torso.rotation.z = 0.12 - t * 0.24;
+      j.armL.rotation.x = -0.6; j.armL.rotation.z = -0.35 + t * 0.6;
+      j.legL.rotation.x = -0.12 * arc; j.legR.rotation.x = 0.12 * arc;
+    } else if (combo === 2) {   // forward stab: retract, then punch the point out
+      const push = t;
+      j.armR.rotation.x = -1.15 + (1 - Math.cos(push * Math.PI)) * 0.55;
+      j.armR.rotation.z = 0;
+      j.armRlo.rotation.x = 1.25 * (1 - push) + 0.05; // cocked elbow → extended thrust
+      j.torso.rotation.x = 0.05 + arc * 0.2; j.torso.rotation.y = 0.06;
+      j.armL.rotation.x = -0.5 - arc * 0.35; j.armL.rotation.z = -0.15;
+      j.legR.rotation.x = 0.22 * arc; j.legRlo.rotation.x = -0.2 * arc;
+    } else {                    // overhead chop straight down the front
+      j.armR.rotation.x = -2.6 + t * 2.85;          // raised overhead → forward/down
+      j.armR.rotation.z = -0.1 + t * 0.2;
+      j.armRlo.rotation.x = 1.5 * (1 - t) + 0.1;     // cocked behind the head → snaps out
+      j.torso.rotation.x = 0.08 + arc * 0.22; j.torso.rotation.y = -0.1 + t * 0.2;
+      j.torso.rotation.z = -0.05 + t * 0.1;
+      j.armL.rotation.x = -0.3 - arc * 0.45; j.armL.rotation.z = 0.22;
+      j.legR.rotation.x = 0.16 * arc; j.legLlo.rotation.x = -0.22 * arc;
     }
   } else if (charging) {
-    // Wind-up: cock the weapon arm back and lean into the coming blow.
-    j.armR.rotation.x = THREE.MathUtils.lerp(j.armR.rotation.x, -2.5, Math.min(1, dt * 9));
-    j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, -0.55, Math.min(1, dt * 9));
-    j.torso.rotation.x = 0.18;
-    j.torso.rotation.z = THREE.MathUtils.lerp(j.torso.rotation.z, 0, Math.min(1, dt * 8));
+    // Wind-up hold: cock the weapon arm back with a bent elbow, coil the torso.
+    L(j.armR.rotation, 'x', -2.5); L(j.armR.rotation, 'z', -0.35);
+    L(j.armRlo.rotation, 'x', 1.5);
+    L(j.armL.rotation, 'x', -0.3);
+    j.torso.rotation.x = 0.18; L(j.torso.rotation, 'y', -0.16); L(j.torso.rotation, 'z', 0);
   } else {
-    j.armR.rotation.z = THREE.MathUtils.lerp(j.armR.rotation.z, 0, Math.min(1, dt * 10));
-    j.torso.rotation.z = THREE.MathUtils.lerp(j.torso.rotation.z, 0, Math.min(1, dt * 8));
+    // Recover: relax the weapon-arm roll and torso twist back to neutral.
+    L(j.armR.rotation, 'z', 0);
+    L(j.torso.rotation, 'z', 0);
   }
 }
 
@@ -410,9 +469,11 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
 function poseEmote(group, j, a, emote) {
   const hip = group.children[0];
   const p = a.phase;
-  // reset baseline
-  j.hip.rotation.x = 0; j.torso.rotation.x = 0; j.torso.rotation.z = 0;
+  // reset baseline (including the articulated lower joints)
+  j.hip.rotation.x = 0; j.hip.rotation.y = 0; j.torso.rotation.x = 0; j.torso.rotation.y = 0; j.torso.rotation.z = 0;
   j.legL.rotation.x = 0; j.legR.rotation.x = 0;
+  j.legLlo.rotation.x = 0; j.legRlo.rotation.x = 0; j.footL.rotation.x = 0; j.footR.rotation.x = 0;
+  j.armLlo.rotation.x = 0; j.armRlo.rotation.x = 0;
   hip.position.y = 1.0; hip.rotation.z = 0;
   const s = Math.sin(p * 6);
   switch (emote) {

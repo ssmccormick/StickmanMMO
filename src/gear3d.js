@@ -185,13 +185,15 @@ export function applyArmorVisual(root, visual, app = {}) {
     attach(buildShoulder(v.shoulders, -1), j.hip, -0.2 * build, 0.66, 0);
   }
   if (v.hands) {
-    if (j.armL) attach(buildGauntlet(v.hands, limb), j.armL, 0, -0.6, 0);
-    if (j.armR) attach(buildGauntlet(v.hands, limb), j.armR, 0, -0.6, 0);
+    // Gauntlets ride on the HANDS (forearm ends) so they follow the elbow bend.
+    if (j.handL || j.armL) attach(buildGauntlet(v.hands, limb), j.handL || j.armL, 0, -0.02, 0);
+    if (j.handR || j.armR) attach(buildGauntlet(v.hands, limb), j.handR || j.armR, 0, -0.02, 0);
   }
   if (v.feet) {
-    // Boots ride at the ankle — legs are length 1.0 (foot ≈ -0.9 from the hip).
-    if (j.legL) attach(buildBoot(v.feet, limb), j.legL, 0, -0.9, 0);
-    if (j.legR) attach(buildBoot(v.feet, limb), j.legR, 0, -0.9, 0);
+    // Boots wrap the lower shin+foot; mount them on the CALF (near the ankle) so
+    // they follow the knee bend. (Boot origin is mid-shin, ≈0.38 above the ankle.)
+    if (j.legLlo || j.legL) attach(buildBoot(v.feet, limb), j.legLlo || j.legL, 0, j.legLlo ? -0.38 : -0.9, 0);
+    if (j.legRlo || j.legR) attach(buildBoot(v.feet, limb), j.legRlo || j.legR, 0, j.legRlo ? -0.38 : -0.9, 0);
   }
 
   root.userData.armor = { key, meshes };

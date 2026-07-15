@@ -86,10 +86,10 @@ function makeOgre({ color, accent, scale = 1 } = {}) {
   }
   const brow = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, 0.12), skin);
   brow.position.set(0, 0.1, 0.2); j.head.add(brow);
-  // Big fists at the ends of the arms.
-  for (const arm of [j.armL, j.armR]) {
+  // Big fists on the hands (forearm ends, so they follow the elbow).
+  for (const hand of [j.handL || j.armL, j.handR || j.armR]) {
     const fist = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 6), skin);
-    fist.position.set(0, -0.62, 0); arm.add(fist);
+    fist.position.set(0, j.handL ? -0.04 : -0.62, 0); hand.add(fist);
   }
   root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return root;
