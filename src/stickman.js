@@ -377,9 +377,9 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     // Reach up alternately, hauling with bent arms and driving with bent knees.
     const c = Math.sin(a.phase * 1.4);
     j.armL.rotation.x = -2.3 + c * 0.6; j.armR.rotation.x = -2.3 - c * 0.6;
-    j.armLlo.rotation.x = 0.5 - c * 0.4; j.armRlo.rotation.x = 0.5 + c * 0.4;
+    j.armLlo.rotation.x = -(0.5 - c * 0.4); j.armRlo.rotation.x = -(0.5 + c * 0.4); // elbows flex (hand forward = −x)
     j.legL.rotation.x = 0.4 - c * 0.5; j.legR.rotation.x = 0.4 + c * 0.5;
-    j.legLlo.rotation.x = -0.7 - Math.max(0, -c) * 0.6; j.legRlo.rotation.x = -0.7 - Math.max(0, c) * 0.6;
+    j.legLlo.rotation.x = 0.7 + Math.max(0, -c) * 0.6; j.legRlo.rotation.x = 0.7 + Math.max(0, c) * 0.6; // knees flex (heel back = +x)
     j.footL.rotation.x = 0.3; j.footR.rotation.x = 0.3;
     j.hip.rotation.x = 0.2; j.hip.rotation.y = 0;
     j.torso.rotation.y = c * 0.12;
@@ -392,13 +392,13 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     const kL = Math.max(0, Math.sin(a.phase - 0.7)); // per-leg knee-lift envelopes
     const kR = Math.max(0, Math.sin(a.phase + Math.PI - 0.7));
     j.legL.rotation.x = s; j.legR.rotation.x = -s;
-    j.legLlo.rotation.x = -(0.12 + kL * 1.35) * lift; // knees never hyperextend (≤0)
-    j.legRlo.rotation.x = -(0.12 + kR * 1.35) * lift;
+    j.legLlo.rotation.x = (0.12 + kL * 1.35) * lift; // knees flex (heel back = +x)
+    j.legRlo.rotation.x = (0.12 + kR * 1.35) * lift;
     j.footL.rotation.x = (0.12 + kL * 0.5) * lift;    // toe-off then flatten
     j.footR.rotation.x = (0.12 + kR * 0.5) * lift;
     j.armL.rotation.x = -s * 1.1; j.armR.rotation.x = s * 1.1;
-    j.armLlo.rotation.x = 0.35 + Math.max(0, -s) * 0.9; // elbows bend on the back-swing
-    j.armRlo.rotation.x = 0.35 + Math.max(0, s) * 0.9;
+    j.armLlo.rotation.x = -(0.35 + Math.max(0, -s) * 0.9); // elbows flex forward (−x) on the back-swing
+    j.armRlo.rotation.x = -(0.35 + Math.max(0, s) * 0.9);
     j.armL.rotation.z = 0.09;
     j.torso.rotation.y = -s * 0.16; j.torso.rotation.x = lift * 0.14; j.torso.rotation.z = 0;
     j.hip.rotation.y = s * 0.09; j.hip.rotation.x = 0;
@@ -409,11 +409,11 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     const breath = Math.sin(a.idle * 1.6);
     const shift = Math.sin(a.idle * 0.7) * 0.04;
     L(j.legL.rotation, 'x', 0.02); L(j.legR.rotation, 'x', 0.02);
-    L(j.legLlo.rotation, 'x', -0.13); L(j.legRlo.rotation, 'x', -0.13);
+    L(j.legLlo.rotation, 'x', 0.13); L(j.legRlo.rotation, 'x', 0.13);   // soft knees (heel back = +x)
     L(j.footL.rotation, 'x', 0); L(j.footR.rotation, 'x', 0);
     L(j.armL.rotation, 'x', 0.09 + breath * 0.03); L(j.armL.rotation, 'z', -0.1);
     L(j.armR.rotation, 'x', 0.09 + breath * 0.03);
-    L(j.armLlo.rotation, 'x', 0.22); L(j.armRlo.rotation, 'x', 0.22);
+    L(j.armLlo.rotation, 'x', -0.22); L(j.armRlo.rotation, 'x', -0.22); // relaxed elbows bend forward (−x)
     L(j.torso.rotation, 'x', 0.02 + breath * 0.02); L(j.torso.rotation, 'y', shift);
     L(j.hip.rotation, 'y', shift * 0.5); j.hip.rotation.x = 0;
     L(j.hip.position, 'y', 1.0 + breath * 0.012);
@@ -430,7 +430,7 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
     if (combo === 1) {          // horizontal cut sweeping left → right
       j.armR.rotation.x = -1.35 + arc * 0.25;
       j.armR.rotation.z = 1.2 - t * 2.4;
-      j.armRlo.rotation.x = 0.25 + arc * 0.8;      // elbow leads, then extends
+      j.armRlo.rotation.x = -(0.25 + arc * 0.8);   // elbow flexes forward (−x), then extends
       j.torso.rotation.y = 0.38 - t * 0.78;         // big torso whip
       j.torso.rotation.z = 0.12 - t * 0.24;
       j.armL.rotation.x = -0.6; j.armL.rotation.z = -0.35 + t * 0.6;
@@ -439,23 +439,23 @@ export function animateStickman(group, dt, { speed01 = 0, attack = 0, climbing =
       const push = t;
       j.armR.rotation.x = -1.15 + (1 - Math.cos(push * Math.PI)) * 0.55;
       j.armR.rotation.z = 0;
-      j.armRlo.rotation.x = 1.25 * (1 - push) + 0.05; // cocked elbow → extended thrust
+      j.armRlo.rotation.x = -(1.25 * (1 - push) + 0.05); // cocked elbow (−x) → extends into the thrust
       j.torso.rotation.x = 0.05 + arc * 0.2; j.torso.rotation.y = 0.06;
       j.armL.rotation.x = -0.5 - arc * 0.35; j.armL.rotation.z = -0.15;
-      j.legR.rotation.x = 0.22 * arc; j.legRlo.rotation.x = -0.2 * arc;
+      j.legR.rotation.x = 0.22 * arc; j.legRlo.rotation.x = 0.2 * arc; // front knee flexes into the lunge (+x)
     } else {                    // overhead chop straight down the front
       j.armR.rotation.x = -2.6 + t * 2.85;          // raised overhead → forward/down
       j.armR.rotation.z = -0.1 + t * 0.2;
-      j.armRlo.rotation.x = 1.5 * (1 - t) + 0.1;     // cocked behind the head → snaps out
+      j.armRlo.rotation.x = -(1.5 * (1 - t) + 0.1);  // cocked behind the head (−x) → snaps out
       j.torso.rotation.x = 0.08 + arc * 0.22; j.torso.rotation.y = -0.1 + t * 0.2;
       j.torso.rotation.z = -0.05 + t * 0.1;
       j.armL.rotation.x = -0.3 - arc * 0.45; j.armL.rotation.z = 0.22;
-      j.legR.rotation.x = 0.16 * arc; j.legLlo.rotation.x = -0.22 * arc;
+      j.legR.rotation.x = 0.16 * arc; j.legLlo.rotation.x = 0.22 * arc; // knee flex on the plant (+x)
     }
   } else if (charging) {
     // Wind-up hold: cock the weapon arm back with a bent elbow, coil the torso.
     L(j.armR.rotation, 'x', -2.5); L(j.armR.rotation, 'z', -0.35);
-    L(j.armRlo.rotation, 'x', 1.5);
+    L(j.armRlo.rotation, 'x', -1.5);
     L(j.armL.rotation, 'x', -0.3);
     j.torso.rotation.x = 0.18; L(j.torso.rotation, 'y', -0.16); L(j.torso.rotation, 'z', 0);
   } else {

@@ -599,7 +599,7 @@ export class Player {
       // Staff / wand / thrown: extend the arm (straight elbow) to thrust the tip.
       const t = Math.sin((1 - this.attackAnim) * Math.PI); // 0→1→0 ease over the swing
       j.armR.rotation.set(-1.4 * t, 0, 0);
-      j.armRlo.rotation.x = 0.3 * (1 - t);                 // forearm straightens into the cast
+      j.armRlo.rotation.x = -0.3 * (1 - t);                // forearm straightens into the cast (−x = forward)
       w.rotation.set(base[0] + (2.9 - base[0]) * t, base[1], base[2] * (1 - t)); // tip points outward
     } else {
       w.rotation.set(base[0], base[1], base[2]);            // resting upright pose
@@ -1255,9 +1255,9 @@ export class Player {
         rj.armL.rotation.set(-0.5, 0, 0.12); rj.armR.rotation.set(-0.5, 0, -0.12);
         // Bend knees so the lower legs hang down alongside the mount (the
         // animator may have left them mid-stride), and relax the elbows/ankles.
-        rj.legLlo.rotation.x = 1.1; rj.legRlo.rotation.x = 1.1;
+        rj.legLlo.rotation.x = 1.1; rj.legRlo.rotation.x = 1.1;   // knees flex (heel back) so calves hang down
         rj.footL.rotation.x = 0; rj.footR.rotation.x = 0;
-        rj.armLlo.rotation.x = 0.5; rj.armRlo.rotation.x = 0.5;
+        rj.armLlo.rotation.x = -0.5; rj.armRlo.rotation.x = -0.5; // elbows flex forward onto the reins
         rj.torso.rotation.x = 0.14;
       }
       this.steed.position.set(this.pos.x, this.pos.y, this.pos.z);
