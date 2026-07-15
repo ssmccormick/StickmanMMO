@@ -984,11 +984,8 @@ export class Combat {
     }
   }
   _slashFx(origin, dir, range, color = 0xffffff) {
-    const m = new THREE.Mesh(new THREE.RingGeometry(range * 0.4, range, 16, 1, -0.8, 1.6),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
-    m.rotation.x = -Math.PI / 2; m.position.copy(origin); m.position.y += 1.05;
-    m.rotation.z = -Math.atan2(dir.x, dir.z);
-    this._tempMesh(m, 0.22);
+    // Delegate to the corrected swish arc so the flash faces `dir` (see _swishFx).
+    this._swishFx(origin, dir, range, 0, color);
   }
   // A quick "swish" that traces a melee swing at chest height, so every swing
   // shows the arc/area it sweeps. Slashes fan out; the stab is a forward streak.
@@ -1004,12 +1001,21 @@ export class Combat {
       this._tempMesh(line, 0.16);
       return;
     }
-    // Slash: a bright ribbon arc sweeping through the swing.
-    const half = 1.0;
-    const m = new THREE.Mesh(new THREE.RingGeometry(range * 0.55, range, 22, 1, -half, half * 2),
-      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2; m.position.copy(origin); m.position.y += y;
-    m.rotation.z = -heading; m.userData.baseOpacity = 0.8;
+    // Slash: a filled ribbon-arc band sweeping the frontal reach, built with the
+    // same (sin a, cos a) heading convention as _coneFx/_inArc so it is centred
+    // EXACTLY on `dir` (where you aimed) — not rotated off to the side.
+    const half = 1.0, segs = 20, inner = range * 0.55, outer = range;
+    const verts = [];
+    for (let i = 0; i < segs; i++) {
+      const a0 = heading - half + (i / segs) * half * 2;
+      const a1 = heading - half + ((i + 1) / segs) * half * 2;
+      const s0 = Math.sin(a0), c0 = Math.cos(a0), s1 = Math.sin(a1), c1 = Math.cos(a1);
+      verts.push(s0 * inner, y, c0 * inner, s0 * outer, y, c0 * outer, s1 * outer, y, c1 * outer);
+      verts.push(s0 * inner, y, c0 * inner, s1 * outer, y, c1 * outer, s1 * inner, y, c1 * inner);
+    }
+    const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+    m.position.copy(origin); m.userData.baseOpacity = 0.8;
     this._tempMesh(m, 0.2);
   }
   // A filled ground cone/wedge that shows EXACTLY where a melee arc lands —
