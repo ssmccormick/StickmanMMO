@@ -62,11 +62,14 @@ const WALK_SPEED = 7.0;
 const SPRINT_MULT = 1.7;
 const CLIMB_SPEED = 3.2;
 const RADIUS = 0.5;
-// Dodge roll tuning.
+// Dodge roll tuning. A full roll is a ~2s commit: dive → roll along the ground
+// → get up, with an invincibility window early in the move.
 const DODGE_COST = 26;      // stamina spent per roll
-const DODGE_IFRAMES = 0.36; // seconds of invincibility (a full roll grants these)
-const DODGE_CD = 0.5;       // min seconds between rolls
-const DODGE_SPEED = 15;     // peak roll speed (units/sec)
+const DODGE_IFRAMES = 0.8;  // seconds of invincibility (the dive + first half of the roll)
+const DODGE_CD = 0.35;      // min seconds after a roll before the next
+const DODGE_DUR = 2.0;      // total roll time (dive + roll + get-up)
+const DODGE_DIVE = 0.32;    // dive phase ends
+const DODGE_ROLL = 1.4;     // roll phase ends (get-up runs from here to DODGE_DUR)
 const MAX_SLOTS = 8; // hotbar ability slots (keys 1..8)
 
 export class Player {
@@ -125,8 +128,8 @@ export class Player {
     // Dodge roll (Ctrl): a stamina-fuelled evasive roll with i-frames that also
     // cancels a committed swing. Weak (no i-frames) when you're low on stamina.
     this.dodging = false;
-    this.dodgeT = 0;         // 1 → 0 progress of the current roll
-    this.dodgeDur = 0.42;
+    this.dodgeElapsed = 0;   // seconds into the current roll
+    this.dodgeDur = DODGE_DUR;
     this.dodgeDir = { x: 0, z: 1 };
     this.dodgeCd = 0;        // brief cooldown between rolls
     this.dodgeWeak = false;  // rolled while out of stamina (no i-frames, shorter)
@@ -549,21 +552,25 @@ export class Player {
     const strong = this.stats.sp >= DODGE_COST && !this._exhausted;
     this.dodgeWeak = !strong;
     this.dodging = true;
-    this.dodgeT = 1;
-    this.dodgeDur = strong ? 0.42 : 0.3;
-    this.dodgeCd = DODGE_CD + this.dodgeDur;
+    this.dodgeElapsed = 0;
+    this.dodgeDur = strong ? DODGE_DUR : DODGE_DUR * 0.72; // a weak roll is shorter
     this.stats.sp = Math.max(0, this.stats.sp - (strong ? DODGE_COST : this.stats.sp)); // a weak roll burns what's left
     if (strong) this.iframeUntil = this._clock + DODGE_IFRAMES; // i-frames only on a real roll
-    // Cancel any committed swing / charge and face the roll.
+    // Cancel any committed swing / charge and face the roll direction.
     this.attackLock = 0; this.attackAnim = 0; this.charging = false;
     this.facing = Math.atan2(this.dodgeDir.x, this.dodgeDir.z);
     if (this.onDodge) this.onDodge(this.dodgeDir);
     return true;
   }
+  // Advance the roll: a fast forward DIVE, a decelerating ground ROLL, then a
+  // stationary GET-UP. Travels along dodgeDir (the movement direction).
   _updateDodge(dt) {
-    this.dodgeT = Math.max(0, this.dodgeT - dt / this.dodgeDur);
-    const ease = this.dodgeT;                 // fast at the start, slowing out
-    const spd = (this.dodgeWeak ? 0.5 : 1) * DODGE_SPEED * (0.35 + ease);
+    this.dodgeElapsed += dt;
+    const e = this.dodgeElapsed, w = this.dodgeWeak ? 0.6 : 1;
+    let spd;
+    if (e < DODGE_DIVE) spd = 14 * w;                                   // launch/dive burst
+    else if (e < DODGE_ROLL) { const r = (e - DODGE_DIVE) / (DODGE_ROLL - DODGE_DIVE); spd = (12 * (1 - r) + 2) * w; } // rolling, decelerating
+    else spd = 0;                                                       // get-up: planted
     this.pos.x += this.dodgeDir.x * spd * dt;
     this.pos.z += this.dodgeDir.z * spd * dt;
     const res = this.world.resolveCircle(this.pos.x, this.pos.z, RADIUS);
@@ -571,9 +578,9 @@ export class Player {
     this.pos.y = heightAt(this.pos.x, this.pos.z);
     this.vel.set(0, 0, 0);
     this.state = 'ground';
-    this._speed01 = 0.7;
+    this._speed01 = 0.2;
     this.moveDir = null;
-    if (this.dodgeT <= 0) { this.dodging = false; this.mesh.rotation.x = 0; }
+    if (e >= this.dodgeDur) { this.dodging = false; this.dodgeElapsed = 0; this.mesh.rotation.x = 0; this.dodgeCd = DODGE_CD; }
   }
 
   _poseHeldWeapon() {
@@ -641,9 +648,15 @@ export class Player {
     // Commitment + dodge timers.
     this.dodgeCd = Math.max(0, this.dodgeCd - dt);
     if (this.attackLock > 0) this.attackLock = Math.max(0, this.attackLock - dt);
-    // Dodge roll (Ctrl / pad / touch) — fires even mid-swing to cancel it.
+    // Dodge roll (Ctrl / pad / touch) — fires even mid-swing to cancel it, and
+    // rolls in the MOVEMENT direction (WASD/analog), or where you face if still.
     if (!this.dodging && (input.just('ControlLeft') || input.just('ControlRight') || input.just('Dodge'))) {
       this.tryDodge(moving ? { x: move.x, z: move.z } : null);
+    }
+    // Let the player break out of the (vulnerable) get-up tail by moving, so a
+    // full roll isn't 2s of dead time when you want to keep fighting.
+    if (this.dodging && this.dodgeElapsed >= DODGE_ROLL && (moving || input.lmb)) {
+      this.dodging = false; this.dodgeElapsed = 0; this.mesh.rotation.x = 0; this.dodgeCd = DODGE_CD;
     }
 
     const wantSprint = input.down('ShiftLeft') || input.down('ShiftRight');
@@ -1221,13 +1234,41 @@ export class Player {
       combo: this.comboStep || 0, charging: this.charging,
     });
     this._poseHeldWeapon();
-    // Dodge roll: a forward somersault. Pivot at ~waist height (H) so the flip
-    // arcs cleanly instead of sweeping through the ground around the feet.
+    // Dodge roll animation: DIVE (pitch forward off the feet) → ROLL (two tucked
+    // somersaults along the ground) → GET-UP (rise back to a stand). The spin
+    // pivots at ~waist height so the flip arcs cleanly without the feet sweeping
+    // through the ground, and the limbs tuck through the roll.
     if (this.dodging) {
-      const a = (1 - this.dodgeT) * Math.PI * 2;   // 0 → 2π over the roll
-      const H = 1.0;
-      this.mesh.rotation.x = a;
-      this.mesh.position.y = this.pos.y + H - H * Math.cos(a);
+      const e = this.dodgeElapsed, j = this.mesh.userData.joints;
+      const rollT = Math.min(1, e / DODGE_ROLL);        // 0..1 across dive+roll
+      const spin = rollT * Math.PI * 4;                 // two full somersaults, ending upright
+      // Waist rides a touch lower through the roll, then rises on the get-up.
+      let waistH = 1.0;
+      if (e >= DODGE_DIVE && e < DODGE_ROLL) waistH = 0.82;
+      else if (e >= DODGE_ROLL) waistH = THREE.MathUtils.lerp(0.82, 1.0, (e - DODGE_ROLL) / (this.dodgeDur - DODGE_ROLL));
+      const rot = e < DODGE_ROLL ? spin : Math.PI * 4;  // hold upright through the get-up
+      this.mesh.rotation.x = rot;
+      this.mesh.position.y = this.pos.y + waistH - Math.cos(rot);
+      if (j) {
+        if (e < DODGE_ROLL) {
+          // Tuck: knees to chest, arms pulled in (eased in over the dive).
+          const tuck = e < DODGE_DIVE ? e / DODGE_DIVE : 1;
+          j.legL.rotation.x = -1.3 * tuck; j.legR.rotation.x = -1.3 * tuck;
+          j.legLlo.rotation.x = 1.9 * tuck; j.legRlo.rotation.x = 1.9 * tuck;
+          j.armL.rotation.x = -1.0 * tuck; j.armR.rotation.x = -1.0 * tuck;
+          j.armLlo.rotation.x = -1.6 * tuck; j.armRlo.rotation.x = -1.6 * tuck;
+          j.torso.rotation.x = 0.5 * tuck;
+        } else {
+          // Get-up: uncurl from a low crouch back to standing.
+          const r = (e - DODGE_ROLL) / (this.dodgeDur - DODGE_ROLL); // 0→1
+          const c = 1 - r;                                            // 1 crouched → 0 up
+          j.hip.position.y = 1.0 - 0.35 * c;
+          j.legL.rotation.x = 0.5 * c; j.legR.rotation.x = 0.5 * c;
+          j.legLlo.rotation.x = 1.1 * c; j.legRlo.rotation.x = 1.1 * c;
+          j.torso.rotation.x = 0.5 * c;
+          j.armL.rotation.x = -0.4 * c; j.armR.rotation.x = -0.4 * c;
+        }
+      }
     } else if (this.mesh.rotation.x) {
       this.mesh.rotation.x = 0;
     }

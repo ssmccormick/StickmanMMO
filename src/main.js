@@ -519,7 +519,7 @@ function animate() {
       if (e.wantsMinions > 0) { newMinions.push(...spawnMinions(scene, world, e, e.wantsMinions)); ui.log(`${e.bossName} summons minions!`, 'death'); e.wantsMinions = 0; }
     }
     if (newMinions.length) enemies.push(...newMinions);
-    combat.suppressInput = menuOpen || player.mounted || !!fishing || !!harvesting; // no attacking while fishing/harvesting
+    combat.suppressInput = menuOpen || player.mounted || !!fishing || !!harvesting || player.dodging; // no attacking while fishing/harvesting/rolling
     combat.update(dt, input);
     updateEnemyShots(dt, player); // fly the ranged mobs' projectiles you must dodge
     network.update(dt);
